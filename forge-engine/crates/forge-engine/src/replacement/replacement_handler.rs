@@ -251,9 +251,9 @@ pub struct ReplacementRuntime<'a> {
 /// - `ReplacementHandler::new().run(game, Some(agents), event)` — with agent choice
 /// - `apply_replacements(game, event)` — free function wrapper (no agent, auto-selects first)
 pub struct ReplacementHandler {
-    /// Tracks (card_id, effect_index) pairs that have already been applied
+    /// Tracks (card_id, layer, effect_index) tuples that have already been applied
     /// during this handler invocation, to prevent infinite re-application.
-    has_run: HashSet<(CardId, usize)>,
+    has_run: HashSet<(CardId, ReplacementLayer, usize)>,
 }
 
 impl Default for ReplacementHandler {
@@ -338,7 +338,7 @@ impl ReplacementHandler {
             let eligible: Vec<_> = effects
                 .iter()
                 .filter(|(card_id, _re, effect_idx)| {
-                    !self.has_run.contains(&(*card_id, *effect_idx))
+                    !self.has_run.contains(&(*card_id, layer, *effect_idx))
                         && !declined_effects.contains(&(*card_id, *effect_idx))
                 })
                 .cloned()
@@ -373,7 +373,7 @@ impl ReplacementHandler {
             };
 
             let (source_card_id, ref effect, effect_idx) = eligible[chosen_idx];
-            self.has_run.insert((source_card_id, effect_idx));
+            self.has_run.insert((source_card_id, layer, effect_idx));
             let result = execute_effect(
                 game,
                 source_card_id,
@@ -383,7 +383,7 @@ impl ReplacementHandler {
                 runtime.as_deref_mut(),
             );
             if result == ReplacementResult::NotReplaced {
-                self.has_run.remove(&(source_card_id, effect_idx));
+                self.has_run.remove(&(source_card_id, layer, effect_idx));
                 declined_effects.insert((source_card_id, effect_idx));
                 continue;
             }

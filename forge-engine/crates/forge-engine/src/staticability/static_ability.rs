@@ -276,6 +276,7 @@ pub struct StaticAbilityIr {
     pub set_power_text: Option<String>,
     pub set_toughness_text: Option<String>,
     pub add_keyword_text: Option<String>,
+    pub remove_all_abilities: bool,
     pub add_ability_text: Option<String>,
     pub add_trigger_text: Option<String>,
     pub add_static_ability_text: Option<String>,
@@ -458,6 +459,9 @@ impl StaticAbilityIr {
             set_power_text: raw.get(keys::SET_POWER).map(String::to_string),
             set_toughness_text: raw.get(keys::SET_TOUGHNESS).map(String::to_string),
             add_keyword_text: raw.get(keys::ADD_KEYWORD).map(String::to_string),
+            remove_all_abilities: raw
+                .get(keys::REMOVE_ALL_ABILITIES)
+                .is_some_and(|value| value.eq_ignore_ascii_case("true")),
             add_ability_text: raw.get(keys::ADD_ABILITY).map(String::to_string),
             add_trigger_text: raw.get(keys::ADD_TRIGGER).map(String::to_string),
             add_static_ability_text: raw.get("AddStaticAbility").map(String::to_string),

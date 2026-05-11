@@ -776,6 +776,18 @@ pub trait PlayerAgent {
         Some(min)
     }
 
+    /// Choose how many times to pay an optional keyword cost.
+    /// Default: decline optional keyword costs.
+    fn choose_number_for_keyword_cost(
+        &mut self,
+        _player: PlayerId,
+        _max: i32,
+        _prompt: &str,
+        _card_name: Option<&str>,
+    ) -> i32 {
+        0
+    }
+
     /// Choose one number from an explicit list of legal rolled values.
     fn choose_number_from_list(
         &mut self,

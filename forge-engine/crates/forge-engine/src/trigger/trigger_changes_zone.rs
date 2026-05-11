@@ -76,6 +76,11 @@ impl TriggerBehavior for TriggerChangesZone {
             }
         }
         if params.origin == Some(forge_foundation::ZoneType::Battlefield)
+            && trigger
+                .base
+                .valid_host_zones
+                .as_deref()
+                .is_some_and(|zones| zones.contains(&forge_foundation::ZoneType::Graveyard))
             && game.card(host_card).zone == forge_foundation::ZoneType::Graveyard
             && params
                 .change_zone_table

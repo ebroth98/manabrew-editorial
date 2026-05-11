@@ -1331,6 +1331,16 @@ pub fn matches_change_type(
                     return false;
                 }
             }
+            q if q.starts_with("power") && q.len() > 7 => {
+                if !matches_numeric_qualifier(card.power(), &q[5..]) {
+                    return false;
+                }
+            }
+            q if q.starts_with("toughness") && q.len() > 11 => {
+                if !matches_numeric_qualifier(card.toughness(), &q[9..]) {
+                    return false;
+                }
+            }
             "ChosenColor" => {
                 if source_chosen_colors.is_empty() {
                     return false;
@@ -1373,6 +1383,27 @@ pub fn matches_change_type(
     }
 
     true
+}
+
+fn matches_numeric_qualifier(actual: i32, comparison: &str) -> bool {
+    if comparison.len() < 3 {
+        return true;
+    }
+    let op = &comparison[..2];
+    let rest = &comparison[2..];
+    if let Ok(expected) = rest.parse::<i32>() {
+        match op {
+            "EQ" => actual == expected,
+            "LE" => actual <= expected,
+            "GE" => actual >= expected,
+            "LT" => actual < expected,
+            "GT" => actual > expected,
+            "NE" => actual != expected,
+            _ => true,
+        }
+    } else {
+        true
+    }
 }
 
 // ── X-count and math helpers ────────────────────────────────────────

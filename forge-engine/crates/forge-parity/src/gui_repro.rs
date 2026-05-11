@@ -29,7 +29,13 @@ pub fn pick_int_in_range(min: i32, max: i32, rng: &mut JavaRandom) -> i32 {
         );
         min
     } else {
-        let val = min + rng.next_int(max - min + 1);
+        let span = max as i64 - min as i64 + 1;
+        let val = if span <= i32::MAX as i64 {
+            min + rng.next_int(span as i32)
+        } else {
+            let candidate = min as i64 + rng.next_int(i32::MAX) as i64;
+            candidate.min(max as i64) as i32
+        };
         rng_log(
             &format!("pick_int_in_range [{min}-{max}]"),
             None,

@@ -714,6 +714,16 @@ pub(super) fn resolve_effect_with_unless_cost(
         );
         let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
         ctx.agents[payer.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        let pay_life_unless = matches!(cost.parts.as_slice(), [CostPart::PayLife(_)])
+            && !is_spell_payment_context(sa, ctx.game);
+        if pay_life_unless {
+            let kind = effect_cost_part_kind(&cost.parts[0]);
+            let message = format!("Pay {} cost for {}?", kind, card_name.unwrap_or("unknown"));
+            if !ctx.agents[payer.index()].confirm_payment(payer, kind, &message, card_name, sa.api)
+            {
+                continue;
+            }
+        }
         if !ctx.agents[payer.index()].pay_cost_to_prevent_effect(
             payer,
             if cost_kind.is_empty() {
@@ -728,7 +738,11 @@ pub(super) fn resolve_effect_with_unless_cost(
         ) {
             continue;
         }
-        let paid = try_pay_unless_cost(ctx, sa, source, payer, &cost);
+        let paid = if pay_life_unless {
+            try_pay_unless_cost_without_confirm(ctx, sa, source, payer, &cost)
+        } else {
+            try_pay_unless_cost(ctx, sa, source, payer, &cost)
+        };
         if paid {
             already_paid = true;
         }
@@ -826,6 +840,25 @@ pub(crate) fn try_pay_unless_cost(
         cost,
         EffectCostPaymentMode::Unless {
             spell_context: is_spell_payment_context(sa, ctx.game),
+        },
+    )
+}
+
+fn try_pay_unless_cost_without_confirm(
+    ctx: &mut EffectContext,
+    sa: &SpellAbility,
+    source: CardId,
+    payer: PlayerId,
+    cost: &Cost,
+) -> bool {
+    try_pay_effect_cost(
+        ctx,
+        sa,
+        source,
+        payer,
+        cost,
+        EffectCostPaymentMode::Unless {
+            spell_context: true,
         },
     )
 }

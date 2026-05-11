@@ -159,9 +159,11 @@ pub struct AnimateState {
     pub original_keywords: Option<crate::keyword::keyword_collection::KeywordCollection>,
 }
 
-/// Saved pre-clone copiable characteristics for temporary Clone effects.
+/// Saved pre-clone copiable characteristics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloneState {
+    #[serde(default)]
+    pub expires_at_cleanup: bool,
     pub original_card_name: String,
     pub original_type_line: CardTypeLine,
     pub original_mana_cost: ManaCost,
@@ -302,6 +304,14 @@ pub struct Card {
     /// keeping a separate list lets us revert on reset without losing the
     /// card's intrinsic type line.
     pub static_added_subtypes: Vec<String>,
+    #[serde(skip)]
+    pub static_type_line_base: Option<CardTypeLine>,
+    #[serde(skip)]
+    pub changed_type_line_base: Option<CardTypeLine>,
+    #[serde(skip)]
+    pub changed_base_power: Option<Option<i32>>,
+    #[serde(skip)]
+    pub changed_base_toughness: Option<Option<i32>>,
     /// Keywords granted temporarily by pump effects (`KW$` parameter) until end of turn.
     /// Cleared during step_cleanup alongside power_modifier / toughness_modifier.
     pub pump_keywords: crate::keyword::keyword_collection::KeywordCollection,
@@ -385,6 +395,9 @@ pub struct Card {
     /// Set when the card is cast from graveyard via Flashback. Used by the
     /// flashback replacement effect to exile the card when it leaves the stack.
     pub cast_with_flashback: bool,
+    /// Set when the card is cast from graveyard via Harmonize. Used by the
+    /// Harmonize replacement effect to exile the card when it leaves the stack.
+    pub cast_with_harmonize: bool,
 
     // Replacement effects — parsed from R$ lines in card abilities.
     // Mirrors Java `Card.getReplacementEffects()`.
@@ -761,6 +774,10 @@ impl Card {
             granted_keywords: crate::keyword::keyword_collection::KeywordCollection::new(),
             granted_svars: BTreeMap::new(),
             static_added_subtypes: Vec::new(),
+            static_type_line_base: None,
+            changed_type_line_base: None,
+            changed_base_power: None,
+            changed_base_toughness: None,
             pump_keywords: crate::keyword::keyword_collection::KeywordCollection::new(),
             pump_trigger_count: 0,
             abilities,
@@ -789,6 +806,7 @@ impl Card {
             commander_cast_count: 0,
             is_token: false,
             cast_with_flashback: false,
+            cast_with_harmonize: false,
             replacement_effects,
             attached_to: None,
             attached_to_player: None,
@@ -2238,6 +2256,7 @@ impl Card {
 
     pub fn capture_clone_state(&self) -> CloneState {
         CloneState {
+            expires_at_cleanup: false,
             original_card_name: self.card_name.clone(),
             original_type_line: self.type_line.clone(),
             original_mana_cost: self.mana_cost.clone(),
@@ -2268,6 +2287,7 @@ impl Card {
         self.svars = state.original_svars;
         self.static_abilities = state.original_static_abilities;
         self.replacement_effects = state.original_replacement_effects;
+        self.ensure_crew_activated_ability();
         self.remove_clone_state();
     }
 
@@ -2338,6 +2358,30 @@ impl Card {
     pub fn set_base_pt(&mut self, power: Option<i32>, toughness: Option<i32>) {
         self.base_power = power;
         self.base_toughness = toughness;
+    }
+
+    pub fn capture_changed_characteristics_baseline_if_needed(&mut self) {
+        if self.changed_type_line_base.is_none() {
+            self.changed_type_line_base = Some(self.type_line.clone());
+        }
+        if self.changed_base_power.is_none() {
+            self.changed_base_power = Some(self.base_power);
+        }
+        if self.changed_base_toughness.is_none() {
+            self.changed_base_toughness = Some(self.base_toughness);
+        }
+    }
+
+    pub fn restore_changed_characteristics_baseline(&mut self) {
+        if let Some(type_line) = self.changed_type_line_base.take() {
+            self.set_type_line(type_line);
+        }
+        if let Some(power) = self.changed_base_power.take() {
+            self.base_power = power;
+        }
+        if let Some(toughness) = self.changed_base_toughness.take() {
+            self.base_toughness = toughness;
+        }
     }
 
     pub fn set_static_set_pt(&mut self, power: Option<i32>, toughness: Option<i32>) {
@@ -3605,6 +3649,11 @@ impl Card {
         self.trait_base_keywords = Some(self.keywords.clone());
     }
 
+    pub(crate) fn reset_changed_card_traits_baseline_to_current(&mut self) {
+        self.reset_changed_card_traits_baseline();
+        self.recompute_changed_card_traits();
+    }
+
     fn recompute_changed_card_traits(&mut self) {
         let Some(base_activated) = self.trait_base_activated_abilities.clone() else {
             return;
@@ -3761,6 +3810,39 @@ impl Card {
         if let Some(v) = self.trait_base_keywords.take() {
             self.keywords = v;
         }
+    }
+
+    /// Clear continuous static-ability trait changes from the previous layer pass.
+    ///
+    /// Static layer effects use negative static IDs so they can be recomputed
+    /// each pass without disturbing perpetual/card-state trait changes.
+    pub fn clear_static_layer_changed_card_traits(&mut self) {
+        let before = self.changed_card_traits.len();
+        self.changed_card_traits
+            .retain(|(_, static_id), _| *static_id >= 0);
+        if self.changed_card_traits.len() == before {
+            return;
+        }
+        if self.changed_card_traits.is_empty() && self.changed_card_traits_by_text.is_empty() {
+            if let Some(v) = self.trait_base_activated_abilities.take() {
+                self.activated_abilities = v;
+            }
+            if let Some(v) = self.trait_base_triggers.take() {
+                self.triggers = v;
+            }
+            if let Some(v) = self.trait_base_replacement_effects.take() {
+                self.replacement_effects = v;
+            }
+            if let Some(v) = self.trait_base_static_abilities.take() {
+                self.static_abilities = v;
+            }
+            if let Some(v) = self.trait_base_keywords.take() {
+                self.keywords = v;
+            }
+            return;
+        }
+
+        self.recompute_changed_card_traits();
     }
 
     pub fn remove_changed_state(&mut self) {

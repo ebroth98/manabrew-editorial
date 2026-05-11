@@ -1219,12 +1219,14 @@ impl GameLoop {
         mut sa: Option<&mut SpellAbility>,
         prechosen_sacrifices: Option<&[CardId]>,
         prechosen_discards: Option<&[CardId]>,
+        prechosen_tap_type: Option<&[CardId]>,
     ) -> bool {
         let payment_snapshot = self.make_snapshot(game, true);
         game.card_mut(card_id).paid_cost_exiled_cards.clear();
         let mut payment_ok = true;
         let mut pre_sac_idx = 0usize;
         let mut pre_discard_idx = 0usize;
+        let mut pre_tap_idx = 0usize;
         for part in spell_cost.parts.clone() {
             // Java deterministic parity does not route confirm-payment prompts
             // through RNG while paying spell costs; confirmPayment() returns true
@@ -1432,16 +1434,53 @@ impl GameLoop {
                     type_filter,
                     min_total_power,
                 } => {
-                    self.pay_tap_type_cost(
-                        game,
-                        agents,
-                        player,
-                        card_id,
-                        type_filter,
-                        *amount,
-                        *min_total_power,
-                        sa.as_deref_mut(),
-                    );
+                    if let Some(prechosen) = prechosen_tap_type {
+                        let needed = (*amount).max(0) as usize;
+                        if pre_tap_idx + needed > prechosen.len() {
+                            payment_ok = false;
+                            break;
+                        }
+                        let chosen = prechosen[pre_tap_idx..pre_tap_idx + needed].to_vec();
+                        pre_tap_idx += needed;
+                        for cid in chosen {
+                            if game.card(cid).zone == ZoneType::Battlefield
+                                && !game.card(cid).tapped
+                            {
+                                game.tap(cid);
+                                self.trigger_handler.run_trigger(
+                                    TriggerType::Taps,
+                                    RunParams {
+                                        card: Some(cid),
+                                        player: Some(player),
+                                        ..Default::default()
+                                    },
+                                    false,
+                                );
+                            }
+                            if let Some(sa) = sa.as_deref_mut() {
+                                let value = cid.to_string();
+                                sa.add_cost_to_hash_list(
+                                    crate::cost::cost_tap_type::HASH_LKI,
+                                    &value,
+                                );
+                                sa.add_cost_to_hash_list(
+                                    crate::cost::cost_tap_type::HASH_CARDS,
+                                    &value,
+                                );
+                            }
+                        }
+                    } else {
+                        self.pay_tap_type_cost(
+                            game,
+                            agents,
+                            player,
+                            card_id,
+                            type_filter,
+                            *amount,
+                            *min_total_power,
+                            sa.as_deref_mut(),
+                        );
+                    }
                 }
                 CostPart::UntapType {
                     amount,

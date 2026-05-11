@@ -30,7 +30,6 @@ pub(super) fn resolve_known_origin(
     let (dest_zone, lib_position) = resolve_destination(ctx, sa, dest_zone);
     let defined = sa.defined().unwrap_or("").to_string();
     let defined_ref = sa.defined_ref();
-    let change_type = sa.change_type().unwrap_or("").to_string();
     let controller = sa.activating_player;
 
     // Unimprint$ — clear before processing (Java line 506)
@@ -57,7 +56,7 @@ pub(super) fn resolve_known_origin(
         if !targeted_cards.is_empty() || sa.defined_player().is_none() {
             targeted_cards
         } else {
-            resolve_defined_player_choice(ctx, sa, origin_zone, &change_type)
+            resolve_defined_player_choice(ctx, sa, origin_zone)
         }
     } else if matches!(
         defined_ref,
@@ -93,9 +92,25 @@ pub(super) fn resolve_known_origin(
         }
     } else if matches!(
         defined_ref,
-        Some(DefinedRef::DelayTriggerRememberedLki | DefinedRef::RememberedLki)
+        Some(
+            DefinedRef::DelayTriggerRemembered
+                | DefinedRef::DelayTriggerRememberedLki
+                | DefinedRef::RememberedLki
+        )
     ) {
-        parse_trigger_object_cards(sa, "RememberedLKI")
+        let cards = if matches!(defined_ref, Some(DefinedRef::DelayTriggerRemembered)) {
+            sa.trigger_remembered
+                .iter()
+                .flat_map(|value| match value {
+                    crate::event::AbilityValue::Card(card_id) => vec![*card_id],
+                    crate::event::AbilityValue::Cards(cards) => cards.clone(),
+                    _ => Vec::new(),
+                })
+                .collect()
+        } else {
+            parse_trigger_object_cards(sa, "RememberedLKI")
+        };
+        cards
             .into_iter()
             .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
             .collect()
@@ -131,7 +146,7 @@ pub(super) fn resolve_known_origin(
         .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
         .collect()
     } else if sa.defined_player().is_some() {
-        resolve_defined_player_choice(ctx, sa, origin_zone, &change_type)
+        resolve_defined_player_choice(ctx, sa, origin_zone)
     } else {
         Vec::new()
     };

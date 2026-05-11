@@ -13,6 +13,23 @@ impl GameLoop {
         out
     }
 
+    fn can_use_source_level_mana_fallback(
+        game: &GameState,
+        player: PlayerId,
+        available_mana: &crate::mana::mana_pool::ManaPool,
+    ) -> bool {
+        let has_all_color_source = available_mana
+            .source_colors
+            .as_ref()
+            .is_some_and(|sources| {
+                sources.iter().any(|&source| {
+                    (source & forge_foundation::mana::ManaAtom::COLORS_SUPERPOSITION)
+                        == forge_foundation::mana::ManaAtom::COLORS_SUPERPOSITION
+                })
+            });
+        has_all_color_source || crate::mana::has_replacement_adjusted_available_mana(game, player)
+    }
+
     /// Get cards the active player can play.
     pub(crate) fn get_playable_cards(
         &self,
@@ -278,7 +295,24 @@ impl GameLoop {
                         if any_color {
                             available_mana.can_pay_any_color(&reduced)
                         } else {
-                            available_mana.can_pay(&reduced)
+                            crate::mana::can_pay_spell_mana_cost_for_action_space(
+                                game,
+                                self.pool(player),
+                                player,
+                                card_id,
+                                &reduced,
+                                &payment_ctx,
+                            )
+                            // The incremental simulator mirrors payment choice order.
+                            // If it misses an availability-only source (e.g.
+                            // Any-color/static land-type or replacement-expanded
+                            // mana), fall back to the source-level mask used by
+                            // Java's action-space feasibility check.
+                            || (Self::can_use_source_level_mana_fallback(
+                                game,
+                                player,
+                                &available_mana,
+                            ) && available_mana.can_pay(&reduced))
                         }
                     }
                 };
@@ -800,7 +834,7 @@ impl GameLoop {
             }
         }
 
-        // Check graveyard for cast permissions such as Flashback and Escape.
+        // Check graveyard for cast permissions such as Flashback, Escape, and Harmonize.
         let graveyard: Vec<CardId> = game.cards_in_zone(ZoneType::Graveyard, player).to_vec();
         for card_id in graveyard {
             let card = game.card(card_id);
@@ -827,6 +861,17 @@ impl GameLoop {
             } else {
                 false
             };
+            let harmonize_ok = if let Some(harmonize_cost_str) = card.get_harmonize_cost() {
+                let harmonize_mana = forge_foundation::ManaCost::parse(&harmonize_cost_str);
+                let harmonize_base = if harmonize_mana.count_x() > 0 {
+                    harmonize_mana.without_x()
+                } else {
+                    harmonize_mana
+                };
+                available_mana.can_pay(&harmonize_base) && sp_additional_ok
+            } else {
+                false
+            };
             let escape_ok = if let Some((escape_mana_str, exile_count)) = card.get_escape_cost() {
                 let escape_mc = forge_foundation::ManaCost::parse(&escape_mana_str);
                 let other_gy_count = game
@@ -843,6 +888,15 @@ impl GameLoop {
                     card_id,
                     mode: crate::agent::PlayCardMode::Alternative(
                         crate::spellability::AlternativeCost::Flashback,
+                    ),
+                    alt_cost_index: 0,
+                });
+            }
+            if harmonize_ok {
+                playable.push(crate::agent::PlayOption {
+                    card_id,
+                    mode: crate::agent::PlayCardMode::Alternative(
+                        crate::spellability::AlternativeCost::Harmonize,
                     ),
                     alt_cost_index: 0,
                 });

@@ -810,6 +810,7 @@ impl PlayerAgent for CapturingAgent {
         fn choose_colors(&mut self, player: PlayerId, valid_colors: &[String], min: usize, max: usize) -> Vec<String> => "choose_colors";
         fn choose_card_name(&mut self, player: PlayerId, valid_names: &[String]) -> Option<String> => "choose_card_name";
         fn choose_number(&mut self, player: PlayerId, min: i32, max: i32) -> Option<i32> => "choose_number";
+        fn choose_number_for_keyword_cost(&mut self, player: PlayerId, max: i32, prompt: &str, card_name: Option<&str>) -> i32 => "choose_number_for_keyword_cost";
         fn choose_number_from_list(&mut self, player: PlayerId, choices: &[i32], message: &str, card_name: Option<&str>) -> Option<i32> => "choose_number_from_list";
         fn choose_roll_to_ignore(&mut self, player: PlayerId, rolls: &[i32], card_name: Option<&str>) -> Option<i32> => "choose_roll_to_ignore";
         fn choose_roll_to_swap(&mut self, player: PlayerId, rolls: &[i32], card_name: Option<&str>) -> Option<i32> => "choose_roll_to_swap";

@@ -20,15 +20,29 @@ pub(crate) struct ManaPaymentSession<'a> {
 #[derive(Clone, Copy)]
 pub(crate) struct ManaPaymentResult {
     pub paid: bool,
+    pub preserve_taps_on_failure: bool,
 }
 
 impl ManaPaymentResult {
     fn paid() -> Self {
-        Self { paid: true }
+        Self {
+            paid: true,
+            preserve_taps_on_failure: false,
+        }
     }
 
     fn failed() -> Self {
-        Self { paid: false }
+        Self {
+            paid: false,
+            preserve_taps_on_failure: false,
+        }
+    }
+
+    fn failed_preserving_taps() -> Self {
+        Self {
+            paid: false,
+            preserve_taps_on_failure: true,
+        }
     }
 }
 
@@ -310,7 +324,7 @@ where
                 executed_actions.push(ManaCostAction::AttemptedAndFailed);
                 notify_mana_payment_resolved(agents, session.player, &executed_actions);
                 mana_pools[session.player.index()] = saved_pool.clone();
-                return ManaPaymentResult::failed();
+                return ManaPaymentResult::failed_preserving_taps();
             }
         }
     }
@@ -335,6 +349,17 @@ impl GameLoop {
                     // default. The engine never branches on agent kind.
                     let _ = agents[player.index()].choose_color(player, valid_colors);
                     None
+                }
+                mana::ManaPayCallback::ChooseTapType {
+                    valid,
+                    min,
+                    max,
+                    chosen,
+                } => {
+                    chosen.extend(
+                        agents[player.index()].choose_cards_for_effect(player, valid, min, max),
+                    );
+                    chosen.first().copied()
                 }
                 mana::ManaPayCallback::ConfirmSelfSacrifice(source_id) => {
                     if agents[player.index()].confirm_payment(

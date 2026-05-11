@@ -47,7 +47,24 @@ impl TriggerBehavior for TriggerSpellAbilityCastOrCopy {
     }
 
     fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
-        trigger.matches_optional_valid_card_filter(&self.valid_card, params.spell_card, game)
+        let valid_card_matches = match (&self.valid_card, params.spell_card) {
+            (None, _) => true,
+            (Some(_), None) => false,
+            (Some(selector), Some(card_id)) => {
+                let source = trigger.base.card_trait_base.host_card(game);
+                let mut context =
+                    crate::card::valid_filter::MatchContext::from_source(source).with_game(game);
+                if let Some(sa) = params.source_sa.as_ref() {
+                    context = context.with_spell_ability(sa);
+                }
+                crate::card::valid_filter::matches_valid_card_selector_with_context(
+                    selector,
+                    game.card(card_id),
+                    context,
+                )
+            }
+        };
+        valid_card_matches
             && trigger.matches_optional_valid_player_filter(
                 &self.valid_activating_player,
                 params.spell_controller,

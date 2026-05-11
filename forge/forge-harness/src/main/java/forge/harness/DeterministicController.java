@@ -960,8 +960,9 @@ public class DeterministicController extends PlayerController {
     @Override
     public int chooseNumberForKeywordCost(SpellAbility sa, Cost cost,
             KeywordInterface keyword, String prompt, int max) {
-        onCallback("choose_number_for_keyword_cost", "0", String.valueOf(max));
-        return 0;
+        final int result = ChoiceSpace.pickIntInRange(0, max, rng);
+        onCallback("choose_number_for_keyword_cost", String.valueOf(result), String.valueOf(max));
+        return result;
     }
 
     // ── X-Cost ────────────────────────────────────────────────────────

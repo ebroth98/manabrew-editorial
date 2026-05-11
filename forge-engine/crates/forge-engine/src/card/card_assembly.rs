@@ -202,6 +202,8 @@ pub(crate) fn assemble_card(
     // that exile the card instead of putting it into the graveyard from the stack.
     super::card_factory_util::add_flashback_replacement(&mut card);
 
+    super::card_factory_util::add_harmonize_replacement(&mut card);
+
     // Add parsed static abilities and replacement effects.
     for sa in components.static_abilities {
         card.add_static_ability(sa);

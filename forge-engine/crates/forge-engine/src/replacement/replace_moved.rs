@@ -73,6 +73,10 @@ pub fn can_replace(
     if effect.ir.flashback_cast == Some(true) && !moving_card.cast_with_flashback {
         return false;
     }
+    // HarmonizeCast$ True — only match when the card was cast via Harmonize.
+    if effect.ir.harmonize_cast == Some(true) && !moving_card.cast_with_harmonize {
+        return false;
+    }
     if let Some(valid_lki) = effect.ir.valid_lki_text.as_deref() {
         if !effect.matches_valid_card(valid_lki, moving_card, source_card) {
             return false;

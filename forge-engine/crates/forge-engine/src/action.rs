@@ -31,7 +31,7 @@ impl GameState {
     /// replacement effects (Rest in Peace, Leyline of the Void) and redirects to the
     /// correct zone. Use `move_card_final` to skip the replacement check.
     pub fn move_card(&mut self, card_id: CardId, dest_zone: ZoneType, dest_owner: PlayerId) {
-        self.move_card_internal(card_id, dest_zone, dest_owner, None, true, false);
+        self.move_card_internal(card_id, dest_zone, dest_owner, None, None, true, false);
     }
 
     pub fn move_card_with_agents(
@@ -41,7 +41,15 @@ impl GameState {
         dest_owner: PlayerId,
         agents: &mut [Box<dyn PlayerAgent>],
     ) {
-        self.move_card_internal(card_id, dest_zone, dest_owner, Some(agents), true, false);
+        self.move_card_internal(
+            card_id,
+            dest_zone,
+            dest_owner,
+            Some(agents),
+            None,
+            true,
+            false,
+        );
     }
 
     pub fn move_card_with_agents_and_replacement_runtime(
@@ -50,9 +58,17 @@ impl GameState {
         dest_zone: ZoneType,
         dest_owner: PlayerId,
         agents: &mut [Box<dyn PlayerAgent>],
-        _runtime: &mut ReplacementRuntime<'_>,
+        runtime: &mut ReplacementRuntime<'_>,
     ) {
-        self.move_card_internal(card_id, dest_zone, dest_owner, Some(agents), true, false);
+        self.move_card_internal(
+            card_id,
+            dest_zone,
+            dest_owner,
+            Some(agents),
+            Some(runtime.trigger_handler),
+            true,
+            false,
+        );
     }
 
     fn move_card_without_replacement(
@@ -61,7 +77,7 @@ impl GameState {
         dest_zone: ZoneType,
         dest_owner: PlayerId,
     ) {
-        self.move_card_internal(card_id, dest_zone, dest_owner, None, false, false);
+        self.move_card_internal(card_id, dest_zone, dest_owner, None, None, false, false);
     }
 
     /// Discard a card. Mirrors Java's `Player.discard()`.
@@ -88,6 +104,7 @@ impl GameState {
             ZoneType::Graveyard,
             owner,
             agents,
+            Some(trigger_handler),
             true,
             true, // is_discard
         );
@@ -141,6 +158,7 @@ impl GameState {
         dest_zone: ZoneType,
         dest_owner: PlayerId,
         mut agents: Option<&mut [Box<dyn PlayerAgent>]>,
+        mut trigger_handler: Option<&mut TriggerHandler>,
         apply_move_replacement: bool,
         is_discard: bool,
     ) {
@@ -506,6 +524,11 @@ impl GameState {
                 card.static_set_power = None;
                 card.static_set_toughness = None;
                 card.granted_keywords.clear();
+                if let Some(type_line) = card.static_type_line_base.take() {
+                    card.set_type_line(type_line);
+                }
+                card.static_added_subtypes.clear();
+                card.restore_changed_characteristics_baseline();
                 card.cant_attack_static = false;
                 card.cant_block_static = false;
                 card.summoning_sick = true;
@@ -540,6 +563,11 @@ impl GameState {
                         card.update_keywords();
                     }
                 }
+                if let Some(state) = card.clone_state.take() {
+                    card.restore_clone_snapshot(state);
+                } else {
+                    card.remove_clone_states();
+                }
             }
             ZoneType::Command => {
                 // Detach any attachments before resetting state.
@@ -567,6 +595,11 @@ impl GameState {
                 card.static_set_power = None;
                 card.static_set_toughness = None;
                 card.granted_keywords.clear();
+                if let Some(type_line) = card.static_type_line_base.take() {
+                    card.set_type_line(type_line);
+                }
+                card.static_added_subtypes.clear();
+                card.restore_changed_characteristics_baseline();
                 card.cant_attack_static = false;
                 card.cant_block_static = false;
                 card.summoning_sick = true;
@@ -575,6 +608,11 @@ impl GameState {
                 card.cast_from = None;
                 if !keep_counters {
                     card.counters.clear();
+                }
+                if let Some(state) = card.clone_state.take() {
+                    card.restore_clone_snapshot(state);
+                } else {
+                    card.remove_clone_states();
                 }
             }
             _ => {}
@@ -632,6 +670,16 @@ impl GameState {
             for (exiled_id, owner) in exiled_by_host {
                 self.cards[exiled_id.index()].exiled_by = None;
                 self.move_card(exiled_id, ZoneType::Battlefield, owner);
+                if let Some(handler) = trigger_handler.as_deref_mut() {
+                    let returned_zone = self.card(exiled_id).zone;
+                    handler.register_active_trigger(self, exiled_id);
+                    crate::ability::effects::zone_triggers::emit_zone_trigger(
+                        handler,
+                        exiled_id,
+                        ZoneType::Exile,
+                        returned_zone,
+                    );
+                }
             }
         }
 

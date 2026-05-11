@@ -66,6 +66,10 @@ enum EffectKind {
         power: Option<i32>,
         toughness: Option<i32>,
     },
+    RemoveAllCardTraits {
+        timestamp: i64,
+        static_id: i64,
+    },
     GrantKeyword(String),
     /// Grant an activated ability (from AddAbility$). The string is the ability text.
     GrantAbility {
@@ -130,6 +134,10 @@ fn push_layer(layers: &mut Vec<Layer>, condition: bool, layer: Layer) {
     }
 }
 
+fn static_layer_trait_id(source_id: CardId, sa_idx: usize) -> i64 {
+    -(((source_id.index() as i64) + 1) * 10_000 + sa_idx as i64 + 1)
+}
+
 fn push_unique_layer(layers: &mut Vec<Layer>, layer: Layer) {
     if !layers.contains(&layer) {
         layers.push(layer);
@@ -169,6 +177,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
         crate::perf::ParamsLookupScopeGuard::enter(crate::perf::ParamsLookupScope::Continuous);
     // ── 1. Reset all derived fields ──────────────────────────────────────
     for card in game.cards.iter_mut() {
+        card.clear_static_layer_changed_card_traits();
         // Remove abilities granted by continuous effects (AddAbility$).
         // The base_ability_count tracks how many abilities the card originally had.
         if card.activated_abilities.len() > card.base_ability_count {
@@ -190,14 +199,11 @@ pub fn apply_continuous_effects(game: &mut GameState) {
         }
         card.granted_keywords.clear();
         card.granted_svars.clear();
-        // Remove any type tokens previously added by AddType$ statics so this
-        // cycle starts from the intrinsic type line.
-        if !card.static_added_subtypes.is_empty() {
-            let added = std::mem::take(&mut card.static_added_subtypes);
-            for ty in added {
-                crate::card::card_state::remove_type(card, &ty);
-            }
+        // Restore the pre-layer type line before applying AddType$ statics.
+        if let Some(type_line) = card.static_type_line_base.take() {
+            card.set_type_line(type_line);
         }
+        card.static_added_subtypes.clear();
         card.cant_attack_static = false;
         card.cant_block_static = false;
     }
@@ -376,20 +382,15 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         }
                     }
 
-                    // AddType$ — grant a type/subtype (layer 4). Supports
-                    // comma or " & " separated lists, e.g. Yavimaya, Cradle of
-                    // Growth: AddType$ Forest.
-                    if let Some(raw) = add_type {
-                        for t in raw.split([',', '&']).map(str::trim) {
-                            if t.is_empty() {
-                                continue;
-                            }
-                            pending.push(PendingEffect {
-                                layer: Layer::Type,
-                                target,
-                                kind: EffectKind::AddType(t.to_string()),
-                            });
-                        }
+                    if sa.ir.remove_all_abilities {
+                        pending.push(PendingEffect {
+                            layer: Layer::Ability,
+                            target,
+                            kind: EffectKind::RemoveAllCardTraits {
+                                timestamp: source_card.zone_timestamp as i64,
+                                static_id: static_layer_trait_id(source_id, sa_idx),
+                            },
+                        });
                     }
 
                     // AddAbility$ — grant an activated ability to the affected card.
@@ -564,6 +565,21 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                     card.static_set_toughness = Some(t);
                 }
             }
+            EffectKind::RemoveAllCardTraits {
+                timestamp,
+                static_id,
+            } => {
+                game.cards[effect.target.index()].add_changed_card_traits(
+                    crate::card::card_trait_changes::CardTraitChanges::remove_all_layer(
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                    ),
+                    timestamp,
+                    static_id,
+                );
+            }
             EffectKind::GrantKeyword(kw) => {
                 let card = &mut game.cards[effect.target.index()];
                 card.granted_keywords.add(&kw);
@@ -596,6 +612,9 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             EffectKind::AddType(t) => {
                 let card = &mut game.cards[effect.target.index()];
                 if !type_line_has_token(&card.type_line, &t) {
+                    if card.static_type_line_base.is_none() {
+                        card.static_type_line_base = Some(card.type_line.clone());
+                    }
                     card.add_type(&t);
                     card.static_added_subtypes.push(t);
                 }

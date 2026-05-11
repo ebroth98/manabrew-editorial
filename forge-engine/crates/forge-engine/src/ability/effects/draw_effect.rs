@@ -3,7 +3,7 @@ use crate::ability::ability_ir::EffectIr;
 use crate::ability::spell_ability_effect::get_target_players;
 use crate::event::RunParams;
 use crate::parsing::keys;
-use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::replacement_handler::{apply_replacements_with_agents, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerType;
@@ -27,15 +27,18 @@ fn draw_for_player(
     target: crate::ids::PlayerId,
     num: i32,
 ) {
-    // Run DrawCards replacement effects before drawing multiple cards.
-    if num > 1 {
+    let mut actual_num = num;
+    if actual_num > 0 {
         let mut event = ReplacementEvent::DrawCards {
             player: target,
-            count: num,
+            count: actual_num,
         };
-        let result = apply_replacements(ctx.game, &mut event);
+        let result = apply_replacements_with_agents(ctx.game, ctx.agents, &mut event);
         if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
             return;
+        }
+        if let ReplacementEvent::DrawCards { count, .. } = event {
+            actual_num = count;
         }
     }
 
@@ -44,7 +47,7 @@ fn draw_for_player(
         let accepted = ctx.agents[target.index()].confirm_action(
             target,
             None,
-            &format!("Do you want to draw {} card(s)?", num),
+            &format!("Do you want to draw {} card(s)?", actual_num),
             &[],
             source_name,
             Some(crate::ability::api_type::ApiType::Draw),
@@ -59,7 +62,7 @@ fn draw_for_player(
     let remember_drawn = sa.ir.remember_drawn;
     let should_reveal = sa.ir.reveal_true;
     let mut drawn: Vec<crate::ids::CardId> = Vec::new();
-    for _ in 0..num {
+    for _ in 0..actual_num {
         if let Some(card_id) = ctx.game.draw_card_with_agents(target, ctx.agents) {
             drawn.push(card_id);
             // Snapshot drawn_this_turn AFTER draw_card increments it.

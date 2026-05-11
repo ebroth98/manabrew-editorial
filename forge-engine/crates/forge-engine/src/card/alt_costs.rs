@@ -154,6 +154,11 @@ impl Card {
         self.get_keyword_cost("Flashback")
     }
 
+    /// Get Harmonize cost (e.g. "Harmonize:X G G" → Some("X G G")).
+    pub fn get_harmonize_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Harmonize")
+    }
+
     /// Get Kicker cost (e.g. "Kicker:W" → Some("W")).
     pub fn get_kicker_cost(&self) -> Option<String> {
         self.get_keyword_cost("Kicker")

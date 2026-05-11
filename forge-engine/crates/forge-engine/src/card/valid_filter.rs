@@ -44,6 +44,7 @@ use crate::parsing::{
     ControllerSelector, NumericSelectorProperty, ParsedParams, RelationPredicate, Selector,
     SelectorCompareOperator, SelectorNumericOperand, SelectorPredicate, TargetRef,
 };
+use crate::spellability::SpellAbility;
 
 fn requirement_controller(game: &GameState, source: &Card) -> PlayerId {
     let mut controller = source.controller;
@@ -418,10 +419,12 @@ pub struct MatchContext<'a> {
     pub targeted_players: &'a [PlayerId],
     pub remembered_cards: &'a [CardId],
     pub remembered_players: &'a [PlayerId],
+    pub trigger_remembered_cards: &'a [CardId],
     pub triggering_card: Option<CardId>,
     pub triggering_player: Option<PlayerId>,
     pub combat: Option<&'a CombatState>,
     pub game: Option<&'a GameState>,
+    pub spell_ability: Option<&'a SpellAbility>,
 }
 
 impl<'a> MatchContext<'a> {
@@ -433,15 +436,22 @@ impl<'a> MatchContext<'a> {
             targeted_players: &[],
             remembered_cards: &source_card.remembered_cards,
             remembered_players: &source_card.remembered_players,
+            trigger_remembered_cards: &[],
             triggering_card: None,
             triggering_player: None,
             combat: None,
             game: None,
+            spell_ability: None,
         }
     }
 
     pub fn with_game(mut self, game: &'a GameState) -> Self {
         self.game = Some(game);
+        self
+    }
+
+    pub fn with_spell_ability(mut self, spell_ability: &'a SpellAbility) -> Self {
+        self.spell_ability = Some(spell_ability);
         self
     }
 
@@ -477,6 +487,11 @@ impl<'a> MatchContext<'a> {
     ) -> Self {
         self.triggering_card = triggering_card;
         self.triggering_player = triggering_player;
+        self
+    }
+
+    pub fn with_trigger_remembered_cards(mut self, cards: &'a [CardId]) -> Self {
+        self.trigger_remembered_cards = cards;
         self
     }
 }
@@ -575,6 +590,9 @@ fn matches_card_predicate(
         }
         SelectorPredicate::Player | SelectorPredicate::PlayerController(_) => false,
         SelectorPredicate::RememberedCard => context.remembered_cards.contains(&card.id),
+        SelectorPredicate::TriggerRememberedCard => {
+            context.trigger_remembered_cards.contains(&card.id)
+        }
         SelectorPredicate::EffectSource => context.source_card.effect_source == Some(card.id),
         SelectorPredicate::SourceColor(color) => matches_card_color(*color, card),
         SelectorPredicate::SourceColorless => card.color.is_colorless(),
@@ -1229,7 +1247,7 @@ fn resolve_numeric_property(
     context: MatchContext<'_>,
 ) -> Option<i32> {
     match property {
-        NumericSelectorProperty::ManaValue => Some(card.mana_cost.cmc()),
+        NumericSelectorProperty::ManaValue => Some(effective_mana_value(card, context)),
         NumericSelectorProperty::Power => Some(card.power()),
         NumericSelectorProperty::Toughness => Some(card.toughness()),
         NumericSelectorProperty::TargetCount => {
@@ -1239,6 +1257,16 @@ fn resolve_numeric_property(
             Some(context.source_card.paying_mana_to_cast.len() as i32)
         }
     }
+}
+
+fn effective_mana_value(card: &Card, context: MatchContext<'_>) -> i32 {
+    let mut mana_value = card.mana_cost.cmc();
+    if let Some(sa) = context.spell_ability {
+        if sa.source == Some(card.id) {
+            mana_value += sa.x_mana_cost_paid as i32 * card.mana_cost.count_x() as i32;
+        }
+    }
+    mana_value
 }
 
 fn matches_counter_comparison(
@@ -1264,6 +1292,11 @@ fn resolve_selector_operand(
     match operand {
         SelectorNumericOperand::Literal(value) => Some(*value),
         SelectorNumericOperand::Symbol(symbol) => {
+            if symbol.eq_ignore_ascii_case("X") {
+                if let Some(sa) = context.spell_ability {
+                    return Some(sa.x_mana_cost_paid as i32);
+                }
+            }
             let value = context.source_card.get_s_var(symbol)?;
             if let Ok(parsed) = value.trim().parse::<i32>() {
                 return Some(parsed);
@@ -1282,6 +1315,20 @@ fn resolve_selector_operand(
                 let game = context.game?;
                 let card = context.triggering_card?;
                 return Some(crate::lki::resolve_lki_toughness(game, card));
+            }
+            if value.starts_with("Count$") || value.starts_with("PlayerCount") {
+                let game = context.game?;
+                let sa = crate::spellability::SpellAbility::new_empty(
+                    Some(context.source_card.id),
+                    context.source_controller,
+                );
+                return Some(crate::svar::resolve_svar_expression(
+                    value,
+                    game,
+                    context.source_card.id,
+                    context.source_controller,
+                    &sa,
+                ));
             }
             None
         }
@@ -1345,6 +1392,9 @@ fn legacy_matches_card_atom(raw: &str, card: &Card, context: MatchContext<'_>) -
         "youdontctrl" => card.controller != source.controller,
         "youdontown" => card.owner != source.controller,
         "isremembered" | "card.isremembered" => source.remembered_cards.contains(&card.id),
+        "istriggerremembered" | "card.istriggerremembered" => {
+            context.trigger_remembered_cards.contains(&card.id)
+        }
         "effectsource" | "card.effectsource" => source.effect_source == Some(card.id),
         "oppctrl" | "opponentctrl" | "opponent" => card.controller != source.controller,
         "chosenctrl" => Some(card.controller) == source.chosen_player,
@@ -1563,8 +1613,9 @@ fn legacy_matches_card_atom(raw: &str, card: &Card, context: MatchContext<'_>) -
         }
         _ if value.starts_with("counters_") => check_counter_condition(value, card),
         _ => {
-            if let Some(rest) = value_lower.strip_prefix("cmc") {
-                check_cmc_condition(rest, card)
+            if value_lower.starts_with("cmc") {
+                let original_rest = &value[3..];
+                check_cmc_condition_with_context(original_rest, card, Some(context))
             } else if let Some(rest) = value_lower.strip_prefix("power") {
                 check_power_condition(rest, card)
             } else if let Some(rest) = value_lower.strip_prefix("toughness") {
@@ -1916,6 +1967,11 @@ fn matches_type_and_qualifier_parts(
                         return false;
                     }
                 }
+                "istriggerremembered" => {
+                    if !context.trigger_remembered_cards.contains(&card.id) {
+                        return false;
+                    }
+                }
                 "effectsource" => {
                     if source.effect_source != Some(card.id) {
                         return false;
@@ -2122,9 +2178,10 @@ fn matches_type_and_qualifier_parts(
                         if !check_counter_condition(sub, card) {
                             return false;
                         }
-                    } else if let Some(rest) = sub_lower.strip_prefix("cmc") {
+                    } else if sub_lower.starts_with("cmc") {
                         // CMC comparisons: cmcEQ1, cmcLE3, cmcGE5
-                        if !check_cmc_condition(rest, card) {
+                        let original_rest = &sub[3..];
+                        if !check_cmc_condition_with_context(original_rest, card, Some(context)) {
                             return false;
                         }
                     } else if let Some(rest) = sub_lower.strip_prefix("power") {
@@ -2311,6 +2368,7 @@ fn matches_player_predicate(
         | SelectorPredicate::CameUnderControlSinceLastUpkeep
         | SelectorPredicate::Zone(_)
         | SelectorPredicate::RememberedCard
+        | SelectorPredicate::TriggerRememberedCard
         | SelectorPredicate::EffectSource
         | SelectorPredicate::Commander
         | SelectorPredicate::Legendary
@@ -2470,35 +2528,68 @@ fn check_counter_condition(condition: &str, card: &Card) -> bool {
     }
 }
 
-/// Check a CMC condition like "cmcEQ1", "cmcLE3", "cmcGE5".
-fn check_cmc_condition(rest: &str, card: &Card) -> bool {
-    let cmc = card.mana_cost.cmc();
-    if let Some(num_str) = rest.strip_prefix("eq") {
-        if let Ok(n) = num_str.parse::<i32>() {
+/// Check a CMC condition like "cmcEQ1", "cmcLE3", or "cmcLEY".
+fn check_cmc_condition_with_context(
+    rest: &str,
+    card: &Card,
+    context: Option<MatchContext<'_>>,
+) -> bool {
+    let cmc = context
+        .map(|ctx| effective_mana_value(card, ctx))
+        .unwrap_or_else(|| card.mana_cost.cmc());
+    let lower = rest.to_ascii_lowercase();
+    if lower.starts_with("eq") {
+        if let Some(n) = parse_cmc_threshold(&rest[2..], context) {
             return cmc == n;
         }
-    } else if let Some(num_str) = rest.strip_prefix("le") {
-        if let Ok(n) = num_str.parse::<i32>() {
+    } else if lower.starts_with("le") {
+        if let Some(n) = parse_cmc_threshold(&rest[2..], context) {
             return cmc <= n;
         }
-    } else if let Some(num_str) = rest.strip_prefix("ge") {
-        if let Ok(n) = num_str.parse::<i32>() {
+    } else if lower.starts_with("ge") {
+        if let Some(n) = parse_cmc_threshold(&rest[2..], context) {
             return cmc >= n;
         }
-    } else if let Some(num_str) = rest.strip_prefix("lt") {
-        if let Ok(n) = num_str.parse::<i32>() {
+    } else if lower.starts_with("lt") {
+        if let Some(n) = parse_cmc_threshold(&rest[2..], context) {
             return cmc < n;
         }
-    } else if let Some(num_str) = rest.strip_prefix("gt") {
-        if let Ok(n) = num_str.parse::<i32>() {
+    } else if lower.starts_with("gt") {
+        if let Some(n) = parse_cmc_threshold(&rest[2..], context) {
             return cmc > n;
         }
-    } else if let Some(num_str) = rest.strip_prefix("ne") {
-        if let Ok(n) = num_str.parse::<i32>() {
+    } else if lower.starts_with("ne") {
+        if let Some(n) = parse_cmc_threshold(&rest[2..], context) {
             return cmc != n;
         }
     }
     true // fallback: unknown format passes
+}
+
+fn parse_cmc_threshold(value: &str, context: Option<MatchContext<'_>>) -> Option<i32> {
+    if let Ok(n) = value.parse::<i32>() {
+        return Some(n);
+    }
+    let context = context?;
+    let raw = context.source_card.get_s_var(value)?;
+    if let Ok(n) = raw.trim().parse::<i32>() {
+        return Some(n);
+    }
+    if raw.starts_with("Count$") || raw.starts_with("PlayerCount") {
+        let game = context.game?;
+        let sa = crate::spellability::SpellAbility::new_empty(
+            Some(context.source_card.id),
+            context.source_controller,
+        );
+        return Some(crate::svar::resolve_svar_expression(
+            raw,
+            game,
+            context.source_card.id,
+            context.source_controller,
+            &sa,
+        ));
+    }
+    None
 }
 
 /// Check a power condition like "LE2", "GE3", "EQ0".

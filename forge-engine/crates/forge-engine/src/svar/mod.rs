@@ -1321,6 +1321,17 @@ pub fn resolve_count_svar_for_sa(
     if expr == "Count$xPaid" || expr == "Count$XPaid" {
         return sa.x_mana_cost_paid as i32;
     }
+    if let Some(operators) = expr.strip_prefix("Count$CastTotalManaSpent") {
+        let operators = operators.strip_prefix('/').unwrap_or(operators);
+        return do_x_math(
+            game.card(source_id).paying_mana_to_cast.len() as i32,
+            operators,
+            game,
+            source_id,
+            controller,
+            sa,
+        );
+    }
 
     if expr == "Count$TriggerRememberAmount" {
         return sa.trigger_remembered_amount;
@@ -1611,8 +1622,8 @@ pub fn resolve_count_svar_for_sa(
             if cond_parts.len() == 3 {
                 // Resolve the referenced SVar
                 let svar_val = if let Some(svar_expr) = game.card(source_id).get_s_var(svar_name) {
-                    if svar_expr.starts_with("Count$") {
-                        resolve_count_svar_for_sa(svar_expr, game, source_id, controller, sa)
+                    if svar_expr.starts_with("Count$") || svar_expr.starts_with("PlayerCount") {
+                        resolve_svar_expression(svar_expr, game, source_id, controller, sa)
                     } else {
                         svar_expr.parse::<i32>().unwrap_or(0)
                     }
@@ -1624,8 +1635,17 @@ pub fn resolve_count_svar_for_sa(
                 let cond = cond_parts[0];
                 let result = compare_expr(svar_val, cond);
 
-                let if_true = cond_parts[1].parse::<i32>().unwrap_or(0);
-                let if_false = cond_parts[2].parse::<i32>().unwrap_or(0);
+                let resolve_branch = |raw: &str| {
+                    raw.parse::<i32>().unwrap_or_else(|_| {
+                        if let Some(svar_expr) = game.card(source_id).get_s_var(raw) {
+                            resolve_svar_expression(svar_expr, game, source_id, controller, sa)
+                        } else {
+                            resolve_svar_expression(raw, game, source_id, controller, sa)
+                        }
+                    })
+                };
+                let if_true = resolve_branch(cond_parts[1]);
+                let if_false = resolve_branch(cond_parts[2]);
                 return if result { if_true } else { if_false };
             }
         }
@@ -1638,6 +1658,17 @@ pub fn resolve_count_svar_for_sa(
     // Count$CardToughness
     if expr == "Count$CardToughness" {
         return game.card(source_id).toughness();
+    }
+    if let Some(operators) = expr.strip_prefix("Count$YourTurns") {
+        let operators = operators.strip_prefix('/').unwrap_or(operators);
+        return do_x_math(
+            game.player(controller).statistics.turns_played,
+            operators,
+            game,
+            source_id,
+            controller,
+            sa,
+        );
     }
     // Count$CardCounters.TYPE
     if let Some(counter_type) = expr.strip_prefix("Count$CardCounters.") {

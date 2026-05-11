@@ -285,6 +285,30 @@ pub fn add_flashback_replacement(card: &mut Card) {
     }
 }
 
+pub fn add_harmonize_replacement(card: &mut Card) {
+    let keywords = card.keywords.as_string_list();
+    let Some(cost) = keywords
+        .iter()
+        .find_map(|kw| kw.strip_prefix("Harmonize:").map(str::trim))
+    else {
+        return;
+    };
+    let cost_display = forge_foundation::ManaCost::parse(cost);
+    let desc = format!(
+        "Harmonize {} (You may cast this card from your graveyard for its harmonize cost. You may tap a creature you control to reduce that cost by {{X}}, where X is its power. Then exile this spell.)",
+        cost_display
+    );
+    let repl_str = format!(
+        "R$ Event$ Moved | ValidCard$ Card.Self | Origin$ Stack | ExcludeDestination$ Exile \
+         | HarmonizeCast$ True | Secondary$ True | NewDestination$ Exile \
+         | Description$ {}",
+        desc
+    );
+    if let Some(repl) = parse_replacement_effect(&repl_str) {
+        card.add_replacement_effect(repl);
+    }
+}
+
 pub fn add_trigger_ability(card: &mut Card, trig: Trigger) {
     card.add_trigger(trig);
 }

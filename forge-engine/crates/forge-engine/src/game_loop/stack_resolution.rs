@@ -124,6 +124,10 @@ impl GameLoop {
                 if let Some(card_id) = entry.spell_ability.source {
                     let owner = game.card(card_id).owner;
                     let dest = if entry.spell_ability.alt_cost
+                        == Some(crate::spellability::AlternativeCost::Harmonize)
+                    {
+                        apply_moved_replacement(game, card_id, ZoneType::Graveyard, Some(agents))
+                    } else if entry.spell_ability.alt_cost
                         == Some(crate::spellability::AlternativeCost::Flashback)
                         || entry.spell_ability.alt_cost
                             == Some(crate::spellability::AlternativeCost::Escape)
@@ -694,7 +698,10 @@ impl GameLoop {
                     && game.card(card_id).zone != ZoneType::Hand
                 {
                     // Determine destination based on alternative cost / keywords
-                    let dest = if alt_cost == Some(crate::spellability::AlternativeCost::Flashback)
+                    let dest = if alt_cost == Some(crate::spellability::AlternativeCost::Harmonize)
+                    {
+                        apply_moved_replacement(game, card_id, ZoneType::Graveyard, Some(agents))
+                    } else if alt_cost == Some(crate::spellability::AlternativeCost::Flashback)
                         || alt_cost == Some(crate::spellability::AlternativeCost::Escape)
                     {
                         ZoneType::Exile

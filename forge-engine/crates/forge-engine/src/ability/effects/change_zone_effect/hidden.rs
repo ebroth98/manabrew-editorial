@@ -272,7 +272,7 @@ pub(super) fn resolve_hidden_origin(
                 let candidates: Vec<_> = zone_cards
                     .iter()
                     .copied()
-                    .filter(|&cid| matches_with_context(ctx, sa, cid, &change_type))
+                    .filter(|&cid| matches_with_context(ctx, sa, cid, sa.change_type_selector()))
                     .collect();
                 if sa.is_at_random() {
                     if candidates.is_empty() {
@@ -413,7 +413,7 @@ pub(super) fn resolve_hidden_origin(
         let candidates: Vec<_> = zone_cards
             .iter()
             .copied()
-            .filter(|&cid| matches_with_context(ctx, sa, cid, &change_type))
+            .filter(|&cid| matches_with_context(ctx, sa, cid, sa.change_type_selector()))
             .collect();
         if sa.is_at_random() {
             if candidates.is_empty() {

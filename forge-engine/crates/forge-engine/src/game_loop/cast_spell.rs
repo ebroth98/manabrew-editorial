@@ -570,6 +570,7 @@ impl GameLoop {
         let is_spectacle = sa.alt_cost == Some(crate::spellability::AlternativeCost::Spectacle);
         let is_evoke = sa.alt_cost == Some(crate::spellability::AlternativeCost::Evoke);
         let is_escape = sa.alt_cost == Some(crate::spellability::AlternativeCost::Escape);
+        let is_harmonize = sa.alt_cost == Some(crate::spellability::AlternativeCost::Harmonize);
         let is_overload = sa.alt_cost == Some(crate::spellability::AlternativeCost::Overload);
         let is_dash = sa.alt_cost == Some(crate::spellability::AlternativeCost::Dash);
         let is_blitz = sa.alt_cost == Some(crate::spellability::AlternativeCost::Blitz);
@@ -665,6 +666,9 @@ impl GameLoop {
                 .get_escape_cost()
                 .unwrap_or(("0".to_string(), 0));
             forge_foundation::ManaCost::parse(&escape_mana_str)
+        } else if is_harmonize {
+            let harmonize_cost_str = game.card(card_id).get_harmonize_cost().unwrap_or_default();
+            forge_foundation::ManaCost::parse(&harmonize_cost_str)
         } else if is_overload {
             let overload_cost_str = game.card(card_id).get_overload_cost().unwrap_or_default();
             forge_foundation::ManaCost::parse(&overload_cost_str)
@@ -1035,13 +1039,22 @@ impl GameLoop {
             // pool.total_mana() but can only produce one mana per activation.
             let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
             let non_x_cost = mana_cost.without_x();
+            let x_cost_adjustment =
+                crate::cost::cost_adjustment::compute_cost_adjustment_for_payment(
+                    game,
+                    game.card(card_id),
+                    player,
+                    original_zone,
+                    &[],
+                );
             let max_x = {
                 let mut x: u32 = 0;
                 loop {
                     let extra_generic = ((x + 1) * x_count as u32) as i32 + commander_tax;
                     let full_cost =
                         non_x_cost.add(&forge_foundation::ManaCost::generic(extra_generic));
-                    if !available_mana.can_pay(&full_cost) {
+                    let adjusted_full_cost = x_cost_adjustment.apply(&full_cost);
+                    if !available_mana.can_pay(&adjusted_full_cost) {
                         break;
                     }
                     x += 1;
@@ -1051,13 +1064,22 @@ impl GameLoop {
                 }
                 x
             };
-            let name = game.card(card_id).card_name.clone();
-            agents[player.index()].snapshot_state(game, &self.mana_pools);
-            x_value = agents[player.index()]
-                .choose_x_value(player, max_x, Some(&name))
-                .min(max_x);
+            x_value = max_x;
+            if is_harmonize && x_count == 1 {
+                let colored_requirements = non_x_cost
+                    .shards()
+                    .iter()
+                    .filter(|shard| shard.color_mask() != 0)
+                    .count() as u32;
+                if colored_requirements > 0 && max_x == colored_requirements {
+                    if let Some(total_sources) = available_mana.total_sources {
+                        x_value = total_sources.max(0) as u32;
+                    }
+                }
+            }
+            let payment_x_value = x_value;
             non_x_cost.add(&forge_foundation::ManaCost::generic(
-                (x_value * x_count as u32) as i32,
+                (payment_x_value * x_count as u32) as i32,
             ))
         } else {
             mana_cost
@@ -1071,6 +1093,8 @@ impl GameLoop {
         // target later (for example, sacrificing a Food token used as a target).
         if is_flashback {
             game.card_mut(card_id).cast_with_flashback = true;
+        } else if is_harmonize {
+            game.card_mut(card_id).cast_with_harmonize = true;
         } else if is_overload {
             sa.overloaded = true;
         } else if is_bestow && sa.target_restrictions.is_none() {
@@ -1116,6 +1140,17 @@ impl GameLoop {
         macro_rules! rollback_cast {
             () => {{
                 self.restore_snapshot(game, &cast_rollback_snapshot);
+                return None;
+            }};
+        }
+        macro_rules! rollback_cast_preserving_taps {
+            ($tapped_cards:expr) => {{
+                self.restore_snapshot(game, &cast_rollback_snapshot);
+                for tapped_id in $tapped_cards {
+                    if game.card_is_in_zone(tapped_id, ZoneType::Battlefield) {
+                        game.card_mut(tapped_id).set_tapped(true);
+                    }
+                }
                 return None;
             }};
         }
@@ -1171,10 +1206,45 @@ impl GameLoop {
         } else {
             original_mana_cost.clone()
         };
-        let payable_base_cost = if commander_tax > 0 {
+        let mut payable_base_cost = if commander_tax > 0 {
             mana_cost.add(&forge_foundation::ManaCost::generic(commander_tax))
         } else {
             mana_cost.clone()
+        };
+        let harmonize_tap_cost = if is_harmonize {
+            let max_power = game
+                .cards_in_zone(ZoneType::Battlefield, player)
+                .iter()
+                .copied()
+                .filter(|&cid| game.card(cid).is_creature())
+                .map(|cid| game.card(cid).power().max(0))
+                .max()
+                .unwrap_or(0);
+            if max_power > 0 {
+                agents[player.index()].snapshot_state(game, &self.mana_pools);
+                let chosen_power = agents[player.index()]
+                    .choose_number(player, 0, max_power)
+                    .unwrap_or(0)
+                    .clamp(0, max_power);
+                let pay_keyword_cost = agents[player.index()].choose_number_for_keyword_cost(
+                    player,
+                    1,
+                    "Tap creature?",
+                    Some(&game.card(card_id).card_name),
+                ) == 1;
+                if pay_keyword_cost {
+                    payable_base_cost = payable_base_cost.reduce_generic(chosen_power);
+                    Some(crate::cost::parse_cost(&format!(
+                        "tapXType<1/Creature.powerEQ{chosen_power}/creature for Harmonize>"
+                    )))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
         };
         let mut total_unpaid = ManaCostBeingPaid::from_mana_cost(&payable_base_cost);
         if !crate::cost::cost_adjustment::adjust(
@@ -1231,6 +1301,35 @@ impl GameLoop {
         } else {
             None
         };
+        let prechosen_harmonize_taps = if let Some(ref cost) = harmonize_tap_cost {
+            let mut picks = Vec::new();
+            for part in &cost.parts {
+                if let crate::cost::CostPart::TapType {
+                    amount,
+                    type_filter,
+                    min_total_power: None,
+                } = part
+                {
+                    let valid =
+                        crate::cost::get_tap_type_targets(game, player, type_filter, card_id);
+                    let needed = (*amount).max(0) as usize;
+                    if valid.len() < needed {
+                        rollback_cast!();
+                    }
+                    let chosen = agents[player.index()]
+                        .choose_cards_for_effect(player, &valid, needed, needed);
+                    if chosen.len() < needed
+                        || !chosen.iter().take(needed).all(|cid| valid.contains(cid))
+                    {
+                        rollback_cast!();
+                    }
+                    picks.extend(chosen.into_iter().take(needed));
+                }
+            }
+            Some(picks)
+        } else {
+            None
+        };
 
         // Build mana payment context for restriction checking
         let payment_ctx = {
@@ -1284,6 +1383,7 @@ impl GameLoop {
         let pool_size_before = self.pool(player).total_mana();
         let colors_spent_to_cast = std::cell::Cell::new(0u16);
         let paying_mana_to_cast = std::cell::RefCell::new(Vec::new());
+        let preserve_auto_failure_taps = std::cell::Cell::new(false);
 
         // Unified mana payment loop. Agents decide whether to pay manually or
         // auto-pay through their `pay_mana_cost()` implementation; the engine
@@ -1365,6 +1465,22 @@ impl GameLoop {
                             })
                             .collect();
                         if result.cancelled {
+                            preserve_auto_failure_taps.set(result.choices.iter().any(|choice| {
+                                choice
+                                    .mana_ability_index
+                                    .and_then(|idx| {
+                                        game.card(choice.card_id).activated_abilities.get(idx)
+                                    })
+                                    .is_some_and(|ab| {
+                                        ab.cost.parts.iter().any(|part| {
+                                            !matches!(
+                                                part,
+                                                crate::cost::CostPart::Tap
+                                                    | crate::cost::CostPart::Mana { .. }
+                                            )
+                                        })
+                                    })
+                            }));
                             // Partial-tap-then-fail mirrors Java's
                             // `payManaCostWithTrace` flow: lands stay tapped,
                             // pool drains the partial mana, and the session
@@ -1385,16 +1501,6 @@ impl GameLoop {
                                 RunParams {
                                     card: Some(tapped_id),
                                     player: Some(session.player),
-                                    ..Default::default()
-                                },
-                                false,
-                            );
-                            slf.trigger_handler.run_trigger(
-                                TriggerType::TapsForMana,
-                                RunParams {
-                                    card: Some(tapped_id),
-                                    player: Some(session.player),
-                                    activator: Some(session.player),
                                     ..Default::default()
                                 },
                                 false,
@@ -1449,6 +1555,15 @@ impl GameLoop {
                 },
             );
             if !mana_payment.paid {
+                if mana_payment.preserve_taps_on_failure || preserve_auto_failure_taps.get() {
+                    let tapped_after_failed_mana_payment: Vec<CardId> = game
+                        .cards
+                        .iter()
+                        .filter(|card| card.zone == ZoneType::Battlefield && card.tapped)
+                        .map(|card| card.id)
+                        .collect();
+                    rollback_cast_preserving_taps!(tapped_after_failed_mana_payment);
+                }
                 rollback_cast!();
             }
         }
@@ -1670,6 +1785,7 @@ impl GameLoop {
                 Some(&mut sa),
                 prechosen_spell_sacrifices.as_deref(),
                 prechosen_spell_discards.as_deref(),
+                None,
             ) {
                 rollback_cast!();
             }
@@ -1682,6 +1798,23 @@ impl GameLoop {
                         waterbend_tapped.push(cid);
                     }
                 }
+            }
+        }
+        if let Some(ref cost) = harmonize_tap_cost {
+            if !self.pay_additional_costs(
+                game,
+                agents,
+                player,
+                card_id,
+                cost,
+                None,
+                cost.mandatory,
+                Some(&mut sa),
+                None,
+                None,
+                prechosen_harmonize_taps.as_deref(),
+            ) {
+                rollback_cast!();
             }
         }
         if let Some(ref cost) = static_alt_cost {
@@ -1714,6 +1847,7 @@ impl GameLoop {
                 Some(&mut sa),
                 prechosen_static_alt_sacrifices.as_deref(),
                 prechosen_static_alt_discards.as_deref(),
+                None,
             ) {
                 rollback_cast!();
             }
@@ -1756,6 +1890,7 @@ impl GameLoop {
                 None,
                 rc.mandatory,
                 Some(&mut sa),
+                None,
                 None,
                 None,
             ) {
@@ -1805,6 +1940,7 @@ impl GameLoop {
                 Some(&mut sa),
                 None,
                 None,
+                None,
             ) {
                 rollback_cast!();
             }
@@ -1840,6 +1976,7 @@ impl GameLoop {
                 None,
                 evoke_cost.mandatory,
                 Some(&mut sa),
+                None,
                 None,
                 None,
             ) {
@@ -2143,13 +2280,20 @@ impl GameLoop {
             let card = game.card(cascade_card_id);
             let card_name = card.card_name.clone();
 
-            // Ask the player whether they want to cast the found card
-            let wants_to_cast = agents[player.index()].choose_optional_trigger(
+            let chosen = agents[player.index()].choose_single_entity_for_effect(
                 player,
-                &format!("Cascade: Cast {} without paying its mana cost?", card_name),
-                Some(&card_name),
-                None,
+                &[crate::agent::GameEntity::Card(cascade_card_id)],
+                false,
             );
+            let wants_to_cast = matches!(chosen, Some(crate::agent::GameEntity::Card(id)) if id == cascade_card_id)
+                && agents[player.index()].confirm_action(
+                    player,
+                    None,
+                    &format!("Do you want to play {}?", card_name),
+                    &[],
+                    Some(&card_name),
+                    Some(crate::ability::api_type::ApiType::Play),
+                );
 
             if wants_to_cast {
                 let card = game.card(cascade_card_id);

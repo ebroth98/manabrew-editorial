@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -651,6 +652,36 @@ impl DeterministicAgent {
             .collect()
     }
 
+    fn snapshot_max_blockers_for_attacker(&self, snap: &GameSnapshot, attacker: CardId) -> usize {
+        let Some(attacker_card) = self.snapshot_card(snap, attacker) else {
+            return usize::MAX;
+        };
+        let mut max = usize::MAX;
+        for source in snap.cards.iter().filter(|c| {
+            c.zone == forge_foundation::ZoneType::Battlefield
+                || c.zone == forge_foundation::ZoneType::Command
+        }) {
+            for st_ab in &source.static_abilities {
+                if !st_ab.check_mode(&forge_engine_core::staticability::StaticMode::MinMaxBlocker) {
+                    continue;
+                }
+                if !forge_engine_core::card::valid_filter::matches_valid_card_selector_opt(
+                    st_ab.ir.valid_card.as_ref(),
+                    attacker_card,
+                    source,
+                ) {
+                    continue;
+                }
+                if let Some(max_text) = st_ab.ir.max_text.as_deref() {
+                    if let Ok(value) = max_text.trim().parse::<usize>() {
+                        max = max.min(value);
+                    }
+                }
+            }
+        }
+        max
+    }
+
     /// Pick a random index in [0, len) from the shared RNG.
     fn pick(&self, len: usize) -> usize {
         choice_space::pick_index(len, &mut self.rng.borrow_mut())
@@ -1094,22 +1125,34 @@ impl PlayerAgent for DeterministicAgent {
         });
 
         let mut pairs = Vec::new();
+        let mut blocker_counts_by_attacker: HashMap<CardId, usize> = HashMap::new();
         for &blocker in &sorted_blockers {
             // When BlockRestrict limit is reached, Java still iterates remaining
             // blockers with 0 legal options (consuming RNG for forced PASS).
             // Mirror this by continuing iteration but with empty legal attackers.
             let at_limit = max_blockers.is_some_and(|max| pairs.len() >= max);
-            let legal_attackers = if at_limit {
+            let mut legal_attackers = if at_limit {
                 Vec::new() // no legal targets → forced PASS (consumes RNG)
             } else {
                 self.legal_attackers_for_blocker(blocker, &sorted_attackers)
             };
+            if let Some(ref snap) = self.last_game_snapshot {
+                legal_attackers.retain(|attacker| {
+                    let current = blocker_counts_by_attacker
+                        .get(attacker)
+                        .copied()
+                        .unwrap_or(0);
+                    current < self.snapshot_max_blockers_for_attacker(snap, *attacker)
+                });
+            }
             let choice = choice_space::pick_index_with_pass(
                 legal_attackers.len(),
                 &mut self.rng.borrow_mut(),
             );
             if choice > 0 && choice <= legal_attackers.len() {
-                pairs.push((blocker, legal_attackers[choice - 1]));
+                let attacker = legal_attackers[choice - 1];
+                *blocker_counts_by_attacker.entry(attacker).or_default() += 1;
+                pairs.push((blocker, attacker));
             }
         }
         if pairs.is_empty() {
@@ -1588,6 +1631,16 @@ impl PlayerAgent for DeterministicAgent {
             max,
             &mut self.rng.borrow_mut(),
         ))
+    }
+
+    fn choose_number_for_keyword_cost(
+        &mut self,
+        _player: PlayerId,
+        max: i32,
+        _prompt: &str,
+        _card_name: Option<&str>,
+    ) -> i32 {
+        gui_repro::choose_number(0, max, &mut self.rng.borrow_mut())
     }
 
     fn choose_x_value(&mut self, _player: PlayerId, max_x: u32, _card_name: Option<&str>) -> u32 {

@@ -381,6 +381,31 @@ impl Card {
         }
     }
 
+    pub fn ensure_crew_activated_ability(&mut self) {
+        if self.activated_abilities.iter().any(|ab| {
+            ab.spell_description
+                .as_deref()
+                .is_some_and(|desc| desc.starts_with("Crew"))
+        }) {
+            return;
+        }
+        for kw in self.keywords.iter_strings() {
+            if let Some(n_str) = crate::keyword::extract_keyword_cost_str(kw, "Crew") {
+                let n = n_str.trim();
+                let ab_text = format!(
+                    "AB$ Animate | Cost$ tapXType<Any/Creature.Other+withTotalPowerGE{{{}}}> | Defined$ Self | Types$ Artifact,Creature | Secondary$ True | SpellDescription$ Crew {}",
+                    n, n
+                );
+                let next_idx = self.activated_abilities.len();
+                if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
+                    self.activated_abilities.push(ab);
+                    self.base_ability_count = self.activated_abilities.len();
+                }
+                return;
+            }
+        }
+    }
+
     /// Generate triggered abilities from keywords (e.g. Prowess, Bushido, Annihilator, etc.).
     /// Mirrors Java's `CardFactoryUtil.setupKeywordedTriggers()`.
     pub fn generate_keyword_triggers(&mut self) {

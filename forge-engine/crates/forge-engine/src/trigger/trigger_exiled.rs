@@ -30,6 +30,9 @@ impl TriggerBehavior for TriggerExiled {
     fn perform_test(&self, trigger: &Trigger, params: &RunParams, game: &GameState) -> bool {
         let _host_card = trigger.base.card_trait_base.host_card_id();
         let _host_controller = trigger.base.card_trait_base.host_controller(game);
+        if !Trigger::matches_zone_filter(&trigger.ir.origin_zone, params.origin) {
+            return false;
+        }
         trigger.matches_optional_valid_card_filter(&self.valid_card, params.card, game)
     }
 

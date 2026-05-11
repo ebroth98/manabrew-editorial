@@ -19,7 +19,9 @@ impl TriggerTapsForMana {
     pub fn parse(params: &Params) -> Box<dyn TriggerBehavior> {
         Box::new(Self {
             valid_card: params.selector_cloned(keys::VALID_CARD),
-            activator: params.selector_cloned(keys::VALID_ACTIVATOR),
+            activator: params
+                .selector_cloned(keys::ACTIVATOR)
+                .or_else(|| params.selector_cloned(keys::VALID_ACTIVATOR)),
             produced: params.get_cloned(keys::PRODUCED),
         })
     }

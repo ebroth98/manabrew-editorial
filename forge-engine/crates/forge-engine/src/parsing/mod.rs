@@ -234,6 +234,7 @@ pub enum SelectorPredicate {
     CameUnderControlSinceLastUpkeep,
     Zone(ZoneType),
     RememberedCard,
+    TriggerRememberedCard,
     EffectSource,
     Commander,
     Legendary,
@@ -963,6 +964,7 @@ fn selector_predicate_order(predicate: &SelectorPredicate) -> u8 {
         SelectorPredicate::Context(_) => 3,
         SelectorPredicate::Relation(_) => 4,
         SelectorPredicate::RememberedCard
+        | SelectorPredicate::TriggerRememberedCard
         | SelectorPredicate::EffectSource
         | SelectorPredicate::DamagedBy
         | SelectorPredicate::AttachedBy => 5,
@@ -1039,6 +1041,7 @@ fn lower_selector_part(value: &str, is_first_part: bool) -> SelectorPredicate {
         "inzoneexile" => SelectorPredicate::Zone(ZoneType::Exile),
         "inzonestack" => SelectorPredicate::Zone(ZoneType::Stack),
         "isremembered" => SelectorPredicate::RememberedCard,
+        "istriggerremembered" => SelectorPredicate::TriggerRememberedCard,
         "effectsource" => SelectorPredicate::EffectSource,
         "iscommander" => SelectorPredicate::Commander,
         "legendary" => SelectorPredicate::Legendary,

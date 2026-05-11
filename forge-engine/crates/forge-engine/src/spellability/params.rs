@@ -36,6 +36,11 @@ impl SpellAbility {
         self.ir.change_type.as_deref()
     }
 
+    /// Get the compiled `ChangeType$` filter.
+    pub fn change_type_selector(&self) -> Option<&CompiledSelector> {
+        self.ir.change_type_selector.as_ref()
+    }
+
     // ── Zone/movement params ───────────────────────────────────────────────
 
     /// Get the `Defined$` card reference (e.g. "Self", "Remembered", "Targeted").

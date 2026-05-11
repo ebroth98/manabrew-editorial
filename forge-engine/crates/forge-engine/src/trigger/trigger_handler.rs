@@ -88,7 +88,12 @@ impl DelayedTrigger {
             optional: false,
             description: String::new(),
             static_trigger: false,
-            trigger_remembered: Vec::new(),
+            trigger_remembered: self
+                .remembered_cards
+                .iter()
+                .copied()
+                .map(crate::event::AbilityValue::Card)
+                .collect(),
             spawning_ability: None,
         }
     }

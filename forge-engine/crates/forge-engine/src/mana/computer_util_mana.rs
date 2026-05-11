@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use crate::agent::ManaAbilityOption;
 use crate::cost::cost_part::pay_cost_from_source;
 use crate::cost::{can_pay_ignoring_mana, CostPart};
+use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
@@ -101,6 +102,15 @@ pub enum ManaPayCallback<'a> {
     /// The callback may use this to preserve parity-visible prompt ordering.
     /// The return value is ignored for this variant.
     ChooseColor(&'a [String]),
+    /// Choose permanents for a `tapXType` mana-ability cost. The callback
+    /// writes the selected cards into `chosen`; the return value is only used
+    /// as a success/cancel signal to fit the unified callback shape.
+    ChooseTapType {
+        valid: &'a [CardId],
+        min: usize,
+        max: usize,
+        chosen: &'a mut Vec<CardId>,
+    },
     /// Confirm whether to sacrifice the given card for a mana ability.
     /// Return true to proceed, false to cancel.
     /// Mirrors Java's DeterministicCostDecision.confirmPayment() path.
@@ -215,6 +225,7 @@ pub fn auto_tap_lands_with_chooser(
         match kind {
             ManaPayCallback::ChooseSacrifice(valid) => sacrifice_chooser(valid),
             ManaPayCallback::ChooseColor(_) => None,
+            ManaPayCallback::ChooseTapType { .. } => None,
             ManaPayCallback::ConfirmSelfSacrifice(cid) => Some(cid),
             ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
             ManaPayCallback::ConfirmSourceExile(cid) => Some(cid),
@@ -250,6 +261,7 @@ pub fn auto_tap_lands_allow_reserved_source_reuse_with_chooser(
         match kind {
             ManaPayCallback::ChooseSacrifice(valid) => sacrifice_chooser(valid),
             ManaPayCallback::ChooseColor(_) => None,
+            ManaPayCallback::ChooseTapType { .. } => None,
             ManaPayCallback::ConfirmSelfSacrifice(cid) => Some(cid),
             ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
             ManaPayCallback::ConfirmSourceExile(cid) => Some(cid),
@@ -439,7 +451,8 @@ pub fn next_auto_tap_choice_with_reserved_sacrifices(
         return None;
     }
 
-    let mana_ability_map = group_sources_by_mana_color(game, player, reserved_sacrifices, None);
+    let mana_ability_map =
+        group_sources_by_mana_color(game, player, reserved_sacrifices, None, false);
     if mana_ability_map.is_empty() {
         return None;
     }
@@ -638,7 +651,7 @@ fn auto_tap_lands_internal_with_ctx(
         // Java re-collects candidates every iteration. This ensures tapped/sacrificed
         // sources are excluded and state changes from the previous iteration are visible.
         let mana_ability_map =
-            group_sources_by_mana_color(game, player, reserved_sacrifices, payment_ctx);
+            group_sources_by_mana_color(game, player, reserved_sacrifices, payment_ctx, false);
         if mana_ability_map.is_empty() {
             break;
         }
@@ -687,7 +700,9 @@ fn auto_tap_lands_internal_with_ctx(
             } else {
                 chosen_atom
             };
-            produce_mana_for_auto_pay(game, pool, player, &sa_payment, chosen_atom, callback);
+            let produced =
+                produce_mana_for_auto_pay(game, pool, player, &sa_payment, chosen_atom, callback);
+            add_taps_for_mana_trigger_mana(game, pool, player, sa_payment.card_id, &produced);
             if consume_incrementally {
                 let spent = pool.pay_unpaid_for_spell_incremental(
                     &mut unpaid,
@@ -725,7 +740,15 @@ fn auto_tap_lands_internal_with_ctx(
                     game.tap(sa_payment.card_id);
                 }
             } else {
-                produce_mana_for_auto_pay(game, pool, player, &sa_payment, chosen_atom, callback);
+                let produced = produce_mana_for_auto_pay(
+                    game,
+                    pool,
+                    player,
+                    &sa_payment,
+                    chosen_atom,
+                    callback,
+                );
+                add_taps_for_mana_trigger_mana(game, pool, player, sa_payment.card_id, &produced);
             }
 
             tapped_choices.push(AutoTapChoice {
@@ -798,7 +821,7 @@ fn produce_mana_for_auto_pay(
     ma: &ManaAbilityRef,
     chosen_atom: u16,
     callback: &mut Option<ManaPayCallbackFn<'_>>,
-) {
+) -> String {
     if source_requires_tap(game, ma) && !game.card(ma.card_id).tapped {
         game.tap(ma.card_id);
     }
@@ -828,6 +851,63 @@ fn produce_mana_for_auto_pay(
         });
     }
     add_produced_mana_to_pool(pool, &mana_string, &params);
+    mana_string
+}
+
+fn add_taps_for_mana_trigger_mana(
+    game: &GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    tapped_source: CardId,
+    produced: &str,
+) {
+    let params = RunParams {
+        card: Some(tapped_source),
+        player: Some(player),
+        activator: Some(player),
+        produced: Some(produced.to_string()),
+        ..Default::default()
+    };
+    for &host_id in game.cards_in_zone(ZoneType::Battlefield, player) {
+        let host = game.card(host_id);
+        for trigger in &host.triggers {
+            if trigger.kind != crate::trigger::TriggerType::TapsForMana {
+                continue;
+            }
+            if !trigger.get_mode().perform_test(trigger, &params, game) {
+                continue;
+            }
+            let Some(sa) = trigger.ensure_ability(game, host_id, player) else {
+                continue;
+            };
+            let Some(produced_ir) = sa.produced_ir() else {
+                continue;
+            };
+            let amount = sa.amount_of_mana_generated().max(1);
+            let atoms = produced_ir.to_atoms(&host.chosen_colors);
+            let Some(atom) = atoms.first().copied() else {
+                continue;
+            };
+            let Some(letter) = ManaPool::atom_to_letter(atom).chars().next() else {
+                continue;
+            };
+            let mana_string = std::iter::repeat_n(letter.to_string(), amount as usize)
+                .collect::<Vec<_>>()
+                .join(" ");
+            let mana_params = ManaProductionParams {
+                source_card: host_id,
+                is_snow: host.type_line.is_snow(),
+                restriction: None,
+                adds_no_counter: false,
+                adds_keywords: None,
+                adds_keywords_valid: None,
+                adds_counters: None,
+                adds_counters_valid: None,
+                triggers_when_spent: None,
+            };
+            add_produced_mana_to_pool(pool, &mana_string, &mana_params);
+        }
+    }
 }
 
 fn auto_pay_base_mana_string(
@@ -1436,6 +1516,24 @@ fn pay_non_tap_mana_ability_costs(
                 let owner = game.card(ma.card_id).owner;
                 game.move_card(ma.card_id, ZoneType::Exile, owner);
             }
+            CostPart::TapType { .. } => {
+                let targets = choose_tap_type_targets_for_mana_ability_with_callback(
+                    game,
+                    player,
+                    ma.card_id,
+                    part,
+                    reserved_source,
+                    allow_reserved_source_reuse,
+                    reserved_sacrifices,
+                    callback,
+                );
+                if targets.is_empty() {
+                    return false;
+                }
+                for cid in targets {
+                    game.tap(cid);
+                }
+            }
             _ => return false,
         }
     }
@@ -1482,8 +1580,146 @@ fn can_pay_source_paid_mana_cost_part(
         CostPart::Exile { amount, from, .. } => {
             pay_cost_from_source(part) && *amount <= 1 && game.card(source_id).zone == *from
         }
+        CostPart::TapType { .. } => !choose_tap_type_targets_for_mana_ability(
+            game,
+            player,
+            source_id,
+            part,
+            reserved_source,
+            allow_reserved_source_reuse,
+            reserved_sacrifices,
+        )
+        .is_empty(),
         _ => false,
     }
+}
+
+fn choose_tap_type_targets_for_mana_ability(
+    game: &GameState,
+    player: PlayerId,
+    source_id: CardId,
+    part: &CostPart,
+    reserved_source: Option<CardId>,
+    allow_reserved_source_reuse: bool,
+    reserved_sacrifices: &[CardId],
+) -> Vec<CardId> {
+    let mut callback = None;
+    choose_tap_type_targets_for_mana_ability_with_callback(
+        game,
+        player,
+        source_id,
+        part,
+        reserved_source,
+        allow_reserved_source_reuse,
+        reserved_sacrifices,
+        &mut callback,
+    )
+}
+
+fn choose_tap_type_targets_for_mana_ability_with_callback(
+    game: &GameState,
+    player: PlayerId,
+    source_id: CardId,
+    part: &CostPart,
+    reserved_source: Option<CardId>,
+    allow_reserved_source_reuse: bool,
+    reserved_sacrifices: &[CardId],
+    callback: &mut Option<ManaPayCallbackFn<'_>>,
+) -> Vec<CardId> {
+    let CostPart::TapType {
+        amount,
+        type_filter,
+        min_total_power,
+    } = part
+    else {
+        return Vec::new();
+    };
+    let mut targets = crate::cost::get_tap_type_targets(game, player, type_filter, source_id);
+    targets.retain(|cid| !reserved_sacrifices.contains(cid));
+    if !allow_reserved_source_reuse {
+        if let Some(reserved) = reserved_source {
+            targets.retain(|&cid| cid != reserved);
+        }
+    }
+
+    if let Some(power_threshold) = min_total_power {
+        targets.sort_by(|&a, &b| {
+            crate::cost::cost_tap_type::tap_power_value(game, b, None)
+                .cmp(&crate::cost::cost_tap_type::tap_power_value(game, a, None))
+                .then_with(|| {
+                    game.card(a)
+                        .card_name
+                        .cmp(&game.card(b).card_name)
+                        .then_with(|| a.index().cmp(&b.index()))
+                })
+        });
+        if let Some(cb) = callback {
+            let mut chosen = Vec::new();
+            if cb(ManaPayCallback::ChooseTapType {
+                valid: &targets,
+                min: 1,
+                max: targets.len(),
+                chosen: &mut chosen,
+            })
+            .is_none()
+            {
+                return Vec::new();
+            }
+            chosen.retain(|cid| targets.contains(cid));
+            chosen.dedup();
+            let chosen_power: i32 = chosen
+                .iter()
+                .map(|&cid| crate::cost::cost_tap_type::tap_power_value(game, cid, None))
+                .sum();
+            if chosen_power >= *power_threshold {
+                return chosen;
+            }
+            return Vec::new();
+        }
+        let mut chosen = Vec::new();
+        let mut total = 0;
+        for cid in targets {
+            total += crate::cost::cost_tap_type::tap_power_value(game, cid, None);
+            chosen.push(cid);
+            if total >= *power_threshold {
+                return chosen;
+            }
+        }
+        return Vec::new();
+    }
+
+    let required = (*amount).max(0) as usize;
+    if targets.len() < required {
+        return Vec::new();
+    }
+    targets.sort_by(|&a, &b| {
+        game.card(a)
+            .card_name
+            .cmp(&game.card(b).card_name)
+            .then_with(|| a.index().cmp(&b.index()))
+    });
+    if let Some(cb) = callback {
+        let mut chosen = Vec::new();
+        if cb(ManaPayCallback::ChooseTapType {
+            valid: &targets,
+            min: required,
+            max: required,
+            chosen: &mut chosen,
+        })
+        .is_none()
+        {
+            return Vec::new();
+        }
+        chosen.retain(|cid| targets.contains(cid));
+        chosen.dedup();
+        if chosen.len() < required {
+            return Vec::new();
+        }
+        chosen.truncate(required);
+        return chosen;
+    }
+    targets.truncate(required);
+    targets
 }
 
 fn get_payable_mana_sacrifice_targets(
@@ -1704,6 +1940,7 @@ fn group_sources_by_mana_color(
     player: PlayerId,
     reserved_sacrifices: &[CardId],
     payment_ctx: Option<&crate::mana::ManaPaymentContext>,
+    filter_reflected_replacements: bool,
 ) -> IndexMap<i32, Vec<ManaAbilityRef>> {
     let mut mana_map: IndexMap<i32, Vec<ManaAbilityRef>> = IndexMap::new();
     let mut source_order = 0usize;
@@ -1717,12 +1954,21 @@ fn group_sources_by_mana_color(
             {
                 continue;
             }
-            // Handle ManaReflected abilities (e.g. Incubation Druid).
-            // Use the auto-pay variant so the candidate pool sees the
-            // reflectable colors directly — mirrors Java AutoPay.producedAtoms.
+            // Handle ManaReflected abilities (e.g. The Grey Havens).
+            // Java has two paths here:
+            // - `ComputerUtilMana.groupSourcesByManaColor` predicts
+            //   ProduceMana replacements against the placeholder original
+            //   mana ("1"), which can hide reflected colors from castability
+            //   probes when an amount-only replacement such as Nyxbloom is
+            //   active.
+            // - harness `AutoPay.producedAtoms` uses actual reflected colors
+            //   for real payment.
             if ab.is_mana_reflected {
-                let reflected_atoms =
-                    super::reflected_atoms_for_auto_pay(game, player, card_id, ab);
+                let reflected_atoms = if filter_reflected_replacements {
+                    super::reflected_atoms_for_availability(game, player, card_id, ab)
+                } else {
+                    super::compute_reflected_atoms(game, player, card_id, ab)
+                };
                 if !reflected_atoms.is_empty() {
                     explicit_mana_added = true;
                     let ma = ManaAbilityRef {
@@ -1956,7 +2202,11 @@ pub fn can_pay_mana_cost_with_reserved_sacrifices(
             {
                 continue;
             }
-            if let Some(produced_ir) = ab.produced_ir.as_ref() {
+            if ab.is_mana_reflected {
+                for atom in super::compute_reflected_atoms(game, player, card_id, ab) {
+                    source_mask |= atom;
+                }
+            } else if let Some(produced_ir) = ab.produced_ir.as_ref() {
                 if produced_ir.is_combo_color_identity() {
                     let colors = game.player_commander_color_identity(player);
                     if !colors.is_empty() {
@@ -2011,7 +2261,11 @@ pub fn can_pay_mana_cost_with_reserved_sacrifices(
         return false;
     }
 
-    requirements.sort_by_key(|&req| source_masks.iter().filter(|src| (**src & req) != 0).count());
+    requirements.sort_by(|&a, &b| {
+        let count_a = source_masks.iter().filter(|src| (**src & a) != 0).count();
+        let count_b = source_masks.iter().filter(|src| (**src & b) != 0).count();
+        count_a.cmp(&count_b).then(a.cmp(&b))
+    });
 
     let mut committed = std::collections::HashSet::new();
     for requirement in requirements {
@@ -2047,7 +2301,8 @@ pub fn can_pay_spell_mana_cost_for_action_space(
     payment_ctx: &crate::mana::ManaPaymentContext,
 ) -> bool {
     let mut unpaid = ManaCostBeingPaid::from_mana_cost(cost);
-    pay_cost_from_pool(&mut unpaid, pool);
+    let mut simulated_pool = pool.clone();
+    simulated_pool.pay_unpaid_for_spell_incremental(&mut unpaid, payment_ctx, false);
     if unpaid.is_paid() {
         return true;
     }
@@ -2057,7 +2312,8 @@ pub fn can_pay_spell_mana_cost_for_action_space(
     while !unpaid.is_paid() && guard < 128 {
         guard += 1;
 
-        let mana_ability_map = group_sources_by_mana_color(game, player, &[], Some(payment_ctx));
+        let mana_ability_map =
+            group_sources_by_mana_color(game, player, &[], Some(payment_ctx), true);
         if mana_ability_map.is_empty() {
             break;
         }
@@ -2085,23 +2341,79 @@ pub fn can_pay_spell_mana_cost_for_action_space(
         let Some(chosen_atom) = choose_atom_for_shard(&sa_payment, to_pay) else {
             break;
         };
-
-        if let Some(fixed_atoms) = fixed_output_atoms_for_payment(game, player, &sa_payment) {
+        let produced = if let Some(fixed_atoms) =
+            fixed_output_atoms_for_payment(game, player, &sa_payment)
+        {
             let repeats = (sa_payment.amount.max(1) as usize)
                 .checked_div(fixed_atoms.len().max(1))
                 .unwrap_or(1)
                 .max(1);
-            for _ in 0..repeats {
-                for &atom in &fixed_atoms {
-                    let _ = unpaid.try_pay_mana(atom, atom as u8);
-                }
-            }
+            let adjusted_atoms = replacement_adjusted_atoms_for_payment(
+                game,
+                player,
+                sa_payment.card_id,
+                &fixed_atoms,
+                repeats,
+            );
+            let mana_string = atoms_as_mana_string(&adjusted_atoms);
+            let params = ManaProductionParams {
+                source_card: sa_payment.card_id,
+                is_snow: game.card(sa_payment.card_id).type_line.is_snow(),
+                restriction: None,
+                adds_no_counter: false,
+                adds_keywords: None,
+                adds_keywords_valid: None,
+                adds_counters: None,
+                adds_counters_valid: None,
+                triggers_when_spent: None,
+            };
+            add_produced_mana_to_pool(&mut simulated_pool, &mana_string, &params);
+            mana_string
         } else {
-            let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
-            for _ in 1..sa_payment.amount.max(1) {
-                let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
-            }
-        }
+            let mut callback = None;
+            let mana_string =
+                auto_pay_base_mana_string(game, player, &sa_payment, chosen_atom, &mut callback);
+            let produced_ir = crate::ability::ProducedMana::from_raw_boundary(&mana_string);
+            let adjusted_atoms = produced_ir
+                .fixed_atoms()
+                .unwrap_or_else(|| produced_ir.to_atoms(&[]))
+                .into_iter()
+                .flat_map(|atom| {
+                    super::replacement_adjusted_atoms_for_availability(
+                        game,
+                        player,
+                        sa_payment.card_id,
+                        atom,
+                    )
+                })
+                .collect::<Vec<_>>();
+            let mana_string = if adjusted_atoms.is_empty() {
+                mana_string
+            } else {
+                atoms_as_mana_string(&adjusted_atoms)
+            };
+            let params = ManaProductionParams {
+                source_card: sa_payment.card_id,
+                is_snow: game.card(sa_payment.card_id).type_line.is_snow(),
+                restriction: None,
+                adds_no_counter: false,
+                adds_keywords: None,
+                adds_keywords_valid: None,
+                adds_counters: None,
+                adds_counters_valid: None,
+                triggers_when_spent: None,
+            };
+            add_produced_mana_to_pool(&mut simulated_pool, &mana_string, &params);
+            mana_string
+        };
+        add_taps_for_mana_trigger_mana(
+            game,
+            &mut simulated_pool,
+            player,
+            sa_payment.card_id,
+            &produced,
+        );
+        simulated_pool.pay_unpaid_for_spell_incremental(&mut unpaid, payment_ctx, false);
 
         used_sources.insert(sa_payment.card_id);
     }
@@ -2109,6 +2421,32 @@ pub fn can_pay_spell_mana_cost_for_action_space(
     unpaid.is_paid()
         || (unpaid.contains_only_phyrexian_mana()
             && game.player(player).life > required_phyrexian_life(&unpaid))
+}
+
+fn replacement_adjusted_atoms_for_payment(
+    game: &GameState,
+    player: PlayerId,
+    source: CardId,
+    atoms: &[u16],
+    repeats: usize,
+) -> Vec<u16> {
+    let mut adjusted = Vec::new();
+    for &atom in atoms {
+        for _ in 0..repeats {
+            adjusted.extend(super::replacement_adjusted_atoms_for_availability(
+                game, player, source, atom,
+            ));
+        }
+    }
+    adjusted
+}
+
+fn atoms_as_mana_string(atoms: &[u16]) -> String {
+    atoms
+        .iter()
+        .map(|&atom| atom_short(atom))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn fixed_output_atoms_for_payment(
@@ -2331,7 +2669,7 @@ fn score_mana_ability(
         .as_ref()
         .is_some_and(crate::ability::ProducedMana::is_combo_color_identity)
     {
-        score += 2;
+        score += 7;
         for part in &ab.cost.parts {
             match part {
                 CostPart::PayLife(_) => score += 3,
@@ -2415,74 +2753,73 @@ fn sort_sources_for_autopay(
 /// - +13 per combat role (attack/block) for creatures
 fn autopay_source_score(game: &GameState, _player: PlayerId, ma: &ManaAbilityRef) -> i32 {
     let card = game.card(ma.card_id);
+    let mut score = if ma
+        .produced_ir
+        .as_ref()
+        .is_some_and(crate::ability::ProducedMana::is_combo_color_identity)
+    {
+        score_atoms_for_autopay(&ma.atoms).unwrap_or(2)
+    } else if ma
+        .produced_ir
+        .as_ref()
+        .is_some_and(crate::ability::ProducedMana::is_any_like)
+    {
+        7
+    } else if ma.mana_text == "Any" {
+        7
+    } else if ma.mana_text == "1" && ma.atoms.is_empty() {
+        1
+    } else {
+        let produced = ma.mana_text.clone();
+        let tokens = produced
+            .split_whitespace()
+            .filter(|token| !token.is_empty())
+            .count();
+        let mut score = tokens.max(1) as i32;
+        if !produced.contains('C') {
+            score += 1;
+        }
+        score
+    };
+
     if let Some(ab_idx) = ma.ability_index {
         if let Some(ab) = card.activated_abilities.get(ab_idx) {
-            if ma
-                .produced_ir
-                .as_ref()
-                .is_some_and(crate::ability::ProducedMana::is_combo_color_identity)
-            {
-                let colors = game.player_commander_color_identity(_player);
-                let mut s = if colors.is_empty() {
-                    2
-                } else {
-                    colors.len().max(1) as i32 + 1
-                };
-                for part in &ab.cost.parts {
-                    match part {
-                        CostPart::PayLife(_) => s += 3,
-                        CostPart::Sacrifice { type_filter, .. } => {
-                            s += 6;
-                            if type_filter != "CARDNAME" {
-                                s += 40;
-                            }
-                        }
-                        CostPart::Discard { .. } => s += 6,
-                        _ => {}
-                    }
-                    s += 1;
-                }
-                if card.is_creature() {
-                    s += 13;
-                    s += 13;
-                }
-                return s;
-            }
-            let orig_is_any = ab
-                .produced_ir
-                .as_ref()
-                .is_some_and(crate::ability::ProducedMana::is_any_like);
-            let resolved = if ab.is_mana_reflected || ma.mana_text == "1" {
-                "1".to_string()
-            } else if orig_is_any {
-                "Any".to_string()
-            } else {
-                ma.atoms
-                    .iter()
-                    .copied()
-                    .filter(|&atom| atom != ManaAtom::GENERIC)
-                    .map(atom_short)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            };
-            let resolved_ir = crate::ability::ProducedMana::from_raw_boundary(&resolved);
-            let mut s = score_mana_ability(game, ma.card_id, ab, Some(&resolved_ir));
-            if card.is_creature() {
-                s += 13;
-                s += 13;
-            }
-            return s;
+            score += ab.cost.parts.len() as i32;
         }
+    } else {
+        score = score_implicit_land_mana_ability(
+            ma.atoms.first().copied().unwrap_or(ManaAtom::COLORLESS),
+        );
     }
 
-    let mut s =
-        score_implicit_land_mana_ability(ma.atoms.first().copied().unwrap_or(ManaAtom::COLORLESS));
     if card.is_creature() {
-        s += 13;
-        s += 13;
+        score += 13;
+        score += 13;
     }
 
-    s
+    score
+}
+
+fn score_atoms_for_autopay(atoms: &[u16]) -> Option<i32> {
+    if atoms.is_empty() {
+        return None;
+    }
+    let mut produced = atoms
+        .iter()
+        .copied()
+        .filter(|&atom| atom != ManaAtom::GENERIC)
+        .map(atom_short)
+        .collect::<Vec<_>>();
+    produced.sort_unstable();
+    produced.dedup();
+    if produced.is_empty() {
+        return None;
+    }
+    let mut score = produced.len().max(1) as i32;
+    if !produced.contains(&"C") {
+        score += 1;
+    }
+    Some(score)
 }
 
 fn score_implicit_land_mana_ability(atom: u16) -> i32 {
@@ -2808,6 +3145,7 @@ mod tests {
                     match kind {
                         ManaPayCallback::ChooseSacrifice(_) => None,
                         ManaPayCallback::ChooseColor(_) => None,
+                        ManaPayCallback::ChooseTapType { .. } => None,
                         ManaPayCallback::ConfirmSelfSacrifice(cid) => {
                             assert_eq!(cid, treasure); // should be asking about Treasure
                             Some(cid) // confirm
@@ -2872,6 +3210,7 @@ mod tests {
                     match kind {
                         ManaPayCallback::ChooseSacrifice(_) => None,
                         ManaPayCallback::ChooseColor(_) => None,
+                        ManaPayCallback::ChooseTapType { .. } => None,
                         ManaPayCallback::ConfirmSelfSacrifice(cid) => {
                             assert_eq!(cid, treasure2);
                             None // decline

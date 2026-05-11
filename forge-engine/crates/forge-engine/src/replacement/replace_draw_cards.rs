@@ -6,9 +6,13 @@ use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::CardId;
 use crate::parsing::compare::compare_expr;
+use crate::parsing::{keys, Params};
 
 use super::replacement_effect::ReplacementEffect;
-use super::replacement_handler::{execute_replace_with_numeric_update, ReplacementEvent};
+use super::replacement_handler::{
+    execute_replace_with_numeric_update, resolve_replace_value, set_replacement_event_amount,
+    ReplacementEvent,
+};
 use super::replacement_result::ReplacementResult;
 use super::replacement_type::ReplacementType;
 use crate::card_trait_base::CardTrait;
@@ -69,6 +73,21 @@ pub fn execute(
         execute_replace_with_numeric_update(effect, event, _game, _source_card_id, "Number")
     {
         return result;
+    }
+    if let Some(replace) = effect.replace_with() {
+        if let Some(raw) = _game.card(_source_card_id).svars.get(replace) {
+            let params = Params::from_raw(raw);
+            if params.get(keys::DB) == Some("Draw") {
+                let amount_expr = params.get(keys::NUM_CARDS).unwrap_or("1");
+                if let Some(amount) =
+                    resolve_replace_value(amount_expr, _game, _source_card_id, event)
+                {
+                    if set_replacement_event_amount(event, amount) {
+                        return ReplacementResult::Updated;
+                    }
+                }
+            }
+        }
     }
     ReplacementResult::Replaced
 }

@@ -6,6 +6,9 @@ use forge_foundation::{CoreType, ZoneType};
 
 use super::EffectContext;
 use crate::ids::CardId;
+use crate::parsing::Params;
+use crate::trigger::handler::DelayedTrigger;
+use crate::trigger::{parse_trigger, TriggerType};
 
 /// Configure the spell ability during construction.
 /// Mirrors Java `EarthbendEffect.buildSpellAbility` — sets up targeting to
@@ -39,6 +42,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             continue;
         }
 
+        ctx.game
+            .card_mut(card_id)
+            .capture_changed_characteristics_baseline_if_needed();
+
         // Set base P/T to 0/0
         ctx.game.card_mut(card_id).set_base_pt(Some(0), Some(0));
 
@@ -61,9 +68,60 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         let counter_type = super::parse_counter_type("P1P1");
         ctx.game.card_mut(card_id).add_counter(&counter_type, num);
 
-        // Mark for return-on-death (delayed trigger tracked via svar)
-        ctx.game
-            .card_mut(card_id)
-            .set_s_var("EarthbendReturn", "True");
+        register_return_trigger(ctx, sa, card_id, ZoneType::Graveyard);
+        register_return_trigger(ctx, sa, card_id, ZoneType::Exile);
     }
+}
+
+fn register_return_trigger(
+    ctx: &mut EffectContext,
+    sa: &crate::spellability::SpellAbility,
+    card_id: CardId,
+    zone: ZoneType,
+) {
+    let trigger_raw = match zone {
+        ZoneType::Graveyard => {
+            "Mode$ ChangesZone | ValidCard$ Card.IsTriggerRemembered | Origin$ Battlefield | Destination$ Graveyard | TriggerDescription$ When it dies or is exiled, return it to the battlefield tapped."
+        }
+        ZoneType::Exile => {
+            "Mode$ Exiled | Origin$ Battlefield | ValidCard$ Card.IsTriggerRemembered | TriggerZones$ Battlefield | TriggerDescription$ When it dies or is exiled, return it to the battlefield tapped."
+        }
+        _ => return,
+    };
+
+    let mut next_id = 0;
+    let Some(trigger) = parse_trigger(trigger_raw, &mut next_id) else {
+        return;
+    };
+    let source_card = sa.source.unwrap_or(card_id);
+    let origin = match zone {
+        ZoneType::Graveyard => "Graveyard",
+        ZoneType::Exile => "Exile",
+        _ => return,
+    };
+    let execute_svar = format!(
+        "DB$ ChangeZone | Defined$ DelayTriggerRemembered | Origin$ {origin} | Destination$ Battlefield | Tapped$ True | GainControl$ You"
+    );
+
+    ctx.trigger_handler
+        .register_delayed_trigger(DelayedTrigger {
+            mode: match zone {
+                ZoneType::Graveyard => TriggerType::ChangesZone,
+                ZoneType::Exile => TriggerType::Exiled,
+                _ => unreachable!(),
+            },
+            trigger_mode: trigger.mode,
+            params: Params::from_raw(trigger_raw),
+            execute_svar,
+            controller: sa.activating_player,
+            source_card,
+            created_turn: ctx.game.turn.turn_number,
+            created_phase: ctx.game.turn.phase,
+            target_card: Some(card_id),
+            remembered_amount: 0,
+            remembered_cards: vec![card_id],
+            remembered_lki_cards: Vec::new(),
+            sort_after_active: false,
+            trigger_order: None,
+        });
 }

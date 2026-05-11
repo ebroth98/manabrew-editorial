@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 /// the order below. Within the same layer the affected player chooses the order.
 ///
 /// Reference: CR 616.1, Java `ReplacementLayer.java`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ReplacementLayer {
     /// CR 614.17 — effects that say an event "can't happen" (highest priority).
     CantHappen = 0,

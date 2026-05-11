@@ -1,6 +1,7 @@
-use forge_foundation::ZoneType;
+use forge_foundation::{CardTypeLine, ColorSet, ZoneType};
 
 use super::{matches_valid_cards_for_sa, EffectContext};
+use crate::parsing::split_param_list_value;
 use crate::spellability::SpellAbility;
 
 /// `SP$ Clone` — one card becomes a copy of another.
@@ -54,8 +55,10 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // Step 3: Copy characteristics from source → target
     let src = ctx.game.card(clone_source_id).clone();
     let duration = crate::parsing::raw_get(&sa.ability_text, crate::parsing::keys::DURATION);
-    if duration.is_some() && ctx.game.card(clone_target_id).clone_state.is_none() {
+    let active_animation = capture_active_animation(ctx.game.card(clone_target_id));
+    if ctx.game.card(clone_target_id).clone_state.is_none() {
         let mut state = ctx.game.card(clone_target_id).capture_clone_state();
+        state.expires_at_cleanup = duration.is_some() || sa.ir.duration.is_some();
         if let Some(animate_state) = ctx.game.card(clone_target_id).animate_state.as_ref() {
             state.original_type_line = animate_state.original_type_line.clone();
             state.original_base_power = animate_state.original_base_power;
@@ -72,19 +75,69 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     target.activated_abilities = src.activated_abilities.clone();
     target.static_abilities = src.static_abilities.clone();
     target.replacement_effects = src.replacement_effects.clone();
+    target.ensure_crew_activated_ability();
+    target.base_ability_count = target.activated_abilities.len();
+    target.base_trigger_count = target.triggers.len();
     target.set_perpetual(&src, false);
+    target.reset_changed_card_traits_baseline_to_current();
 
-    // Step 4: Apply PumpKeywords$ (extra keywords on the copy)
-    if let Some(pump_kws) = sa.ir.pump_keywords.as_deref() {
-        for kw in pump_kws.split(',') {
-            let kw = kw.trim();
-            if !kw.is_empty() {
-                ctx.game.card_mut(clone_target_id).add_intrinsic_keyword(kw);
-            }
+    // Step 4: Apply clone-state modifications from the cloning ability.
+    if let Some(add_types) = sa.ir.add_types.as_deref() {
+        for ty in split_param_list_value(Some(add_types), " & ") {
+            ctx.game.card_mut(clone_target_id).add_type(&ty);
         }
     }
 
-    // Step 5: Re-register triggers for the cloned card
+    if let Some(set_color) = sa.ir.set_color.as_deref() {
+        ctx.game
+            .card_mut(clone_target_id)
+            .set_color(ColorSet::from_names(set_color));
+    }
+
+    if let Some(power) = sa
+        .ir
+        .set_power
+        .as_deref()
+        .and_then(|value| value.parse().ok())
+    {
+        ctx.game
+            .card_mut(clone_target_id)
+            .set_base_power(Some(power));
+    }
+    if let Some(toughness) = sa
+        .ir
+        .set_toughness
+        .as_deref()
+        .and_then(|value| value.parse().ok())
+    {
+        ctx.game
+            .card_mut(clone_target_id)
+            .set_base_toughness(Some(toughness));
+    }
+
+    if let Some(add_kws) = sa.ir.add_keywords.as_deref() {
+        let keywords = add_kws.strip_prefix("IfNew ").unwrap_or(add_kws);
+        for kw in split_param_list_value(Some(keywords), " & ") {
+            ctx.game
+                .card_mut(clone_target_id)
+                .add_intrinsic_keyword(&kw);
+        }
+    }
+
+    if let Some(animation) = active_animation {
+        reapply_active_animation(ctx.game.card_mut(clone_target_id), &animation);
+    }
+
+    // Step 5: Apply PumpKeywords$ (extra temporary keywords on the copy)
+    if let Some(pump_kws) = sa.ir.pump_keywords.as_deref() {
+        for kw in split_param_list_value(Some(pump_kws), " & ") {
+            ctx.game
+                .card_mut(clone_target_id)
+                .add_intrinsic_keyword(&kw);
+        }
+    }
+
+    // Step 6: Re-register triggers for the cloned card
     ctx.trigger_handler
         .register_active_trigger(ctx.game, clone_target_id);
 }
@@ -165,4 +218,101 @@ fn resolve_clone_source(
     }
 
     None
+}
+
+#[derive(Clone)]
+struct ActiveAnimationSnapshot {
+    original_type_line: CardTypeLine,
+    original_color: ColorSet,
+    original_base_power: Option<i32>,
+    original_base_toughness: Option<i32>,
+    original_keywords: Option<Vec<String>>,
+    type_line: CardTypeLine,
+    color: ColorSet,
+    base_power: Option<i32>,
+    base_toughness: Option<i32>,
+    keywords: Vec<String>,
+}
+
+fn capture_active_animation(card: &crate::card::Card) -> Option<ActiveAnimationSnapshot> {
+    let state = card.animate_state.as_ref()?;
+    Some(ActiveAnimationSnapshot {
+        original_type_line: state.original_type_line.clone(),
+        original_color: state.original_color,
+        original_base_power: state.original_base_power,
+        original_base_toughness: state.original_base_toughness,
+        original_keywords: state
+            .original_keywords
+            .as_ref()
+            .map(|kws| kws.iter_strings().map(str::to_string).collect()),
+        type_line: card.type_line.clone(),
+        color: card.color,
+        base_power: card.base_power,
+        base_toughness: card.base_toughness,
+        keywords: card.keywords.iter_strings().map(str::to_string).collect(),
+    })
+}
+
+fn reapply_active_animation(card: &mut crate::card::Card, animation: &ActiveAnimationSnapshot) {
+    for supertype in animation
+        .type_line
+        .supertypes
+        .difference(&animation.original_type_line.supertypes)
+    {
+        card.type_line.supertypes.insert(*supertype);
+    }
+    for core_type in animation
+        .type_line
+        .core_types
+        .difference(&animation.original_type_line.core_types)
+    {
+        card.type_line.core_types.insert(*core_type);
+    }
+    for subtype in &animation.type_line.subtypes {
+        if animation
+            .original_type_line
+            .subtypes
+            .iter()
+            .any(|original| original.eq_ignore_ascii_case(subtype))
+        {
+            continue;
+        }
+        if !card
+            .type_line
+            .subtypes
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(subtype))
+        {
+            card.type_line.subtypes.push(subtype.clone());
+        }
+    }
+    card.update_types();
+    card.update_types_for_view();
+
+    if animation.color != animation.original_color {
+        card.color = animation.color;
+    }
+    if animation.base_power != animation.original_base_power {
+        card.base_power = animation.base_power;
+    }
+    if animation.base_toughness != animation.original_base_toughness {
+        card.base_toughness = animation.base_toughness;
+    }
+
+    let original_keywords = animation.original_keywords.as_deref().unwrap_or(&[]);
+    for keyword in &animation.keywords {
+        if original_keywords
+            .iter()
+            .any(|original| original.eq_ignore_ascii_case(keyword))
+        {
+            continue;
+        }
+        if !card
+            .keywords
+            .iter_strings()
+            .any(|existing| existing.eq_ignore_ascii_case(keyword))
+        {
+            card.add_intrinsic_keyword(keyword);
+        }
+    }
 }

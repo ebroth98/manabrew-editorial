@@ -86,5 +86,9 @@
   {
     "name": "poison_infect",
     "args": "--deck1 poison_test --deck2 comprehensive_test --seed 1521 --max-turns 15 --games 1"
+  },
+  {
+    "name": "starter_bant_rhythm",
+    "args": "--deck1 starter_deck_bant_rhythm --deck2 starter_deck_bant_rhythm --seed 42 --max-turns 40 --games 10"
   }
 ]

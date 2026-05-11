@@ -6,77 +6,39 @@
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 use super::super::{
-    emit_zone_trigger, evaluate_svar, matches_change_type, parse_counter_type, parse_zone_type,
+    emit_zone_trigger, matches_change_type, parse_counter_type, parse_zone_type,
     resolve_defined_players, EffectContext,
 };
+use crate::card::valid_filter::{matches_valid_card_selector_with_context, MatchContext};
 use crate::card::Card;
 use crate::event::RunParams;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
+use crate::parsing::CompiledSelector;
 use crate::spellability::SpellAbility;
 use crate::staticability::parse_static_ability;
 use crate::trigger::TriggerType;
 
 // ─── Card Matching ──────────────────────────────────────────────────────────
 
-/// Check if a card matches a ChangeType clause including CMC qualifiers.
+/// Check if a card matches a compiled ChangeType selector.
 pub(super) fn matches_with_context(
     ctx: &EffectContext,
     sa: &SpellAbility,
     card_id: CardId,
-    clause: &str,
+    selector: Option<&CompiledSelector>,
 ) -> bool {
-    let card = ctx.game.card(card_id);
-    let normalized_clause = clause
-        .split('.')
-        .filter(|part| !part.eq_ignore_ascii_case("IsRemembered"))
-        .collect::<Vec<_>>()
-        .join(".");
-    if !matches_change_type(card, &normalized_clause, &[]) {
-        return false;
-    }
-    let source = sa.source.map(|sid| ctx.game.card(sid));
-    for qualifier in clause.split('.').skip(1) {
-        if qualifier.eq_ignore_ascii_case("IsRemembered") {
-            let Some(source) = source else {
-                return false;
-            };
-            if !source.remembered_cards.contains(&card_id) {
-                return false;
-            }
-            continue;
-        }
-        if let Some(raw_max) = qualifier.strip_prefix("cmcLE") {
-            let max_cmc = if let Ok(v) = raw_max.parse::<i32>() {
-                v
-            } else if raw_max.eq_ignore_ascii_case("X") {
-                sa.source
-                    .and_then(|sid| {
-                        ctx.game
-                            .card(sid)
-                            .svars
-                            .get("X")
-                            .map(|e| evaluate_svar(e, sa))
-                    })
-                    .unwrap_or(sa.x_mana_cost_paid as i32)
-            } else {
-                match sa.source.and_then(|sid| {
-                    ctx.game
-                        .card(sid)
-                        .svars
-                        .get(raw_max)
-                        .map(|e| evaluate_svar(e, sa))
-                }) {
-                    Some(v) => v,
-                    None => return false,
-                }
-            };
-            if card.mana_cost.cmc() > max_cmc {
-                return false;
-            }
-        }
-    }
-    true
+    let Some(selector) = selector else {
+        return true;
+    };
+    let source = ctx.game.card(sa.source.unwrap_or(card_id));
+    let targeted_cards = sa.target_chosen.all_target_cards();
+    let targeted_players = sa.target_chosen.all_target_players();
+    let match_context = MatchContext::from_source(source)
+        .with_game(ctx.game)
+        .with_spell_ability(sa)
+        .with_targets(&targeted_cards, &targeted_players);
+    matches_valid_card_selector_with_context(selector, ctx.game.card(card_id), match_context)
 }
 
 /// Check if all candidates are fungible (same card name).

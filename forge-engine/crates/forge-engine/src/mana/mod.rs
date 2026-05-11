@@ -981,6 +981,80 @@ pub(crate) fn replacement_adjusted_atoms_for_availability(
     vec![atom]
 }
 
+pub(crate) fn has_replacement_adjusted_available_mana(game: &GameState, player: PlayerId) -> bool {
+    fn is_adjusted(game: &GameState, player: PlayerId, source: CardId, atom: u16) -> bool {
+        let adjusted = replacement_adjusted_atoms_for_availability(game, player, source, atom);
+        adjusted.len() != 1 || adjusted.first().copied() != Some(atom)
+    }
+
+    for &card_id in game.cards_in_zone(ZoneType::Battlefield, player) {
+        let card = game.card(card_id);
+        if card.phased_out {
+            continue;
+        }
+
+        let mut has_explicit_mana = false;
+        for ab in &card.activated_abilities {
+            if !ab.is_mana_ability
+                || ab
+                    .cost
+                    .parts
+                    .iter()
+                    .any(|part| matches!(part, CostPart::Mana { .. }))
+                || (card.tapped
+                    && ab
+                        .cost
+                        .parts
+                        .iter()
+                        .any(|part| matches!(part, CostPart::Tap)))
+                || !crate::cost::can_pay_ignoring_mana(&ab.cost, game, card_id, player)
+                || !mana_ability_meets_script_requirements(game, card_id, ab)
+            {
+                continue;
+            }
+            has_explicit_mana = true;
+
+            let atoms = if ab.is_mana_reflected {
+                compute_reflected_atoms(game, player, card_id, ab)
+            } else if let Some(produced_ir) = ab.produced_ir.as_ref() {
+                if produced_ir.is_combo_color_identity() {
+                    chosen_colors_to_atoms(&game.player_commander_color_identity(player))
+                } else if let Some(fixed_atoms) = produced_ir.fixed_atoms() {
+                    fixed_atoms
+                } else {
+                    produced_ir.to_atoms(&card.chosen_colors)
+                }
+            } else {
+                Vec::new()
+            };
+
+            if atoms
+                .into_iter()
+                .any(|atom| is_adjusted(game, player, card_id, atom))
+            {
+                return true;
+            }
+        }
+
+        if !has_explicit_mana && card.is_land() && !card.tapped {
+            let mut atoms = all_basic_subtype_atoms(card);
+            if atoms.is_empty() {
+                if let Some(atom) = basic_land_mana_atom(card) {
+                    atoms.push(atom);
+                }
+            }
+            if atoms
+                .into_iter()
+                .any(|atom| is_adjusted(game, player, card_id, atom))
+            {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 pub(crate) fn java_replacement_filtered_atoms_for_availability(
     game: &GameState,
     player: PlayerId,
@@ -1060,25 +1134,6 @@ pub(crate) fn reflected_atoms_for_availability(
     java_replacement_filtered_atoms_for_availability(game, player, source, ab, &reflected)
 }
 
-/// Mirrors Java harness `AutoPay.producedAtoms` — ManaReflected abilities
-/// return their reflectable colors directly without applying ProduceMana
-/// replacements. Used by the auto-pay candidate enumeration.
-///
-/// The replacement filter on `reflected_atoms_for_availability` works for
-/// fixed-color sources (the replacement substitutes color letters) but
-/// breaks ManaReflected, whose placeholder produced string is "1": triplers
-/// like Mana Reflection turn "1" into "111", which matches no color letter
-/// and yields an empty atom list, hiding the source from auto-pay even
-/// when the underlying reflected colors are valid.
-pub(crate) fn reflected_atoms_for_auto_pay(
-    game: &GameState,
-    player: PlayerId,
-    source: CardId,
-    ab: &crate::ability::activated::ActivatedAbility,
-) -> Vec<u16> {
-    compute_reflected_atoms(game, player, source, ab)
-}
-
 fn apply_produce_mana_replacements_for_availability(
     game: &GameState,
     event: &mut crate::replacement::replacement_handler::ReplacementEvent,
@@ -1133,6 +1188,81 @@ fn apply_produce_mana_replacements_for_availability(
 
         if !changed_this_pass {
             return updated;
+        }
+    }
+}
+
+fn add_taps_for_mana_trigger_mana_for_availability(
+    available: &mut ManaPool,
+    source_count: &mut i32,
+    source_colors: &mut Vec<u16>,
+    game: &GameState,
+    player: PlayerId,
+    tapped_card_id: CardId,
+) {
+    let params = crate::event::RunParams {
+        card: Some(tapped_card_id),
+        player: Some(player),
+        activator: Some(player),
+        ..Default::default()
+    };
+
+    for host in &game.cards {
+        if host.zone != ZoneType::Battlefield || host.phased_out {
+            continue;
+        }
+        for trigger in &host.triggers {
+            if trigger.kind != crate::trigger::TriggerType::TapsForMana
+                || !trigger.get_active_zone().contains(&host.zone)
+                || !trigger.requirements_check(game, host.id)
+                || !trigger.check_activation_limit(game, host.id)
+                || !trigger.mode.perform_test(trigger, &params, game)
+                || !trigger.meets_requirements_on_triggered_objects(game, &params, host.id)
+            {
+                continue;
+            }
+            let Some(svar_text) = host.svars.get(&trigger.execute) else {
+                continue;
+            };
+            let trigger_params = crate::parsing::Params::from_raw(svar_text);
+            if !trigger_params
+                .get("DB")
+                .is_some_and(|api| api.eq_ignore_ascii_case("Mana"))
+            {
+                continue;
+            }
+            let Some(produced) = trigger_params.get(crate::parsing::keys::PRODUCED) else {
+                continue;
+            };
+            let amount = trigger_params
+                .get(crate::parsing::keys::AMOUNT)
+                .and_then(|raw| raw.parse::<i32>().ok())
+                .unwrap_or(1)
+                .max(1);
+            let produced_ir = ProducedMana::from_raw_boundary(produced);
+            if let Some(fixed_atoms) = produced_ir.fixed_atoms() {
+                for atom in fixed_atoms {
+                    available.add(atom, 1);
+                    *source_count += 1;
+                    source_colors.push(atom);
+                }
+                continue;
+            }
+
+            let atoms = produced_ir.to_atoms(&host.chosen_colors);
+            if atoms.is_empty() {
+                continue;
+            }
+            let src_mask = atoms.iter().fold(0, |mask, atom| mask | *atom);
+            for atom in atoms {
+                for _ in 0..amount {
+                    available.add(atom, 1);
+                }
+            }
+            for _ in 0..amount {
+                *source_count += 1;
+                source_colors.push(src_mask);
+            }
         }
     }
 }
@@ -1296,6 +1426,14 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                         source_count += 1;
                         source_colors.push(src_mask);
                     }
+                    add_taps_for_mana_trigger_mana_for_availability(
+                        &mut available,
+                        &mut source_count,
+                        &mut source_colors,
+                        game,
+                        player,
+                        card_id,
+                    );
                 } else if let Some(atom) = basic_land_mana_atom(card) {
                     let adjusted_atoms =
                         replacement_adjusted_atoms_for_availability(game, player, card_id, atom);
@@ -1308,6 +1446,14 @@ fn calculate_available_mana_excluding_with_reserved_impl(
                         source_count += 1;
                         source_colors.push(src_mask);
                     }
+                    add_taps_for_mana_trigger_mana_for_availability(
+                        &mut available,
+                        &mut source_count,
+                        &mut source_colors,
+                        game,
+                        player,
+                        card_id,
+                    );
                 }
             }
             continue;
@@ -1524,6 +1670,20 @@ fn calculate_available_mana_excluding_with_reserved_impl(
             // Each productive source contributes exactly 1 activation (tap = 1 mana)
             source_count += 1;
             source_colors.push(src_mask);
+        }
+        if added_any
+            && mana_abilities
+                .iter()
+                .any(|ab| ab.cost.parts.iter().any(|p| matches!(p, CostPart::Tap)))
+        {
+            add_taps_for_mana_trigger_mana_for_availability(
+                &mut available,
+                &mut source_count,
+                &mut source_colors,
+                game,
+                player,
+                card_id,
+            );
         }
     }
 

@@ -24,10 +24,11 @@ pub(super) fn resolve_each_search(
         .map(str::trim)
         .filter(|s| !s.is_empty())
     {
+        let selector = crate::parsing::CompiledSelector::parse(clause);
         let candidates: Vec<_> = zone_cards
             .iter()
             .copied()
-            .filter(|&cid| matches_with_context(ctx, sa, cid, clause))
+            .filter(|&cid| matches_with_context(ctx, sa, cid, Some(&selector)))
             .collect();
         if candidates.is_empty() {
             continue;
@@ -271,7 +272,6 @@ pub(super) fn resolve_defined_player_cards(
     ctx: &mut EffectContext,
     sa: &SpellAbility,
     origin_zone: ZoneType,
-    change_type: &str,
     pid: PlayerId,
 ) -> Vec<CardId> {
     let candidates: Vec<_> = ctx
@@ -279,7 +279,7 @@ pub(super) fn resolve_defined_player_cards(
         .cards_in_zone(origin_zone, pid)
         .to_vec()
         .into_iter()
-        .filter(|&cid| matches_with_context(ctx, sa, cid, change_type))
+        .filter(|&cid| matches_with_context(ctx, sa, cid, sa.change_type_selector()))
         .collect();
     if candidates.is_empty() {
         return Vec::new();
@@ -300,17 +300,10 @@ pub(super) fn resolve_defined_player_choice(
     ctx: &mut EffectContext,
     sa: &SpellAbility,
     origin_zone: ZoneType,
-    change_type: &str,
 ) -> Vec<CardId> {
     let mut collected = Vec::new();
     for pid in resolve_defined_players_for_hidden_origin(ctx, sa) {
-        collected.extend(resolve_defined_player_cards(
-            ctx,
-            sa,
-            origin_zone,
-            change_type,
-            pid,
-        ));
+        collected.extend(resolve_defined_player_cards(ctx, sa, origin_zone, pid));
     }
     collected
 }
