@@ -1,6 +1,6 @@
 <!--
 SPDX-License-Identifier: CC-BY-4.0
-Copyright (c) 2024-present Bardidina contributors
+Copyright (c) 2024-present forge-rs contributors
 This document may be reused under the Creative Commons Attribution 4.0
 International license. https://creativecommons.org/licenses/by/4.0/
 -->

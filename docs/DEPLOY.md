@@ -1,5 +1,8 @@
 # Deployment Guide
 
+These are operator notes for deploying the forge-rs web client and parity
+dashboard. They are not required for local development.
+
 ## Internal Web Deployment (Twingate + SSO)
 
 For the browser/WASM client, the critical requirement is not public internet exposure, it is preserving cross-origin isolation through every proxy layer. The web game worker uses `SharedArrayBuffer`, so the final browser response must include:
@@ -24,8 +27,8 @@ If your Twingate or SSO layer strips or overrides those headers, browser gamepla
 Open DevTools on the deployed site and check:
 
 ```js
-window.crossOriginIsolated
-typeof SharedArrayBuffer !== "undefined"
+window.crossOriginIsolated;
+typeof SharedArrayBuffer !== "undefined";
 ```
 
 Expected result:
@@ -77,6 +80,7 @@ header {
 - The generated bundle still reports two missing preset scripts: `Thrum of the Vestige` and `Leonardo, Big Brother`
 - The web path is not offline-capable today
 - Scryfall metadata/images are still fetched remotely from the browser
+
 ## Prerequisites
 
 - Docker + Docker Compose (with BuildKit support)
@@ -89,8 +93,8 @@ header {
 
 ```bash
 cd ~
-git clone git@github.com:fedepoi/bardidinaXmageUI.git
-cd bardidinaXmageUI
+git clone git@github.com:<org>/<repo>.git forge-rs
+cd forge-rs
 ```
 
 ### 2. Create a `.env` file
@@ -110,7 +114,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 # OPENAI_API_KEY=not-needed
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 GITHUB_TOKEN=ghp_...          # PAT with `repo` scope — used by the GitHub REST API to create parity issues
-GITHUB_REPO=fedepoi/bardidinaXmageUI
+GITHUB_REPO=<org>/<repo>
 ```
 
 ### 3. Create preset decks directory
@@ -139,7 +143,7 @@ Dashboard will be at `http://<server-ip>:8080`.
 3. Select `n8n-webhook-workflow.json` from the repo root
 4. **Edit the "Run deploy.sh" node** — update the `cd` path to match your server:
    ```
-   cd ~/bardidinaXmageUI && ./deploy.sh 2>&1 | tee /tmp/deploy.log
+   cd ~/forge-rs && ./deploy.sh 2>&1 | tee /tmp/deploy.log
    ```
 5. **Activate** the workflow
 
@@ -155,6 +159,7 @@ Dashboard will be at `http://<server-ip>:8080`.
 ### 3. Test it
 
 Push a commit to `main` and check:
+
 - n8n execution log shows successful run
 - `cat /tmp/deploy.log` on server shows deploy output
 - `docker compose -f forge-engine/crates/forge-server/compose.yml ps` shows container running
@@ -162,11 +167,12 @@ Push a commit to `main` and check:
 ## Manual Deploy
 
 ```bash
-cd ~/bardidinaXmageUI
+cd ~/forge-rs
 ./deploy.sh
 ```
 
 The script will:
+
 - `git pull origin main`
 - Diff what changed since last deploy
 - Only rebuild if Java/Rust/infra files changed
