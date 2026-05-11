@@ -60,12 +60,7 @@ Forge is not just a dependency. It is the source of truth for card scripts,
 mechanics, and expected behavior. `manabrew` should be framed as a GPL port and
 companion effort, not as a successor or replacement.
 
-The working engine / crate name `manabrew` is the only naming question we put
-in front of Forge maintainers. The courtesy conversation is narrow: make our
-existence known, confirm we are GPL-3.0-or-later and build on their work, and
-confirm a crate name that does not cause confusion. If the Forge team would
-rather we not use `-rs` on Forge, we change the engine name.
-
+Most engine crates follow the `forge-module` convention, as most of it is a straight port from Java Forge. 
 The user-facing product name is **ManaBrew**, hosted at `manabrew.app`.
 
 ## Self-hostable and non-commercial
