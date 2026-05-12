@@ -47,7 +47,7 @@ fi
 
 # ── Configure git to use PAT instead of SSH ─────────────────────────
 if [ -n "${GITHUB_TOKEN:-}" ]; then
-    git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/fedepoi/manabrew.git"
+    git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/fedepoi/bardidinaXmageUI.git"
 fi
 
 # ── Pull latest changes ──────────────────────────────────────────────
