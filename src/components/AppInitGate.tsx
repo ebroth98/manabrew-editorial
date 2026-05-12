@@ -2,6 +2,12 @@ import { AlertCircle } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAppInitStore } from "@/stores/useAppInitStore";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { useAcknowledgement } from "@/hooks/useAcknowledgement";
+import { TERMS_AND_CONDITIONS } from "@/lib/termsContent";
+
+const TERMS_STORAGE_KEY = "manabrew.termsAcceptance";
 
 const BAR_FILL_MS = 200;
 // Minimum dwell at the initial `idle` stage. Without it, a cache hit can
@@ -52,6 +58,11 @@ export function AppInitGate({ children }: { children: ReactNode }) {
   const loaded = useAppInitStore((s) => s.loaded);
   const total = useAppInitStore((s) => s.total);
   const errorMessage = useAppInitStore((s) => s.errorMessage);
+  const { accepted: termsAccepted, accept: acceptTerms } = useAcknowledgement(
+    TERMS_STORAGE_KEY,
+    TERMS_AND_CONDITIONS.version,
+  );
+  const [consent, setConsent] = useState(false);
 
   const [minHoldPassed, setMinHoldPassed] = useState(hasReleasedOnce);
   useEffect(() => {
@@ -86,6 +97,7 @@ export function AppInitGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (phase === "done") return;
     if (stage !== "ready") return;
+    if (!termsAccepted) return;
     const release = window.setTimeout(() => setPhase("releasing"), RELEASE_DELAY_MS);
     const done = window.setTimeout(() => {
       setPhase("done");
@@ -95,7 +107,7 @@ export function AppInitGate({ children }: { children: ReactNode }) {
       window.clearTimeout(release);
       window.clearTimeout(done);
     };
-  }, [stage, phase, RELEASE_DELAY_MS, EXIT_MS]);
+  }, [stage, phase, termsAccepted, RELEASE_DELAY_MS, EXIT_MS]);
 
   if (stage === "error") {
     return (
@@ -117,6 +129,7 @@ export function AppInitGate({ children }: { children: ReactNode }) {
   const title = STAGE_TITLE[stage] ?? "Loading";
   const pct = Math.round(target);
   const showBytes = total > 0;
+  const showTerms = stage === "ready" && !termsAccepted;
 
   const exiting = phase === "releasing";
   const showChildren = phase !== "gating";
@@ -183,8 +196,7 @@ export function AppInitGate({ children }: { children: ReactNode }) {
           className="pointer-events-none absolute inset-0 size-full select-none object-cover opacity-50 blur-md"
         />
 
-        <div className="relative z-10 flex w-full max-w-2xl flex-col items-center gap-12 px-8 drop-shadow-2xl">
-          {/* Title */}
+        <div className="relative z-10 flex w-full max-w-2xl flex-col items-center gap-10 px-8 drop-shadow-2xl">
           <div className="flex flex-col items-center gap-2 text-center">
             <p className="font-mono text-[0.65rem] uppercase tracking-[0.55em] text-muted-foreground">
               Welcome to
@@ -198,46 +210,86 @@ export function AppInitGate({ children }: { children: ReactNode }) {
             />
           </div>
 
-          {/* Progress + status */}
-          <div className="w-full space-y-5">
-            <div className="flex items-baseline justify-between font-mono text-[0.65rem] uppercase tracking-[0.4em] text-muted-foreground">
-              <span className="truncate text-foreground/80">{title}</span>
-              <span className="tabular-nums">{pct.toString().padStart(3, "0")}%</span>
-            </div>
+          {showTerms ? (
+            <div className="w-full space-y-5">
+              <div className="space-y-1 text-center">
+                <p className="font-mono text-[0.6rem] uppercase tracking-[0.45em] text-muted-foreground/80">
+                  {TERMS_AND_CONDITIONS.title}
+                </p>
+                <p className="text-sm text-muted-foreground">{TERMS_AND_CONDITIONS.intro}</p>
+              </div>
 
-            {/* The bar itself: thick track, gradient fill, shimmering overlay,
-              and a soft glow at the leading edge. */}
-            <div className="relative h-3.5 w-full overflow-hidden rounded-full border border-border/80 bg-muted/40">
-              <div
-                className="relative h-full overflow-hidden rounded-full bg-gradient-to-r from-primary/70 via-primary to-primary/70 shadow-[inset_0_0_8px] shadow-primary/40 transition-[width] duration-200 ease-out"
-                style={{ width: `${target}%` }}
-              >
+              <ScrollArea className="h-[38vh] max-h-[360px]">
+                <div className="space-y-4 pr-4 text-sm leading-relaxed">
+                  {TERMS_AND_CONDITIONS.sections.map((section) => (
+                    <section key={section.heading} className="space-y-1.5">
+                      <h3 className="text-sm font-semibold text-foreground">{section.heading}</h3>
+                      <p className="text-sm text-muted-foreground">{section.body}</p>
+                    </section>
+                  ))}
+                </div>
+              </ScrollArea>
+
+              <label className="flex cursor-pointer select-none items-start justify-center gap-2.5 text-sm">
+                <Checkbox
+                  checked={consent}
+                  onCheckedChange={(value) => setConsent(value === true)}
+                  className="mt-0.5"
+                />
+                <span className="text-foreground">I have read and agree to these terms</span>
+              </label>
+
+              <div className="flex flex-col items-center gap-3">
+                <Button disabled={!consent} onClick={acceptTerms} className="min-w-[200px]">
+                  Accept and continue
+                </Button>
+                <p className="font-mono text-[0.55rem] uppercase tracking-[0.4em] text-muted-foreground/70">
+                  Version {TERMS_AND_CONDITIONS.version} · Updated{" "}
+                  {TERMS_AND_CONDITIONS.lastUpdated}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full space-y-5">
+              <div className="flex items-baseline justify-between font-mono text-[0.65rem] uppercase tracking-[0.4em] text-muted-foreground">
+                <span className="truncate text-foreground/80">{title}</span>
+                <span className="tabular-nums">{pct.toString().padStart(3, "0")}%</span>
+              </div>
+
+              {/* The bar itself: thick track, gradient fill, shimmering overlay,
+                and a soft glow at the leading edge. */}
+              <div className="relative h-3.5 w-full overflow-hidden rounded-full border border-border/80 bg-muted/40">
+                <div
+                  className="relative h-full overflow-hidden rounded-full bg-gradient-to-r from-primary/70 via-primary to-primary/70 shadow-[inset_0_0_8px] shadow-primary/40 transition-[width] duration-200 ease-out"
+                  style={{ width: `${target}%` }}
+                >
+                  <div
+                    aria-hidden
+                    className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/45 to-transparent"
+                    style={{ animation: "manabrew-shimmer 2.2s linear infinite" }}
+                  />
+                </div>
+                {/* Trailing glow that follows the leading edge of the fill. */}
                 <div
                   aria-hidden
-                  className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/45 to-transparent"
-                  style={{ animation: "manabrew-shimmer 2.2s linear infinite" }}
+                  className="pointer-events-none absolute top-1/2 size-4 -translate-y-1/2 rounded-full bg-primary blur-md transition-[left] duration-200 ease-out"
+                  style={{ left: `calc(${target}% - 0.5rem)` }}
                 />
               </div>
-              {/* Trailing glow that follows the leading edge of the fill. */}
-              <div
-                aria-hidden
-                className="pointer-events-none absolute top-1/2 size-4 -translate-y-1/2 rounded-full bg-primary blur-md transition-[left] duration-200 ease-out"
-                style={{ left: `calc(${target}% - 0.5rem)` }}
-              />
-            </div>
 
-            {/* Tech line — bytes during download, otherwise a quiet note
-              about caching. No flavor copy. */}
-            <p className="text-center font-mono text-[0.6rem] uppercase tracking-[0.45em] text-muted-foreground/80">
-              {stage === "downloading" && showBytes ? (
-                <>
-                  {formatBytes(loaded)} / {formatBytes(total)}
-                </>
-              ) : (
-                <>Connecting</>
-              )}
-            </p>
-          </div>
+              {/* Tech line — bytes during download, otherwise a quiet note
+                about caching. No flavor copy. */}
+              <p className="text-center font-mono text-[0.6rem] uppercase tracking-[0.45em] text-muted-foreground/80">
+                {stage === "downloading" && showBytes ? (
+                  <>
+                    {formatBytes(loaded)} / {formatBytes(total)}
+                  </>
+                ) : (
+                  <>Connecting</>
+                )}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Inline keyframes scoped by a manabrew-* prefix. */}
