@@ -29,7 +29,7 @@
       "../forge/forge-gui/res/cardsfolder": "cardsfolder",
       "../forge/forge-gui/res/tokenscripts": "tokenscripts",
       "../forge/forge-gui/res/editions": "editions",
-      "../preset_decks": "preset_decks",
+      "../public/preset_decks": "preset_decks",
       "resources/cardset.rkyv": "cardset.rkyv"
     },
     "icon": [

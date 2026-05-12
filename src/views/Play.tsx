@@ -71,12 +71,21 @@ export default function Play() {
 
   // Single-player: fighting-game style deck selector
   return (
-    <div className="relative h-full min-h-0">
-      <DeckVsSelector
-        onStart={(playerDeck, opponentDeck, formatId, commanderName) => {
-          startGame(playerDeck, formatId, commanderName, opponentDeck);
-        }}
+    <div className="relative h-full min-h-0 overflow-hidden">
+      <img
+        aria-hidden
+        src="/manabrew_brewery_1.png"
+        alt=""
+        draggable={false}
+        className="pointer-events-none absolute inset-0 size-full select-none object-cover opacity-50 blur-sm 2xl:blur-md [@media(min-width:1920px)]:blur-lg [@media(min-width:2560px)]:blur-xl"
       />
+      <div className="relative h-full">
+        <DeckVsSelector
+          onStart={(playerDeck, opponentDeck, formatId, commanderName) => {
+            startGame(playerDeck, formatId, commanderName, opponentDeck);
+          }}
+        />
+      </div>
     </div>
   );
 }

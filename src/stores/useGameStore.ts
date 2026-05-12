@@ -28,12 +28,6 @@ export type {
   DeferredSnapshot,
 } from "./gameStore.types";
 
-function formatMissingCardsMessage(deckLabel: string, missingCards: string[]): string {
-  const preview = missingCards.slice(0, 8).join(", ");
-  const extra = missingCards.length > 8 ? ` (+${missingCards.length - 8} more)` : "";
-  return `${deckLabel} contains cards not available in the web engine bundle: ${preview}${extra}`;
-}
-
 function isManualTabletopApi(
   runtime: GameRuntime,
 ): runtime is GameRuntime & { api: ManualTabletopApi } {
@@ -135,21 +129,6 @@ export const useGameStore = create<GameState>()(
           const gameConfig: GameConfig = { formatId: formatId ?? "standard", startingLife };
           set({ gameConfig });
           const runtime = getSelectedGameRuntime();
-          const playerAvailability = await runtime.api.validateDeckAvailability(deckList);
-          if (!playerAvailability.supported) {
-            throw new Error(
-              formatMissingCardsMessage("Selected deck", playerAvailability.missingCards),
-            );
-          }
-          if (opponentDeckList) {
-            const opponentAvailability =
-              await runtime.api.validateDeckAvailability(opponentDeckList);
-            if (!opponentAvailability.supported) {
-              throw new Error(
-                formatMissingCardsMessage("Opponent deck", opponentAvailability.missingCards),
-              );
-            }
-          }
           // Prefetch BEFORE starting the engine. Otherwise the engine
           // emits its first prompt within milliseconds and the loading
           // screen dismisses (gameView becomes non-null) before the
@@ -332,14 +311,6 @@ export const useGameStore = create<GameState>()(
           });
           resetSelectedGameRuntime();
           const runtime = getSelectedGameRuntime();
-          for (const [index, deckList] of deckLists.entries()) {
-            const availability = await runtime.api.validateDeckAvailability(deckList);
-            if (!availability.supported) {
-              throw new Error(
-                formatMissingCardsMessage(`Player ${index + 1} deck`, availability.missingCards),
-              );
-            }
-          }
           // Same ordering rule as `startGame`: prefetch BEFORE the engine
           // boots so first prompts can't dismiss the loading screen
           // ahead of the texture cache.

@@ -34,13 +34,30 @@ export function limited_advance_gauntlet_round(gauntlet_id: string): any;
 
 export function limited_cubecobra_url(cube_id_or_url: string): string;
 
+export function limited_drop_session(kind: string, session_id: string): boolean;
+
 export function limited_get_draft_state(session_id: string): any;
+
+export function limited_get_edition_info(set_code: string): any;
+
+export function limited_get_gauntlet_match_decks(gauntlet_id: string): any;
 
 export function limited_get_gauntlet_state(gauntlet_id: string): any;
 
 export function limited_get_sealed_pool(session_id: string): any;
 
-export function limited_get_edition_info(set_code: string): any;
+/**
+ * Return every card in a given set, formatted as a `DraftCardDto[]` —
+ * the same shape `limited_start_sealed` / `limited_start_booster_draft`
+ * expect for their `setup.pool` field.
+ *
+ * Replaces the React-side Scryfall round-trip: the archive's
+ * `EditionsRegistry` already knows every card in every set, and the
+ * engine's `CardDatabase` already knows each card's colors and
+ * dual-faced-ness, so there's no need to call out to Scryfall just to
+ * learn what's in a set. Card images remain a Scryfall concern.
+ */
+export function limited_get_set_pool(set_code: string): any;
 
 export function limited_get_winston_state(session_id: string): any;
 
@@ -54,8 +71,6 @@ export function limited_list_sealed_templates(): any;
 
 export function limited_pick_card(session_id: string, card_name: string): any;
 
-export function limited_undo_pick(session_id: string): any;
-
 export function limited_record_gauntlet_outcome(gauntlet_id: string, won_game: boolean, match_over: boolean, match_won: boolean): any;
 
 export function limited_start_booster_draft(setup_json: any): any;
@@ -66,19 +81,18 @@ export function limited_start_sealed(setup_json: any): any;
 
 export function limited_start_winston(setup_json: any): any;
 
+export function limited_undo_pick(session_id: string): any;
+
+export function limited_update_gauntlet_human_deck(update_json: any): any;
+
 export function limited_winston_pass(session_id: string): any;
 
 export function limited_winston_take(session_id: string): any;
 
 /**
- * Load the card database from a JSON bundle string.
- *
- * This should be called once at startup with the contents of cards-bundle.json.
- * Returns the number of cards loaded.
+ * Load the card + token + edition database from a single rkyv archive.
  */
-export function load_card_bundle(json_str: string): number;
-
-export function load_token_bundle(json_str: string): number;
+export function load_card_archive(bytes: Uint8Array): bigint;
 
 /**
  * Log a message to the browser console (for debugging).
@@ -96,11 +110,6 @@ export function parse_config(config_json: any): any;
  * Returns a summary of the parsed deck for verification.
  */
 export function parse_deck(deck_json: any): any;
-
-/**
- * Parse preset decks JSON.
- */
-export function parse_preset_decks(json_str: string): any;
 
 /**
  * Run an interactive game with a human player (blocking on Atomics.wait).
@@ -141,44 +150,46 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
-    readonly wasm_init: () => void;
-    readonly log: (a: number, b: number) => void;
-    readonly load_card_bundle: (a: number, b: number) => [number, number, number];
-    readonly load_token_bundle: (a: number, b: number) => [number, number, number];
-    readonly is_card_db_loaded: () => number;
-    readonly get_card_count: () => number;
-    readonly is_token_db_loaded: () => number;
-    readonly get_token_count: () => number;
-    readonly has_card: (a: number, b: number) => number;
-    readonly parse_preset_decks: (a: number, b: number) => [number, number, number];
-    readonly limited_list_sealed_templates: () => [number, number, number];
+    readonly limited_advance_gauntlet_round: (a: number, b: number) => [number, number, number];
+    readonly limited_cubecobra_url: (a: number, b: number) => [number, number, number, number];
+    readonly limited_drop_session: (a: number, b: number, c: number, d: number) => [number, number, number];
+    readonly limited_get_draft_state: (a: number, b: number) => [number, number, number];
+    readonly limited_get_edition_info: (a: number, b: number) => [number, number, number];
+    readonly limited_get_gauntlet_match_decks: (a: number, b: number) => [number, number, number];
+    readonly limited_get_gauntlet_state: (a: number, b: number) => [number, number, number];
+    readonly limited_get_sealed_pool: (a: number, b: number) => [number, number, number];
+    readonly limited_get_set_pool: (a: number, b: number) => [number, number, number];
+    readonly limited_get_winston_state: (a: number, b: number) => [number, number, number];
+    readonly limited_import_cube: (a: any, b: number, c: number) => [number, number, number];
     readonly limited_list_chaos_themes: () => [number, number, number];
     readonly limited_list_conspiracy_hooks: () => [number, number, number];
-    readonly limited_start_sealed: (a: any) => [number, number, number];
-    readonly limited_get_sealed_pool: (a: number, b: number) => [number, number, number];
-    readonly limited_get_edition_info: (a: number, b: number) => [number, number, number];
-    readonly limited_start_booster_draft: (a: any) => [number, number, number];
+    readonly limited_list_sealed_templates: () => [number, number, number];
     readonly limited_pick_card: (a: number, b: number, c: number, d: number) => [number, number, number];
-    readonly limited_undo_pick: (a: number, b: number) => [number, number, number];
-    readonly limited_get_draft_state: (a: number, b: number) => [number, number, number];
-    readonly limited_start_winston: (a: any) => [number, number, number];
-    readonly limited_winston_take: (a: number, b: number) => [number, number, number];
-    readonly limited_winston_pass: (a: number, b: number) => [number, number, number];
-    readonly limited_get_winston_state: (a: number, b: number) => [number, number, number];
-    readonly limited_start_gauntlet_from_sealed: (a: number, b: number, c: number) => [number, number, number];
     readonly limited_record_gauntlet_outcome: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
-    readonly limited_advance_gauntlet_round: (a: number, b: number) => [number, number, number];
-    readonly limited_get_gauntlet_state: (a: number, b: number) => [number, number, number];
-    readonly limited_cubecobra_url: (a: number, b: number) => [number, number, number, number];
-    readonly limited_import_cube: (a: any, b: number, c: number) => [number, number, number];
-    readonly get_engine_info: () => any;
+    readonly limited_start_booster_draft: (a: any) => [number, number, number];
+    readonly limited_start_gauntlet_from_sealed: (a: number, b: number, c: number) => [number, number, number];
+    readonly limited_start_sealed: (a: any) => [number, number, number];
+    readonly limited_start_winston: (a: any) => [number, number, number];
+    readonly limited_undo_pick: (a: number, b: number) => [number, number, number];
+    readonly limited_update_gauntlet_human_deck: (a: any) => [number, number, number];
+    readonly limited_winston_pass: (a: number, b: number) => [number, number, number];
+    readonly limited_winston_take: (a: number, b: number) => [number, number, number];
+    readonly log: (a: number, b: number) => void;
+    readonly wasm_init: () => void;
     readonly echo: (a: number, b: number) => [number, number];
-    readonly parse_deck: (a: any) => [number, number, number];
+    readonly get_engine_info: () => any;
     readonly parse_config: (a: any) => [number, number, number];
-    readonly test_rng: () => any;
-    readonly test_foundation: () => any;
+    readonly parse_deck: (a: any) => [number, number, number];
     readonly run_interactive_game: (a: any, b: any, c: any, d: any) => [number, number, number];
     readonly run_multiplayer_game: (a: any, b: any, c: any, d: any, e: any, f: number) => [number, number, number];
+    readonly test_foundation: () => any;
+    readonly test_rng: () => any;
+    readonly has_card: (a: number, b: number) => number;
+    readonly is_card_db_loaded: () => number;
+    readonly is_token_db_loaded: () => number;
+    readonly load_card_archive: (a: number, b: number) => [bigint, number, number];
+    readonly get_card_count: () => number;
+    readonly get_token_count: () => number;
     readonly __wbindgen_malloc_command_export: (a: number, b: number) => number;
     readonly __wbindgen_realloc_command_export: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store_command_export: (a: number) => void;

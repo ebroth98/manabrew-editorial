@@ -147,7 +147,7 @@ fn load_preset_deck(
 fn preset_decks_dir() -> PathBuf {
     env::var("PRESET_DECKS_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| workspace_root().join("preset_decks"))
+        .unwrap_or_else(|_| workspace_root().join("public/preset_decks"))
 }
 
 fn synthetic_deck(name: &str, commander_name: Option<String>) -> DeckSelection {

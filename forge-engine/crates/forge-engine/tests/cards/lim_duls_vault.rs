@@ -43,16 +43,13 @@ fn make_changeling_outcast(owner: PlayerId) -> CardInstance {
 }
 
 fn make_lim_duls_vault(owner: PlayerId) -> CardInstance {
-    let (db, result) = CardDatabase::load_from_strings([(
-        "lim_duls_vault",
+    let bytes = forge_cardset_archive::build_test_archive(&[(
+        "lim-dûl's vault",
         include_str!("../../../../../forge/forge-gui/res/cardsfolder/l/lim_duls_vault.txt"),
     )]);
-    assert_eq!(
-        result.failed, 0,
-        "Vault script should parse cleanly: {:?}",
-        result.errors
-    );
-    let rules = db
+    let bundle = CardDatabase::load_from_archive(&bytes).expect("synthetic archive should load");
+    let rules = bundle
+        .cards
         .get_by_card_name("Lim-Dûl's Vault")
         .expect("Vault rules should load from the real card script");
     CardInstance::from_rules(rules, owner)

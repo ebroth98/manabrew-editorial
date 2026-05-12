@@ -38,7 +38,6 @@ export type {
   StartMultiplayerGameParams,
   RespondParams,
   RestoreSnapshotParams,
-  DeckAvailabilityResult,
   ServerConnectParams,
   CreateRoomParams,
   JoinRoomParams,

@@ -17,6 +17,62 @@ pub async fn limited_get_edition_info(set_code: String) -> Option<EditionInfoDto
     limited_bootstrap::edition_info(&set_code)
 }
 
+/// Return every card in a given set, formatted as a `DraftCardDto[]` — the
+/// same shape `limited_start_sealed` / `limited_start_booster_draft` expect
+/// for their `setup.pool` field.
+///
+/// The archive's `EditionsRegistry` already lists every card in every set,
+/// and the engine's `CardDatabase` already knows each card's colors and
+/// dual-faced-ness, so there is no need to round-trip through Scryfall just
+/// to learn what's in a set. Mirrors `forge-wasm::limited_get_set_pool`.
+#[tauri::command]
+pub async fn limited_get_set_pool(set_code: String) -> Result<Vec<DraftCardDto>, String> {
+    let edition = limited_bootstrap::editions()
+        .get(&set_code)
+        .ok_or_else(|| format!("unknown set: {set_code}"))?;
+    let card_db = crate::card_db::get_card_db();
+    let pool: Vec<DraftCardDto> = edition
+        .cards
+        .iter()
+        .map(|entry| {
+            let (colors, dual_faced) = card_db
+                .get_by_card_name(&entry.name)
+                .map(|r| (r.color(), r.split_type.is_dual_faced()))
+                .unwrap_or_default();
+            DraftCardDto {
+                name: entry.name.clone(),
+                set_code: edition.code.clone(),
+                collector_number: entry.collector_number.clone(),
+                rarity: rarity_label(entry.rarity),
+                colors: color_letters_dto(colors),
+                is_double_faced: dual_faced,
+                foil: false,
+            }
+        })
+        .collect();
+    Ok(pool)
+}
+
+fn color_letters_dto(colors: forge_foundation::ColorSet) -> Vec<String> {
+    let mut out = Vec::new();
+    if colors.has_white() {
+        out.push("W".to_string());
+    }
+    if colors.has_blue() {
+        out.push("U".to_string());
+    }
+    if colors.has_black() {
+        out.push("B".to_string());
+    }
+    if colors.has_red() {
+        out.push("R".to_string());
+    }
+    if colors.has_green() {
+        out.push("G".to_string());
+    }
+    out
+}
+
 #[tauri::command]
 pub async fn limited_start_sealed(
     lm: State<'_, LimitedManager>,

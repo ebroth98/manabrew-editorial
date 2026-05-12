@@ -30,6 +30,7 @@ The project is large; every line is a long-term liability. Before adding code:
 - **Extend before creating.** Prefer adding to the existing file that already mirrors the Java side over a new one.
 - **No premature abstraction.** Three similar lines beat a clever generic. No defensive code at internal boundaries. No speculative error handling.
 - **Bound the change.** A bugfix touching 12 files needs justification. If it can be one or two, do that.
+- **Comments explain code, not changes.** Default to writing no comments at all. Only add one when a future reader couldn't infer the code's intent without it — a hidden invariant, a workaround for a specific upstream bug, a parity quirk mirroring Java. Never narrate the edit itself: no "this used to be X, now it's Y", no "previously we …", no "added to handle the new …", no reference to the diff that produced the line. Good naming and small functions are the documentation; comments are the exception, not the rule.
 
 ## Navigation map — read this before every task
 

@@ -324,6 +324,7 @@ impl CardPool {
             });
         }
 
+        db.force_parse_all();
         for (_name, rules) in db.iter() {
             stats.total_scanned += 1;
 

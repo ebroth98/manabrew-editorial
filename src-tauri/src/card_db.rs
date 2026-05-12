@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Once, OnceLock};
 
 use forge_carddb::CardDatabase;
 use forge_engine_core::card::CardInstance;
@@ -11,6 +11,7 @@ static CARD_DB: OnceLock<CardDatabase> = OnceLock::new();
 static TOKEN_DB: OnceLock<CardDatabase> = OnceLock::new();
 static TOKEN_IMAGE_MAP: OnceLock<HashMap<String, TokenImageInfo>> = OnceLock::new();
 static CARD_NAME_INDEX: OnceLock<std::collections::HashSet<String>> = OnceLock::new();
+static DB_INIT: Once = Once::new();
 
 /// Scryfall set code + collector number for a token, derived from edition files.
 #[derive(Debug, Clone)]
@@ -19,26 +20,6 @@ pub struct TokenImageInfo {
     pub set_code: String,
     /// Collector number within that token set (e.g., "1").
     pub collector_number: String,
-}
-
-/// Returns the path to the Forge card scripts directory.
-/// Checks the CARDS_DIR env var first; falls back to the path adjacent
-/// to this crate's manifest (works during `cargo tauri dev`).
-fn cards_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("CARDS_DIR") {
-        PathBuf::from(dir)
-    } else {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../forge/forge-gui/res/cardsfolder")
-    }
-}
-
-/// Returns the path to the Forge token scripts directory.
-fn token_scripts_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("TOKEN_SCRIPTS_DIR") {
-        PathBuf::from(dir)
-    } else {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../forge/forge-gui/res/tokenscripts")
-    }
 }
 
 /// Returns the path to the Forge editions directory.
@@ -50,10 +31,10 @@ fn editions_dir() -> PathBuf {
     }
 }
 
-/// Returns the path to the pre-built cardset rkyv archive, if any.
+/// Returns the path to the pre-built cardset rkyv archive.
 /// Checks `CARDSET_ARCHIVE` env var first; falls back to `resources/cardset.rkyv`
 /// adjacent to this crate's manifest (where the build script writes it).
-fn cardset_archive_path() -> PathBuf {
+pub fn cardset_archive_path() -> PathBuf {
     if let Ok(path) = std::env::var("CARDSET_ARCHIVE") {
         PathBuf::from(path)
     } else {
@@ -61,63 +42,38 @@ fn cardset_archive_path() -> PathBuf {
     }
 }
 
-/// Returns the global CardDatabase, loading it on first call.
+/// Loads card + token databases on first call.
 ///
-/// Prefers the pre-built rkyv archive at `cardset_archive_path()` (mmap'd,
-/// zero-copy, ~6× faster cold start than the FS scan). Falls back to walking
-/// `cards_dir()` directly when the archive is missing or invalid — which is
-/// what `cargo tauri dev` does on a fresh checkout before `cargo build` has
-/// produced the archive.
-pub fn get_card_db() -> &'static CardDatabase {
-    CARD_DB.get_or_init(|| {
+/// The pre-built rkyv archive at `cardset_archive_path()` is mandatory —
+/// `src-tauri/build.rs` always rebuilds it when the cardsfolder changes, so
+/// it should always be present after a successful build. If it isn't, the
+/// process panics with a clear hint rather than silently degrading.
+fn ensure_dbs_loaded() {
+    DB_INIT.call_once(|| {
         let archive_path = cardset_archive_path();
-        let editions = editions_dir();
-        if archive_path.exists() {
-            match load_card_db_from_archive(&archive_path, &editions) {
-                Ok((db, loaded, failed)) => {
-                    eprintln!(
-                        "[carddb] Loaded {} cards ({} failed) from archive {}",
-                        loaded,
-                        failed,
-                        archive_path.display()
-                    );
-                    return db;
-                }
-                Err(err) => {
-                    eprintln!(
-                        "[carddb] Archive at {} unusable ({}); falling back to FS scan",
-                        archive_path.display(),
-                        err
-                    );
-                }
-            }
+        if let Err(err) = load_dbs_from_archive(&archive_path) {
+            panic!(
+                "[carddb] Failed to load cardset archive at {}: {}.\n\
+                 Run `cargo build -p forge-web` (or `yarn build:wasm`) to rebuild it.",
+                archive_path.display(),
+                err
+            );
         }
+    });
+}
 
-        let dir = cards_dir();
-        eprintln!("[carddb] Loading cards from {:?} …", dir);
-        let (db, result) = CardDatabase::load_from_directory(&dir);
-        eprintln!(
-            "[carddb] Loaded {} cards ({} failed)",
-            result.loaded, result.failed
-        );
-        if !result.errors.is_empty() {
-            for (file, err) in result.errors.iter().take(10) {
-                eprintln!("[carddb]   parse error in {}: {}", file, err);
-            }
-        }
-        db
-    })
+pub fn get_card_db() -> &'static CardDatabase {
+    ensure_dbs_loaded();
+    CARD_DB.get().expect("card db must be initialized")
 }
 
 pub fn get_card_name_index() -> &'static std::collections::HashSet<String> {
     CARD_NAME_INDEX.get_or_init(|| {
+        // Walk the rkyv archive (or eager cache) for names without parsing
+        // any cards — `card_name_known` is hit on every UI deck-validation
+        // pass, well before a game starts.
         let db = get_card_db();
-        let mut set = std::collections::HashSet::with_capacity(db.iter().count());
-        for (name, rules) in db.iter() {
-            set.insert(name.to_lowercase());
-            set.insert(rules.name().to_lowercase());
-        }
-        set
+        db.iter_card_keys().into_iter().collect()
     })
 }
 
@@ -125,19 +81,23 @@ pub fn card_name_known(name: &str) -> bool {
     get_card_name_index().contains(&name.to_lowercase())
 }
 
-fn load_card_db_from_archive(
-    archive_path: &std::path::Path,
-    editions_dir: &std::path::Path,
-) -> Result<(CardDatabase, usize, usize), String> {
+/// mmap the archive, parse it through `CardDatabase::load_from_archive`,
+/// and populate both `CARD_DB` and `TOKEN_DB` from the single bundle.
+fn load_dbs_from_archive(archive_path: &std::path::Path) -> Result<(), String> {
     let file = std::fs::File::open(archive_path).map_err(|e| format!("open: {e}"))?;
     let mmap = unsafe { Mmap::map(&file).map_err(|e| format!("mmap: {e}"))? };
-    let editions_opt = if editions_dir.exists() {
-        Some(editions_dir)
-    } else {
-        None
-    };
-    let (db, result) = CardDatabase::load_from_archive(&mmap, editions_opt)?;
-    Ok((db, result.loaded, result.failed))
+    let bundle = CardDatabase::load_from_archive(&mmap)?;
+    eprintln!(
+        "[carddb] Loaded {} cards ({} failed), {} tokens ({} failed) from archive {}",
+        bundle.cards_result.loaded,
+        bundle.cards_result.failed,
+        bundle.tokens_result.loaded,
+        bundle.tokens_result.failed,
+        archive_path.display()
+    );
+    let _ = CARD_DB.set(bundle.cards);
+    let _ = TOKEN_DB.set(bundle.tokens);
+    Ok(())
 }
 
 /// Returns the global token-script database, loading it on first call.
@@ -145,16 +105,8 @@ fn load_card_db_from_archive(
 /// Token scripts live in `forge/forge-gui/res/tokenscripts/` and are keyed
 /// by their filename stem (e.g. "r_1_1_goblin" for `r_1_1_goblin.txt`).
 pub fn get_token_db() -> &'static CardDatabase {
-    TOKEN_DB.get_or_init(|| {
-        let dir = token_scripts_dir();
-        eprintln!("[tokendb] Loading token scripts from {:?} …", dir);
-        let (db, result) = CardDatabase::load_from_directory(&dir);
-        eprintln!(
-            "[tokendb] Loaded {} token scripts ({} failed)",
-            result.loaded, result.failed
-        );
-        db
-    })
+    ensure_dbs_loaded();
+    TOKEN_DB.get().expect("token db must be initialized")
 }
 
 /// Returns the global token image mapping, built from edition files on first call.

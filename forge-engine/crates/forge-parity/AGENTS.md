@@ -28,7 +28,7 @@ Read first: `/AGENTS.md`, `docs/agents/ENGINE_BUGFIX_WORKFLOW.md`, `docs/PARITY_
 Deck names passed via `--deck1` / `--deck2` resolve from two folders in order:
 
 1. `parity_decks/` — canonical home for decks referenced by `regression.json`. Land new regression decks here.
-2. `preset_decks/` — wider preset library (UI, `yarn import-deck` landing zone). Decks here are still resolvable by name for ad-hoc parity runs.
+2. `public/preset_decks/` — wider preset library shared with the web build (UI, `yarn import-deck` landing zone). Decks here are still resolvable by name for ad-hoc parity runs.
 
 Both engines share this lookup: the Rust list lives in `runner::DEFAULT_DECKS_DIRS`; the Java harness reads it via `-Dpreset.decks.dir=parity_decks,preset_decks` (set automatically by `java_bridge::decks_dir_property`). `--decks-dir <path>` still overrides with a single explicit folder for tests/debugging.
 
@@ -43,6 +43,8 @@ yarn parity:test -- --deck1 <d1> --deck2 <d2> --seed <N> --max-turns 30 -v
 ```
 
 Trace flags: `FORGE_RNG_TRACE=1`, `FORGE_TRIGGER_TRACE=1`, `FORGE_LIFE_TRACE=1`. See `docs/PARITY_TESTING.md` for the full env-var list.
+
+The parity binary mmaps `src-tauri/resources/cardset.rkyv` at startup. `yarn parity` ensures it's present, but direct invocations (`cargo run -p forge-parity …`, manual `./target/release/forge-parity …`, custom CI jobs) need to materialise it first — see `forge-engine/AGENTS.md` § "Cardset archive". A bare `cargo build` of this crate doesn't build it.
 
 ### Add a regression entry
 

@@ -9,6 +9,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use forge_carddb::database::ArchiveBundle;
 use forge_carddb::CardDatabase;
 use forge_engine_core::agent::{
     BinaryChoiceKind, GameEntity, ManaCostAction, PlayerAgent, PriorityActionSpace,
@@ -34,14 +35,14 @@ use crate::snapshot::snapshot_game;
 use crate::utils::decks::{build_deck_from_spec, resolve_deck_spec};
 
 /// Directories searched, in order, when no `--decks-dir` override is given.
-/// `parity_decks/` holds decks referenced by the regression suite; `preset_decks/`
+/// `parity_decks/` holds decks referenced by the regression suite; `public/preset_decks/`
 /// holds the wider UI/import preset library.
-pub const DEFAULT_DECKS_DIRS: &[&str] = &["parity_decks", "preset_decks"];
+pub const DEFAULT_DECKS_DIRS: &[&str] = &["parity_decks", "public/preset_decks"];
 
 /// Single-string default kept for callers (e.g. CLI fallbacks, debugger crates)
 /// that have not yet been migrated to the multi-dir API. Prefer
 /// [`DEFAULT_DECKS_DIRS`] for new code.
-pub const DEFAULT_DECKS_DIR: &str = "preset_decks";
+pub const DEFAULT_DECKS_DIR: &str = "public/preset_decks";
 
 /// Build the deck-search-path list from an optional CLI override.
 /// `Some(dir)` → single-dir search (preserves explicit `--decks-dir` semantics);
@@ -878,19 +879,10 @@ fn cardset_archive_path() -> std::path::PathBuf {
     }
 }
 
-fn load_card_db_from_archive(
-    archive_path: &std::path::Path,
-    editions_dir: &std::path::Path,
-) -> Result<(CardDatabase, usize, usize), String> {
+fn load_archive_bundle(archive_path: &std::path::Path) -> Result<ArchiveBundle, String> {
     let file = std::fs::File::open(archive_path).map_err(|e| format!("open: {e}"))?;
     let mmap = unsafe { Mmap::map(&file).map_err(|e| format!("mmap: {e}"))? };
-    let editions_opt = if editions_dir.exists() {
-        Some(editions_dir)
-    } else {
-        None
-    };
-    let (db, result) = CardDatabase::load_from_archive(&mmap, editions_opt)?;
-    Ok((db, result.loaded, result.failed))
+    CardDatabase::load_from_archive(&mmap)
 }
 
 pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, String> {
@@ -898,58 +890,30 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
     let cards_dir = cards_dir.unwrap_or("forge/forge-gui/res/cardsfolder");
     let cards_path = std::path::Path::new(cards_dir);
 
-    if !cards_path.exists() {
+    let archive_path = cardset_archive_path();
+    if !archive_path.exists() {
         return Err(format!(
-            "Cards directory not found: {}. Set --cards-dir to the Forge cardsfolder path.",
-            cards_dir,
+            "Cardset archive not found at {}. Run `cargo build -p forge-web` (or `yarn build:wasm`) to build it.",
+            archive_path.display()
         ));
     }
-
-    let res_dir = cards_path
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."));
-    let editions_dir = res_dir.join("editions");
-    let archive_path = cardset_archive_path();
-    let (db, _result) = if archive_path.exists() {
-        match load_card_db_from_archive(&archive_path, &editions_dir) {
-            Ok((db, loaded, failed)) => {
-                if verbose {
-                    eprintln!(
-                        "[parity] Loaded {} cards ({} failed) from archive {}",
-                        loaded,
-                        failed,
-                        archive_path.display()
-                    );
-                }
-                (
-                    db,
-                    forge_carddb::database::LoadResult {
-                        loaded,
-                        failed,
-                        errors: Vec::new(),
-                    },
-                )
-            }
-            Err(err) => {
-                if verbose {
-                    eprintln!(
-                        "[parity] Archive at {} unusable ({}); falling back to FS scan",
-                        archive_path.display(),
-                        err
-                    );
-                }
-                if verbose {
-                    eprintln!("[parity] Loading cards from {:?} ...", cards_path);
-                }
-                CardDatabase::load_from_directory(cards_path)
-            }
-        }
-    } else {
-        if verbose {
-            eprintln!("[parity] Loading cards from {:?} ...", cards_path);
-        }
-        CardDatabase::load_from_directory(cards_path)
-    };
+    let bundle = load_archive_bundle(&archive_path)?;
+    if verbose {
+        eprintln!(
+            "[parity] Loaded {} cards ({} failed), {} tokens ({} failed) from archive {}",
+            bundle.cards_result.loaded,
+            bundle.cards_result.failed,
+            bundle.tokens_result.loaded,
+            bundle.tokens_result.failed,
+            archive_path.display()
+        );
+    }
+    let ArchiveBundle {
+        cards: db,
+        tokens: token_db,
+        cards_result: _,
+        tokens_result: _,
+    } = bundle;
     if verbose {
         let script_stats = crate::card_pool::scan_raw_script_diagnostics(cards_path);
         eprintln!("[parity] {}", script_stats);
@@ -989,63 +953,11 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
         }
     }
 
+    // Tokens come from the same rkyv archive bundle as cards.
     let mut token_templates = Vec::new();
-    let token_dir_path = cards_path
-        .parent()
-        .map(|p| p.join("tokenscripts"))
-        .unwrap_or_default();
-    if token_dir_path.exists() {
-        if verbose {
-            eprintln!(
-                "[parity] Loading token scripts from {:?} ...",
-                token_dir_path
-            );
-        }
-        let _t_tokens = Instant::now();
-        let (token_db, token_result) = CardDatabase::load_from_directory(&token_dir_path);
-        if verbose {
-            eprintln!("[parity] Loaded {} token scripts", token_result.loaded);
-            let token_script_stats = crate::card_pool::scan_raw_script_diagnostics(&token_dir_path);
-            eprintln!("[parity] Token {}", token_script_stats);
-            for example in token_script_stats.example_lines() {
-                eprintln!("[parity] token script diagnostic example: {}", example);
-            }
-            for example in token_script_stats.semantic_raw_example_lines() {
-                eprintln!("[parity] token script semantic raw example: {}", example);
-            }
-            for example in token_script_stats.svar_raw_dollar_example_lines() {
-                eprintln!("[parity] token script raw SVar dollar example: {}", example);
-            }
-            for example in token_script_stats.raw_dsl_domain_example_lines() {
-                eprintln!("[parity] token script raw DSL domain example: {}", example);
-            }
-            if !token_script_stats.svar_raw_dollar_shapes.is_empty() {
-                eprintln!("[parity] token script raw SVar dollar shapes:");
-                let mut shapes = token_script_stats
-                    .svar_raw_dollar_shapes
-                    .iter()
-                    .collect::<Vec<_>>();
-                shapes.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
-                for (shape, count) in shapes.iter().take(32) {
-                    eprintln!("[parity]   {count:6} {shape}");
-                }
-            }
-            if !token_script_stats.raw_dsl_domain_shapes.is_empty() {
-                eprintln!("[parity] token script raw DSL domains:");
-                let mut shapes = token_script_stats
-                    .raw_dsl_domain_shapes
-                    .iter()
-                    .collect::<Vec<_>>();
-                shapes.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
-                for (shape, count) in shapes.iter().take(48) {
-                    eprintln!("[parity]   {count:6} {shape}");
-                }
-            }
-        }
-        for (script_name, rules) in token_db.iter() {
-            let template = CardInstance::from_rules(rules, PlayerId(0));
-            token_templates.push((script_name.clone(), template));
-        }
+    for (script_name, rules) in token_db.iter() {
+        let template = CardInstance::from_rules(rules, PlayerId(0));
+        token_templates.push((script_name, template));
     }
 
     // Load creature types from TypeLists.txt into the engine's global registry.

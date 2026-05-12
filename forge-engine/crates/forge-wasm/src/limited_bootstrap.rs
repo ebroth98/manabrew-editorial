@@ -1,9 +1,6 @@
-use std::sync::OnceLock;
-
 use forge_foundation::edition::EditionsRegistry;
-use forge_foundation::sealed_product::{booster_template_registry, FoilType};
+use forge_foundation::sealed_product::FoilType;
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::prelude::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,7 +27,7 @@ pub struct EditionSlotDto {
 }
 
 pub(crate) fn edition_info(code: &str) -> Option<EditionInfoDto> {
-    let editions = editions();
+    let editions = editions()?;
     let edition = editions.get(code)?;
     let template = edition.to_sealed_template()?;
     let slots = template
@@ -67,47 +64,8 @@ pub(crate) fn edition_info(code: &str) -> Option<EditionInfoDto> {
     })
 }
 
-static EDITIONS: OnceLock<EditionsRegistry> = OnceLock::new();
-
-pub(crate) fn editions() -> &'static EditionsRegistry {
-    EDITIONS.get_or_init(EditionsRegistry::new)
-}
-
-#[wasm_bindgen]
-pub fn limited_bootstrap_from_strings(
-    edition_bodies: Box<[JsValue]>,
-    boosters_special: Option<String>,
-) -> Result<u32, JsValue> {
-    if EDITIONS.get().is_some() {
-        return Err(JsValue::from_str(
-            "limited_bootstrap_from_strings already called",
-        ));
-    }
-
-    let mut registry = EditionsRegistry::new();
-    let mut loaded = 0u32;
-    for body in edition_bodies.iter() {
-        let body = match body.as_string() {
-            Some(s) => s,
-            None => continue,
-        };
-        let code = registry.ingest_file(&body);
-        if !code.is_empty() {
-            loaded += 1;
-        }
-    }
-    registry.install_print_sheets_default();
-
-    if let Some(body) = boosters_special {
-        booster_template_registry::install(booster_template_registry::parse_boosters_special(
-            &body,
-        ));
-    }
-
-    EDITIONS
-        .set(registry)
-        .map_err(|_| JsValue::from_str("EDITIONS already initialised"))?;
-    Ok(loaded)
+pub(crate) fn editions() -> Option<&'static EditionsRegistry> {
+    crate::card_loader::get_editions()
 }
 
 pub(crate) fn dominant_set_code(

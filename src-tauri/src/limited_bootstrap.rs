@@ -1,61 +1,75 @@
-use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use forge_foundation::edition::loader::load_editions_dir;
 use forge_foundation::edition::EditionsRegistry;
-use forge_foundation::sealed_product::booster_template_registry;
-
-const BOOSTERS_SPECIAL_BODY: &str =
-    include_str!("../../forge/forge-gui/res/blockdata/boosters-special.txt");
+use forge_limited::bootstrap::build_registry;
+use memmap2::Mmap;
 
 static EDITIONS: OnceLock<EditionsRegistry> = OnceLock::new();
 
 pub fn editions() -> &'static EditionsRegistry {
     EDITIONS.get_or_init(|| {
-        let mut registry = EditionsRegistry::new();
-
-        if let Ok(dir) = std::env::var("EDITIONS_DIR") {
-            let path = PathBuf::from(&dir);
-            match load_editions_dir(&path, &mut registry) {
-                Ok(report) => {
-                    eprintln!(
-                        "[limited_bootstrap] loaded {} editions from {} ({} errors)",
-                        report.loaded,
-                        path.display(),
-                        report.errors.len()
-                    );
-                    for err in report.errors.iter().take(5) {
-                        eprintln!("[limited_bootstrap]   {err}");
-                    }
-                }
-                Err(e) => eprintln!("[limited_bootstrap] EDITIONS_DIR scan failed: {e}"),
+        let archive_path = crate::card_db::cardset_archive_path();
+        let file = match std::fs::File::open(&archive_path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!(
+                    "[limited_bootstrap] open {}: {e} — per-set templates disabled",
+                    archive_path.display()
+                );
+                return EditionsRegistry::new();
             }
-        } else {
-            eprintln!("[limited_bootstrap] EDITIONS_DIR unset — per-set templates disabled");
-        }
+        };
+        let mmap = match unsafe { Mmap::map(&file) } {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("[limited_bootstrap] mmap: {e}");
+                return EditionsRegistry::new();
+            }
+        };
+        let archive = match forge_cardset_archive::load_checked(&mmap) {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("[limited_bootstrap] archive validation failed: {e}");
+                return EditionsRegistry::new();
+            }
+        };
+
+        let editions = archive
+            .editions
+            .iter()
+            .map(|e| (e.name.as_str(), e.raw.as_str()))
+            .collect::<Vec<_>>();
+        let block_data = archive
+            .block_data
+            .iter()
+            .map(|b| (b.name.as_str(), b.raw.as_str()))
+            .collect::<Vec<_>>();
 
         let card_db = crate::card_db::get_card_db();
-        registry.install_print_sheets(|code, entry| {
-            let mut pc = forge_foundation::sealed_product::PaperCard::new(
-                &entry.name,
-                code,
-                &entry.collector_number,
-                entry.rarity,
-            );
-            if let Some(rules) = card_db.get(&entry.name) {
-                pc = pc
-                    .with_colors(rules.color())
-                    .with_double_faced(rules.split_type.is_dual_faced());
-            }
-            pc
-        });
-        booster_template_registry::install(booster_template_registry::parse_boosters_special(
-            BOOSTERS_SPECIAL_BODY,
-        ));
+        let (registry, report) = build_registry(
+            editions.iter().copied(),
+            block_data.iter().copied(),
+            |code, entry| {
+                let mut pc = forge_foundation::sealed_product::PaperCard::new(
+                    &entry.name,
+                    code,
+                    &entry.collector_number,
+                    entry.rarity,
+                );
+                if let Some(rules) = card_db.get(&entry.name) {
+                    pc = pc
+                        .with_colors(rules.color())
+                        .with_double_faced(rules.split_type.is_dual_faced());
+                }
+                pc
+            },
+        );
 
         eprintln!(
-            "[limited_bootstrap] sheet registry ready · {} edition templates known",
-            registry.len()
+            "[limited_bootstrap] sheet registry ready · {} editions loaded, {} failed, templates: {}",
+            report.editions_loaded,
+            report.editions_failed,
+            if report.booster_templates_loaded { "yes" } else { "no" }
         );
         registry
     })

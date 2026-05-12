@@ -16,7 +16,6 @@ import type {
   StartMultiplayerGameParams,
   RespondParams,
   RestoreSnapshotParams,
-  DeckAvailabilityResult,
   ServerConnectParams,
   CreateRoomParams,
   JoinRoomParams,
@@ -232,7 +231,11 @@ class WorkerBridge {
   private async doInit(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        // Create worker using Vite's worker import pattern
+        // Create worker using Vite's worker import pattern. The worker
+        // kicks off `initWasm()` eagerly at module-load time and emits
+        // `worker:init { stage: 'ready' | 'error' }` when done — we wait
+        // for that event instead of pinging, so init has no command-level
+        // timeout to fight.
         this.worker = new Worker(new URL("../workers/game-engine.worker.ts", import.meta.url), {
           type: "module",
         });
@@ -243,13 +246,19 @@ class WorkerBridge {
           reject(new Error(`Worker error: ${e.message}`));
         };
 
-        // Test the connection with a ping
-        this.invoke("ping")
-          .then(() => {
-            console.log("[WorkerBridge] Worker initialized and responsive");
-            resolve();
-          })
-          .catch(reject);
+        const unsubscribe = this.eventBus.on<{ stage?: string; message?: string }>(
+          "worker:init",
+          (payload) => {
+            if (payload?.stage === "ready") {
+              unsubscribe();
+              console.log("[WorkerBridge] Worker reported ready");
+              resolve();
+            } else if (payload?.stage === "error") {
+              unsubscribe();
+              reject(new Error(payload.message ?? "Worker init failed"));
+            }
+          },
+        );
       } catch (error) {
         reject(error);
       }
@@ -302,7 +311,9 @@ class WorkerBridge {
 
       this.worker!.postMessage(message);
 
-      // Timeout after 30 seconds (except start_game which blocks for the whole game)
+      // start_game blocks for the whole game; everything else is a quick
+      // dispatch over a worker that has already finished initialization
+      // (we `await this.init()` above, which waits for the ready event).
       const timeout = command === "start_game" ? 3600000 : 30000;
       setTimeout(() => {
         if (this.pendingRequests.has(requestId)) {
@@ -419,14 +430,6 @@ class WebGameApi implements IGameApi {
     return presetDeckPayloadsToDecks(
       await this.bridge.invoke<PresetDeckPayload[]>("get_preset_decks"),
     );
-  }
-
-  async validateDeckAvailability(
-    deckList: Array<{ name: string }>,
-  ): Promise<DeckAvailabilityResult> {
-    return this.bridge.invoke<DeckAvailabilityResult>("validate_deck_availability", {
-      deckList,
-    });
   }
 
   async getPrompt(): Promise<unknown> {

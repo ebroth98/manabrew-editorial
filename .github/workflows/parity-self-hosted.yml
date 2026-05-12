@@ -119,9 +119,21 @@ jobs:
         working-directory: branch
         run: cargo build -p forge-parity --release
 
+      - name: Build cardset archive (branch)
+        working-directory: branch
+        run: |
+          cargo run -p forge-cardset-archive --features build --release \
+            --bin build-cardset-archive
+
       - name: Build forge-parity (main)
         working-directory: main-ref
         run: cargo build -p forge-parity --release
+
+      - name: Build cardset archive (main)
+        working-directory: main-ref
+        run: |
+          cargo run -p forge-cardset-archive --features build --release \
+            --bin build-cardset-archive
 
       - name: Download partitioned entries
         uses: actions/download-artifact@v4
@@ -137,7 +149,7 @@ jobs:
             --main-bin   ../main-ref/target/release/forge-parity \
             --entries    ../partitions/existing-entries.json \
             --cards-dir  ../branch/forge/forge-gui/res/cardsfolder \
-            --decks-dir  ../branch/preset_decks \
+            --decks-dir  ../branch/public/preset_decks \
             --out-dir    ../rust-vs-rust-out
 
       - name: Upload rust-vs-rust artifacts
@@ -184,7 +196,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .parity-cache
-          key: parity-java-${{ hashFiles('forge/forge-harness/src/**', 'forge/forge-game/src/**', 'forge/forge-core/src/**', 'forge/forge-ai/src/**', 'preset_decks/**') }}
+          key: parity-java-${{ hashFiles('forge/forge-harness/src/**', 'forge/forge-game/src/**', 'forge/forge-core/src/**', 'forge/forge-ai/src/**', 'public/preset_decks/**') }}
 
       - name: Build Java parity harness JAR
         working-directory: forge
@@ -192,6 +204,11 @@ jobs:
 
       - name: Build forge-parity
         run: cargo build -p forge-parity --features serve --release
+
+      - name: Build cardset archive
+        run: |
+          cargo run -p forge-cardset-archive --features build --release \
+            --bin build-cardset-archive
 
       - name: Start parity server
         run: |

@@ -1,30 +1,37 @@
-use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::{collections::BTreeMap, fs::File};
 
 use forge_carddb::{CardDatabase, CardFace};
 use forge_engine_core::parsing::{
     parse_semantic_param_value, CompiledSelector, Params, SemanticParamValue,
 };
+use memmap2::Mmap;
 
 fn main() {
-    let cards_dir = std::env::args()
+    let archive_path = std::env::args()
         .nth(1)
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../../forge/forge-gui/res/cardsfolder")
+                .join("../../../src-tauri/resources/cardset.rkyv")
         });
-    let (db, result) = CardDatabase::load_from_directory(&cards_dir);
+    let file = File::open(&archive_path)
+        .unwrap_or_else(|e| panic!("open {}: {e}", archive_path.display()));
+    let mmap = unsafe { Mmap::map(&file).expect("mmap") };
+    let bundle = CardDatabase::load_from_archive(&mmap).expect("load archive");
+    let db = bundle.cards;
     println!(
-        "loaded={} failed={} cards_dir={}",
-        result.loaded,
-        result.failed,
-        cards_dir.display()
+        "loaded={} failed={} archive={}",
+        bundle.cards_result.loaded,
+        bundle.cards_result.failed,
+        archive_path.display()
     );
 
     let mut raw_predicates = BTreeMap::<String, usize>::new();
     let mut valid_non_selectors = BTreeMap::<String, BTreeMap<String, usize>>::new();
 
+    // Tool scans every face — force the lazy DB to materialize all cards.
+    db.force_parse_all();
     for (_key, rules) in db.iter() {
         scan_face(
             &rules.main_part,

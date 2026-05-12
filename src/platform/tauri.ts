@@ -21,7 +21,6 @@ import type {
   StartMultiplayerGameParams,
   RespondParams,
   RestoreSnapshotParams,
-  DeckAvailabilityResult,
   ServerConnectParams,
   CreateRoomParams,
   JoinRoomParams,
@@ -75,13 +74,6 @@ class TauriGameApi implements IGameApi {
 
   async getPresetDecks(): Promise<Deck[]> {
     return presetDeckPayloadsToDecks(await invoke<PresetDeckPayload[]>("get_preset_decks"));
-  }
-
-  async validateDeckAvailability(): Promise<DeckAvailabilityResult> {
-    return {
-      supported: true,
-      missingCards: [],
-    };
   }
 
   async getPrompt(): Promise<unknown> {

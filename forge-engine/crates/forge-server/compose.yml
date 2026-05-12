@@ -28,7 +28,7 @@ services:
 
   manabrew:
     build:
-      context: ../../.. # repo root (needs forge-engine/ + src/ + scripts/ + forge/ + preset_decks/)
+      context: ../../.. # repo root (needs forge-engine/ + src/ + scripts/ + forge/ + public/preset_decks/)
       dockerfile: Dockerfile.web
     ports:
       - "1420:443"
@@ -39,7 +39,7 @@ services:
     profiles:
       - parity
     build:
-      context: ../../.. # repo root (needs Cargo workspace + forge/ + preset_decks/)
+      context: ../../.. # repo root (needs Cargo workspace + forge/ + public/preset_decks/)
       dockerfile: forge-engine/crates/forge-parity/Dockerfile
     ports:
       - "8080:8080"

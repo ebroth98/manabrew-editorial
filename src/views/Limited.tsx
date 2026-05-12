@@ -19,11 +19,10 @@ import { Input } from "@/components/ui/input";
 import { SetSymbol } from "@/components/limited/SetSymbol";
 import { useLimitedStore } from "@/stores/useLimitedStore";
 import { useScryfallStore } from "@/stores/useScryfallStore";
-import { chooseImageUrisForCard } from "@/stores/useScryfallStore";
-import { fetchEditionInfo, type EditionInfo } from "@/api/limitedEdition";
+import { fetchEditionInfo, fetchSetPool, type EditionInfo } from "@/api/limitedEdition";
 import { cn } from "@/lib/utils";
 import type { DraftCard } from "@/types/limited";
-import type { ScryfallCard, ScryfallSet } from "@/types/scryfall";
+import type { ScryfallSet } from "@/types/scryfall";
 
 const DRAFTABLE_SET_TYPES = new Set([
   "expansion",
@@ -57,7 +56,6 @@ export default function Limited() {
   const lastImportedCube = useLimitedStore((s) => s.lastImportedCube);
 
   const allSets = useScryfallStore((s) => s.sets);
-  const hydrateSet = useScryfallStore((s) => s.hydrateSet);
   const prefetchSet = useScryfallStore((s) => s.prefetchSet);
 
   const draftableSets = useMemo(
@@ -122,8 +120,7 @@ export default function Limited() {
     }
     setFetchingPool(true);
     try {
-      const cards = await hydrateSet(selectedSetCode);
-      return scryfallCardsToPool(cards);
+      return await fetchSetPool(selectedSetCode);
     } finally {
       setFetchingPool(false);
     }
@@ -466,8 +463,7 @@ export default function Limited() {
                       setFetchingPool(true);
                       const merged: DraftCard[] = [];
                       for (const s of matched) {
-                        const cards = await hydrateSet(s.code);
-                        merged.push(...scryfallCardsToPool(cards));
+                        merged.push(...(await fetchSetPool(s.code)));
                       }
                       const state = await startBoosterDraft({
                         podSize,
@@ -1028,34 +1024,6 @@ function CollapsibleSection({ icon, title, count, children }: CollapsibleSection
   );
 }
 
-const SCRYFALL_RARITY_TO_DRAFT: Record<string, DraftCard["rarity"]> = {
-  common: "common",
-  uncommon: "uncommon",
-  rare: "rare",
-  mythic: "mythic",
-  special: "special",
-  bonus: "special",
-};
-
-function scryfallCardsToPool(cards: ScryfallCard[]): DraftCard[] {
-  const out: DraftCard[] = [];
-  for (const c of cards) {
-    if (!chooseImageUrisForCard(c, { frontOnly: true })) continue;
-    const rarity = SCRYFALL_RARITY_TO_DRAFT[c.rarity ?? "common"] ?? "unknown";
-    const colors = (c.colors?.length ? c.colors : c.color_identity) ?? [];
-    const isDoubleFaced = isDfcLayout(c.layout) && (c.card_faces?.length ?? 0) >= 2;
-    out.push({
-      name: c.name,
-      setCode: c.set,
-      collectorNumber: c.collector_number,
-      rarity,
-      colors,
-      isDoubleFaced,
-    });
-  }
-  return out;
-}
-
 function matchSetsForTheme(tag: string, sets: ScryfallSet[]): ScryfallSet[] {
   const sorted = [...sets].sort((a, b) => (b.released_at ?? "").localeCompare(a.released_at ?? ""));
   switch (tag.toUpperCase()) {
@@ -1082,19 +1050,6 @@ function matchSetsForTheme(tag: string, sets: ScryfallSet[]): ScryfallSet[] {
     case "DEFAULT":
     default:
       return sorted.slice(0, 6);
-  }
-}
-
-function isDfcLayout(layout: string | undefined): boolean {
-  switch (layout) {
-    case "transform":
-    case "modal_dfc":
-    case "meld":
-    case "double_faced_token":
-    case "art_series":
-      return true;
-    default:
-      return false;
   }
 }
 

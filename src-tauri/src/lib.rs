@@ -99,6 +99,7 @@ pub fn run() {
             limited_commands::limited_start_sealed,
             limited_commands::limited_get_sealed_pool,
             limited_commands::limited_get_edition_info,
+            limited_commands::limited_get_set_pool,
             limited_commands::limited_list_sealed_templates,
             limited_commands::limited_start_booster_draft,
             limited_commands::limited_pick_card,

@@ -271,7 +271,7 @@ pub fn compute_source_hash(project_root: &Path) -> String {
         "forge/forge-ai/src",
         "forge/forge-gui/res/cardsfolder",
         "forge/forge-gui/res/tokenscripts",
-        "preset_decks",
+        "public/preset_decks",
         "parity_decks",
     ];
 

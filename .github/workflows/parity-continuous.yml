@@ -38,6 +38,14 @@ jobs:
       - name: Build forge-parity with storage feature
         run: cargo build -p forge-parity --features storage --release
 
+      - name: Build cardset archive
+        # The parity binary mmaps `src-tauri/resources/cardset.rkyv` on
+        # startup. Outside the Tauri build pipeline, we materialize it
+        # explicitly.
+        run: |
+          cargo run -p forge-cardset-archive --features build --release \
+            --bin build-cardset-archive
+
       - name: Run continuous parity
         run: |
           MAX_GAMES="${{ inputs.max_games || '100' }}"

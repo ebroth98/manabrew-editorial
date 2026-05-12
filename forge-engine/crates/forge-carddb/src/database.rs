@@ -1,40 +1,39 @@
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 use deunicode::deunicode;
+use forge_cardset_archive::ArchivedCardArchive;
 
 use crate::card_rules::CardRules;
 use crate::parser::CardScriptParser;
 
-/// A loaded collection of card definitions.
-/// Cards are keyed by their normalized name (filename without extension).
-#[derive(Debug)]
 pub struct CardDatabase {
-    cards: HashMap<String, CardRules>,
-    /// Maps accent-stripped names to original names (mirrors Java's normalizedNames).
+    cards: Mutex<HashMap<String, &'static CardRules>>,
+    archive: Option<&'static ArchivedCardArchive>,
+    parser: Mutex<CardScriptParser>,
+    lazy_failures: Mutex<usize>,
     normalized_names: HashMap<String, String>,
-    /// Maps flavor-name aliases (lowercase) to canonical Oracle card names.
     flavor_name_aliases: HashMap<String, String>,
-    /// Accent-stripped flavor-name aliases (lowercase) to canonical Oracle card names.
     flavor_name_aliases_normalized: HashMap<String, String>,
-    /// Token art variant counts per edition: (token_script, edition_code) → count.
-    /// Used for game-RNG parity: Java's `Aggregates.random()` on a Set calls
-    /// `nextInt()` once per element, so the count determines how many RNG calls
-    /// to consume during token creation.
     token_art_variants: HashMap<(String, String), usize>,
-    /// Token fallback codes: edition_code → fallback_edition_code.
-    /// Mirrors Java's `TokenFallbackCode` metadata in edition files.
     token_fallback: HashMap<String, String>,
-    /// Edition release dates: edition_code → "YYYY-MM-DD".
-    /// Used to sort editions newest-first for token fallback, matching
-    /// Java's `CardEdition.Collection` ordering.
     edition_dates: HashMap<String, String>,
-    /// Edition names: edition_code → display name (e.g. "Duskmourn House of Horror").
-    /// Used as tiebreaker when two editions share the same release date,
-    /// matching Java's `CardEdition.compareTo(date, then name)`.
     edition_names: HashMap<String, String>,
-    /// Default edition per card name (lowercase) — the latest edition containing
-    /// the card, matching Java's CardDb default art preference (LATEST_ART_ALL).
     card_default_edition: HashMap<String, String>,
+}
+
+impl std::fmt::Debug for CardDatabase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let parsed_count = self.cards.lock().map(|m| m.len()).unwrap_or_default();
+        f.debug_struct("CardDatabase")
+            .field("parsed_cards", &parsed_count)
+            .field(
+                "archive_cards",
+                &self.archive.map(|a| a.cards.len()).unwrap_or(0),
+            )
+            .field("flavor_aliases", &self.flavor_name_aliases.len())
+            .finish()
+    }
 }
 
 /// Result of loading a batch of card scripts.
@@ -45,10 +44,21 @@ pub struct LoadResult {
     pub errors: Vec<(String, String)>,
 }
 
+#[derive(Debug)]
+pub struct ArchiveBundle {
+    pub cards: CardDatabase,
+    pub tokens: CardDatabase,
+    pub cards_result: LoadResult,
+    pub tokens_result: LoadResult,
+}
+
 impl CardDatabase {
     pub fn new() -> Self {
         CardDatabase {
-            cards: HashMap::new(),
+            cards: Mutex::new(HashMap::new()),
+            archive: None,
+            parser: Mutex::new(CardScriptParser::new()),
+            lazy_failures: Mutex::new(0),
             normalized_names: HashMap::new(),
             flavor_name_aliases: HashMap::new(),
             flavor_name_aliases_normalized: HashMap::new(),
@@ -61,45 +71,161 @@ impl CardDatabase {
     }
 
     pub fn len(&self) -> usize {
-        self.cards.len()
+        if let Some(archive) = self.archive {
+            archive.cards.len()
+        } else {
+            self.cards.lock().map(|m| m.len()).unwrap_or(0)
+        }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.cards.is_empty()
+        self.len() == 0
     }
 
-    pub fn get(&self, name: &str) -> Option<&CardRules> {
-        self.cards.get(name)
+    pub fn get(&self, name: &str) -> Option<&'static CardRules> {
+        if let Some(rules) = self.cards.lock().ok().and_then(|m| m.get(name).copied()) {
+            return Some(rules);
+        }
+        self.lazy_parse_by_lower(name)
     }
 
-    pub fn get_by_card_name(&self, card_name: &str) -> Option<&CardRules> {
-        // Mirror Java CardDb lookups: case-insensitive card names and
-        // accent-stripped aliases should resolve to the same card.
+    pub fn archive(&self) -> Option<&'static ArchivedCardArchive> {
+        self.archive
+    }
+
+    pub fn get_by_card_name(&self, card_name: &str) -> Option<&'static CardRules> {
+        if let Some(rules) = self.lookup_face(card_name) {
+            return Some(rules);
+        }
+        // Scryfall-style DFC names arrive as `"Front Face // Back Face"`,
+        // but Forge stores DFCs under the front face only — the back is
+        // inside the same script file. Split-card names like `"Fire // Ice"`
+        // do live under the full string and hit the path above. So we only
+        // strip the back as a fallback, preserving split-card lookups.
+        if let Some((front, _back)) = card_name.split_once(" // ") {
+            return self.lookup_face(front);
+        }
+        None
+    }
+
+    fn lookup_face(&self, card_name: &str) -> Option<&'static CardRules> {
         let resolved = self
             .normalized_names
             .get(card_name)
             .map(|s| s.as_str())
             .unwrap_or(card_name);
         let resolved = self.resolve_flavor_alias(resolved);
+        let lower = resolved.to_ascii_lowercase();
 
-        self.cards
-            .values()
-            .find(|r| r.name().eq_ignore_ascii_case(resolved))
-            .or_else(|| {
-                let ascii_query = deunicode(resolved);
-                self.cards.values().find(|r| {
-                    let ascii_name = deunicode(&r.name());
-                    ascii_name.eq_ignore_ascii_case(&ascii_query)
-                })
-            })
+        if let Some(rules) = self.cache_get(&lower) {
+            return Some(rules);
+        }
+        if let Some(rules) = self.lazy_parse_by_lower(&lower) {
+            return Some(rules);
+        }
+        let ascii_query = deunicode(resolved).to_ascii_lowercase();
+        if ascii_query != lower {
+            if let Some(rules) = self.cache_get(&ascii_query) {
+                return Some(rules);
+            }
+            if let Some(rules) = self.lazy_parse_by_lower(&ascii_query) {
+                return Some(rules);
+            }
+        }
+        None
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &CardRules)> {
-        self.cards.iter()
+    fn cache_get(&self, key: &str) -> Option<&'static CardRules> {
+        self.cards.lock().ok()?.get(key).copied()
     }
 
-    pub fn card_names(&self) -> impl Iterator<Item = String> + '_ {
-        self.cards.values().map(|r| r.name())
+    fn cache_insert(&self, key: String, rules: &'static CardRules) {
+        if let Ok(mut map) = self.cards.lock() {
+            map.entry(key).or_insert(rules);
+        }
+    }
+
+    fn lazy_parse_by_lower(&self, name_lower: &str) -> Option<&'static CardRules> {
+        let archive = self.archive?;
+        let archived = archive.lookup(name_lower)?;
+        let raw = archived.raw.as_str();
+        let lines: Vec<&str> = raw.lines().collect();
+
+        let parsed = {
+            let mut parser = self.parser.lock().expect("parser mutex poisoned");
+            parser.parse(lines, Some(name_lower))
+        };
+        match parsed {
+            Ok(card) => {
+                let leaked: &'static CardRules = Box::leak(Box::new(card));
+                self.cache_insert(name_lower.to_string(), leaked);
+                Some(leaked)
+            }
+            Err(_) => {
+                if let Ok(mut failures) = self.lazy_failures.lock() {
+                    *failures += 1;
+                }
+                None
+            }
+        }
+    }
+
+    pub fn iter(&self) -> Vec<(String, &'static CardRules)> {
+        match self.cards.lock() {
+            Ok(map) => map.iter().map(|(k, v)| (k.clone(), *v)).collect(),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    pub fn card_names(&self) -> Vec<String> {
+        if let Some(archive) = self.archive {
+            archive
+                .cards
+                .iter()
+                .map(|c| c.display_name().to_string())
+                .collect()
+        } else {
+            match self.cards.lock() {
+                Ok(map) => map.values().map(|r| r.name()).collect(),
+                Err(_) => Vec::new(),
+            }
+        }
+    }
+
+    pub fn iter_card_keys(&self) -> Vec<String> {
+        if let Some(archive) = self.archive {
+            archive
+                .cards
+                .iter()
+                .map(|c| c.name_lower.to_string())
+                .collect()
+        } else {
+            match self.cards.lock() {
+                Ok(map) => map.keys().cloned().collect(),
+                Err(_) => Vec::new(),
+            }
+        }
+    }
+
+    pub fn force_parse_all(&self) -> LoadResult {
+        let mut result = LoadResult::default();
+        let Some(archive) = self.archive else {
+            // Eager DB — already fully loaded.
+            result.loaded = self.len();
+            return result;
+        };
+        for card in archive.cards.iter() {
+            let name_lower = card.name_lower.as_str();
+            if self.cache_get(name_lower).is_some() {
+                result.loaded += 1;
+                continue;
+            }
+            match self.lazy_parse_by_lower(name_lower) {
+                Some(_) => result.loaded += 1,
+                None => result.failed += 1,
+            }
+        }
+        result
     }
 
     /// Access the raw token art variant map.
@@ -161,36 +287,80 @@ impl CardDatabase {
             .unwrap_or(card_name)
     }
 
-    /// Load cards from an iterator of (filename, script_content) pairs.
-    /// This is the WASM-compatible entry point — no filesystem access.
-    pub fn load_from_strings<'a, I>(scripts: I) -> (Self, LoadResult)
+    pub fn load_from_archive(archive_bytes: &[u8]) -> Result<ArchiveBundle, String> {
+        // Manually allocate an over-sized buffer and pick a 16-byte-aligned
+        // slice inside it. rkyv's `AlignedVec` should do this for us, but it
+        // depends on the platform allocator honoring `Layout::align` — which
+        // wasm32 allocators sometimes don't. Doing it by hand makes the
+        // alignment property something we can verify rather than something
+        // we hope is true.
+        const ALIGN: usize = 16;
+        let mut storage: Box<[u8]> = vec![0u8; archive_bytes.len() + ALIGN].into_boxed_slice();
+        let raw = storage.as_mut_ptr() as usize;
+        let pad = (ALIGN - (raw % ALIGN)) % ALIGN;
+        storage[pad..pad + archive_bytes.len()].copy_from_slice(archive_bytes);
+        let leaked: &'static mut [u8] = Box::leak(storage);
+        let bytes_static: &'static [u8] = &leaked[pad..pad + archive_bytes.len()];
+        debug_assert_eq!(
+            (bytes_static.as_ptr() as usize) % ALIGN,
+            0,
+            "archive buffer not 16-aligned"
+        );
+
+        let archive: &'static ArchivedCardArchive =
+            forge_cardset_archive::load_checked(bytes_static)
+                .map_err(|e| format!("invalid archive: {e}"))?;
+
+        let mut cards = Self::new();
+        cards.archive = Some(archive);
+        for edition in archive.editions.iter() {
+            cards.extract_flavor_aliases_from_edition_contents(edition.raw.as_str());
+        }
+        let cards_result = LoadResult {
+            loaded: archive.cards.len(),
+            failed: 0,
+            errors: Vec::new(),
+        };
+
+        let mut tokens = Self::new();
+        let tokens_result = tokens.parse_scripts(
+            archive
+                .tokens
+                .iter()
+                .map(|c| (c.name_lower.as_str(), c.raw.as_str())),
+        );
+
+        Ok(ArchiveBundle {
+            cards,
+            tokens,
+            cards_result,
+            tokens_result,
+        })
+    }
+
+    fn parse_scripts<'a, I>(&mut self, scripts: I) -> LoadResult
     where
         I: IntoIterator<Item = (&'a str, &'a str)>,
     {
-        let mut db = CardDatabase::new();
         let mut result = LoadResult::default();
         let mut parser = CardScriptParser::new();
-
         for (filename, content) in scripts {
             let lines: Vec<&str> = content.lines().collect();
             match parser.parse(lines, Some(filename)) {
                 Ok(card) => {
-                    let key = card.normalized_name.clone();
-                    let key = if key.is_empty() { card.name() } else { key };
-
-                    // Mirror Java's addFaceToDbNames:
-                    // final String normalName = StringUtils.stripAccents(name);
-                    // if (!normalName.equals(name)) {
-                    //     normalizedNames.put(normalName, name);
-                    // }
+                    let key = if card.normalized_name.is_empty() {
+                        card.name()
+                    } else {
+                        card.normalized_name.clone()
+                    };
                     let card_name = card.name();
                     let normal_name = deunicode(&card_name);
                     if normal_name != card_name {
-                        db.normalized_names.insert(normal_name, card_name);
+                        self.normalized_names.insert(normal_name, card_name);
                     }
-                    db.register_flavor_aliases_for_card(&card);
-
-                    db.cards.insert(key, card);
+                    self.register_flavor_aliases_for_card(&card);
+                    let leaked: &'static CardRules = Box::leak(Box::new(card));
+                    self.cache_insert(key, leaked);
                     result.loaded += 1;
                 }
                 Err(e) => {
@@ -199,69 +369,7 @@ impl CardDatabase {
                 }
             }
         }
-
-        (db, result)
-    }
-
-    /// Load cards from a pre-built rkyv archive.
-    ///
-    /// `archive_bytes` must be aligned (an `mmap`'d region trivially is).
-    /// `editions_dir` is read from the filesystem the same way as
-    /// `load_from_directory` — the archive only covers `cardsfolder/`.
-    ///
-    /// Equivalent in observable behavior to `load_from_directory(cardsfolder)`,
-    /// but skips the ~500 ms FS scan in favor of a single mmap + verify.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn load_from_archive(
-        archive_bytes: &[u8],
-        editions_dir: Option<&std::path::Path>,
-    ) -> Result<(Self, LoadResult), String> {
-        let archive = forge_cardset_archive::load_checked(archive_bytes)?;
-        let pairs: Vec<(&str, &str)> = archive
-            .cards
-            .iter()
-            .map(|c| (c.name_lower.as_str(), c.raw.as_str()))
-            .collect();
-        let (mut db, result) = Self::load_from_strings(pairs);
-        if let Some(editions) = editions_dir {
-            db.load_flavor_aliases_from_editions(editions);
-        }
-        Ok((db, result))
-    }
-
-    /// Load cards from a directory on the filesystem.
-    /// Walks the directory recursively looking for .txt files.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn load_from_directory(dir: &std::path::Path) -> (Self, LoadResult) {
-        let mut scripts = Vec::new();
-
-        if let Ok(entries) = collect_txt_files(dir) {
-            for path in entries {
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    let filename = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("unknown")
-                        .to_string();
-                    scripts.push((filename, content));
-                }
-            }
-        }
-
-        let pairs: Vec<(&str, &str)> = scripts
-            .iter()
-            .map(|(f, c)| (f.as_str(), c.as_str()))
-            .collect();
-        let (mut db, result) = Self::load_from_strings(pairs);
-
-        // Mirror Java CardDb behavior for flavor-name aliases sourced from edition data.
-        // cardsfolder parent is expected to be ".../res", with edition files in ".../res/editions".
-        if let Some(res_dir) = dir.parent() {
-            let editions_dir = res_dir.join("editions");
-            db.load_flavor_aliases_from_editions(&editions_dir);
-        }
-
-        (db, result)
+        result
     }
 
     fn resolve_flavor_alias<'a>(&'a self, name: &'a str) -> &'a str {
@@ -307,24 +415,6 @@ impl CardDatabase {
             if let Some(alias) = &face.flavor_name {
                 self.register_flavor_alias(alias, &canonical);
             }
-        }
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn load_flavor_aliases_from_editions(&mut self, editions_dir: &std::path::Path) {
-        let Ok(entries) = std::fs::read_dir(editions_dir) else {
-            return;
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("txt") {
-                continue;
-            }
-            let Ok(contents) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            self.extract_flavor_aliases_from_edition_contents(&contents);
         }
     }
 
@@ -505,72 +595,55 @@ impl Default for CardDatabase {
     }
 }
 
-/// Recursively collect all .txt files in a directory.
-#[cfg(not(target_arch = "wasm32"))]
-fn collect_txt_files(dir: &std::path::Path) -> std::io::Result<Vec<std::path::PathBuf>> {
-    let mut results = Vec::new();
-    if dir.is_dir() {
-        for entry in std::fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                results.extend(collect_txt_files(&path)?);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("txt") {
-                results.push(path);
-            }
-        }
-    }
-    Ok(results)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use forge_cardset_archive::build_test_archive;
 
-    #[test]
-    fn load_from_strings() {
-        let scripts = vec![
-            (
-                "lightning_bolt",
-                "Name:Lightning Bolt\nManaCost:R\nTypes:Instant\nOracle:Bolt!",
-            ),
-            (
-                "grizzly_bears",
-                "Name:Grizzly Bears\nManaCost:1 G\nTypes:Creature Bear\nPT:2/2\nOracle:",
-            ),
-        ];
-
-        let (db, result) = CardDatabase::load_from_strings(scripts);
-        assert_eq!(result.loaded, 2);
-        assert_eq!(result.failed, 0);
-        assert_eq!(db.len(), 2);
-        assert!(db.get("lightning_bolt").is_some());
-        assert!(db.get("grizzly_bears").is_some());
+    fn db_from(scripts: &[(&str, &str)]) -> CardDatabase {
+        let bytes = build_test_archive(scripts);
+        CardDatabase::load_from_archive(&bytes)
+            .expect("synthetic archive should load")
+            .cards
     }
 
     #[test]
-    fn get_by_card_name() {
-        let scripts = vec![(
-            "lightning_bolt",
-            "Name:Lightning Bolt\nManaCost:R\nTypes:Instant\nOracle:Bolt!",
-        )];
+    fn lazy_lookup_two_cards() {
+        let db = db_from(&[
+            (
+                "lightning bolt",
+                "Name:Lightning Bolt\nManaCost:R\nTypes:Instant\nOracle:Bolt!",
+            ),
+            (
+                "grizzly bears",
+                "Name:Grizzly Bears\nManaCost:1 G\nTypes:Creature Bear\nPT:2/2\nOracle:",
+            ),
+        ]);
+        // `len()` reflects the universe (archive index size), not the parse cache.
+        assert_eq!(db.len(), 2);
+        assert!(db.get_by_card_name("Lightning Bolt").is_some());
+        assert!(db.get_by_card_name("Grizzly Bears").is_some());
+    }
 
-        let (db, _) = CardDatabase::load_from_strings(scripts);
+    #[test]
+    fn get_by_card_name_case_insensitive() {
+        let db = db_from(&[(
+            "lightning bolt",
+            "Name:Lightning Bolt\nManaCost:R\nTypes:Instant\nOracle:Bolt!",
+        )]);
         let card = db.get_by_card_name("Lightning Bolt").unwrap();
         assert_eq!(card.main_part.name, "Lightning Bolt");
     }
 
     #[test]
     fn get_by_card_name_accent_normalized() {
-        let scripts = vec![(
-            "troll_of_khazad_dum",
+        let db = db_from(&[(
+            "troll of khazad-d\u{00fb}m",
             "Name:Troll of Khazad-d\u{00fb}m\nManaCost:5 B\nTypes:Creature Troll\nPT:6/5\nOracle:Swampwalk",
-        )];
-
-        let (db, _) = CardDatabase::load_from_strings(scripts);
-        // Exact match should work
+        )]);
+        // Exact match resolves.
         assert!(db.get_by_card_name("Troll of Khazad-d\u{00fb}m").is_some());
-        // ASCII-stripped name should also work (via normalized_names map)
+        // ASCII-stripped query resolves via the deunicode fallback in `get_by_card_name`.
         assert!(db.get_by_card_name("Troll of Khazad-dum").is_some());
     }
 }

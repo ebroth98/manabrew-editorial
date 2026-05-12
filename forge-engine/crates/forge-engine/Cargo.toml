@@ -18,3 +18,7 @@ smallvec = "1"
 typetag = "0.2"
 dyn-clone = "1"
 winnow = "0.7"
+
+[dev-dependencies]
+# Integration tests build synthetic 1-card archives for isolated parser tests.
+forge-cardset-archive = { path = "../forge-cardset-archive" }

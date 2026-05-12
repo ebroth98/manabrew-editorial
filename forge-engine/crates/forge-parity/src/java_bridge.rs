@@ -23,7 +23,7 @@ use crate::protocol::{
 /// the Rust multi-dir search. When `override_dir` is `Some`, only that path is
 /// used (preserves explicit `--decks-dir` semantics for tests/debugging). When
 /// `None`, falls back to the canonical default list (`parity_decks`,
-/// `preset_decks`), each canonicalised so the JAR can be invoked from any cwd.
+/// `public/preset_decks`), each canonicalised so the JAR can be invoked from any cwd.
 pub fn decks_dir_property(override_dir: Option<&str>) -> String {
     let parts: Vec<String> = match override_dir {
         Some(d) => vec![d.to_string()],
@@ -106,7 +106,7 @@ impl JavaBridge {
         // Pass preset decks directory list as JVM system property (must come before -jar).
         // Java side splits on `,` and tries each path in order; mirrors the Rust
         // multi-dir search so both engines find decks in `parity_decks/` and
-        // `preset_decks/` without requiring a CLI override.
+        // `public/preset_decks/` without requiring a CLI override.
         cmd.arg(format!(
             "-Dpreset.decks.dir={}",
             decks_dir_property(self.config.decks_dir.as_deref())

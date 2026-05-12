@@ -97,8 +97,10 @@ struct LoadedPreset {
 
 // ── Lazy-loaded deck registry ──────────────────────────────────────
 
-/// Default directory name for preset deck JSON files at repo root.
-const DEFAULT_DECKS_DIR: &str = "preset_decks";
+/// Default directory for preset deck JSON files. The web build serves these
+/// directly from `public/preset_decks/`; the Tauri shell bundles the same
+/// directory so both platforms read the exact same on-disk files.
+const DEFAULT_DECKS_DIR: &str = "public/preset_decks";
 
 static DECK_REGISTRY: OnceLock<Vec<LoadedPreset>> = OnceLock::new();
 
@@ -142,6 +144,11 @@ fn load_registry() -> Vec<LoadedPreset> {
             Some(s) => s.to_string(),
             None => continue,
         };
+        // `index.json` is the web-side manifest of available decks, not a
+        // deck itself. Skip it during the Tauri directory walk.
+        if id == "index" {
+            continue;
+        }
         let contents = match std::fs::read_to_string(&path) {
             Ok(c) => c,
             Err(e) => {

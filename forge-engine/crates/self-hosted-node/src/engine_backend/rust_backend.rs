@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
-use std::sync::{mpsc as std_mpsc, OnceLock};
+use std::sync::{mpsc as std_mpsc, Once, OnceLock};
 
 use forge_agent_interface::agent_impl::PromptAgent;
 use forge_agent_interface::game_view_dto::GameViewDto;
@@ -18,6 +18,7 @@ use forge_game_runtime::deck::{
 };
 use forge_game_runtime::mpsc_transport::MpscTransport as NodeTransport;
 use forge_server::protocol::CardIdentity;
+use memmap2::Mmap;
 use rand::SeedableRng;
 use tracing::{info, warn};
 
@@ -130,47 +131,53 @@ pub fn run_hosted_engine_game(
     }
 }
 
-fn get_card_db() -> &'static CardDatabase {
-    static CARD_DB: OnceLock<CardDatabase> = OnceLock::new();
-    CARD_DB.get_or_init(|| {
-        let dir = cards_dir();
-        info!(path = %dir.display(), "loading card database");
-        let (db, result) = CardDatabase::load_from_directory(&dir);
+/// Card and token databases come from a single rkyv archive bundle —
+/// `src-tauri/build.rs` produces it, and the node panics with a clear hint
+/// if it's missing (rather than silently degrading to an FS scan).
+static CARD_DB: OnceLock<CardDatabase> = OnceLock::new();
+static TOKEN_DB: OnceLock<CardDatabase> = OnceLock::new();
+static DB_INIT: Once = Once::new();
+
+fn ensure_dbs_loaded() {
+    DB_INIT.call_once(|| {
+        let archive_path = cardset_archive_path();
+        info!(path = %archive_path.display(), "loading card + token databases from archive");
+        let file = std::fs::File::open(&archive_path).unwrap_or_else(|e| {
+            panic!(
+                "Cardset archive not found at {}: {e}. Run `cargo build -p forge-web` (or `yarn build:wasm`) to build it.",
+                archive_path.display()
+            )
+        });
+        let mmap = unsafe { Mmap::map(&file).expect("mmap cardset archive") };
+        let bundle =
+            CardDatabase::load_from_archive(&mmap).expect("load cardset archive");
         info!(
-            loaded = result.loaded,
-            failed = result.failed,
-            "loaded card database"
+            cards_loaded = bundle.cards_result.loaded,
+            cards_failed = bundle.cards_result.failed,
+            tokens_loaded = bundle.tokens_result.loaded,
+            tokens_failed = bundle.tokens_result.failed,
+            "loaded archive"
         );
-        for (file, error) in result.errors.iter().take(10) {
-            warn!(file, %error, "card parse error");
+        for (file, error) in bundle.tokens_result.errors.iter().take(10) {
+            warn!(file, %error, "token parse error");
         }
-        db
-    })
+        let _ = CARD_DB.set(bundle.cards);
+        let _ = TOKEN_DB.set(bundle.tokens);
+    });
+}
+
+fn get_card_db() -> &'static CardDatabase {
+    ensure_dbs_loaded();
+    CARD_DB.get().expect("card db must be initialized")
 }
 
 fn get_token_db() -> &'static CardDatabase {
-    static TOKEN_DB: OnceLock<CardDatabase> = OnceLock::new();
-    TOKEN_DB.get_or_init(|| {
-        let dir = token_scripts_dir();
-        info!(path = %dir.display(), "loading token database");
-        let (db, result) = CardDatabase::load_from_directory(&dir);
-        info!(
-            loaded = result.loaded,
-            failed = result.failed,
-            "loaded token database"
-        );
-        db
-    })
+    ensure_dbs_loaded();
+    TOKEN_DB.get().expect("token db must be initialized")
 }
 
-fn cards_dir() -> PathBuf {
-    env::var("CARDS_DIR")
+fn cardset_archive_path() -> PathBuf {
+    env::var("CARDSET_ARCHIVE")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| workspace_root().join("forge/forge-gui/res/cardsfolder"))
-}
-
-fn token_scripts_dir() -> PathBuf {
-    env::var("TOKEN_SCRIPTS_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| workspace_root().join("forge/forge-gui/res/tokenscripts"))
+        .unwrap_or_else(|_| workspace_root().join("src-tauri/resources/cardset.rkyv"))
 }

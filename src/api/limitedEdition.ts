@@ -1,4 +1,5 @@
 import { getPlatform } from "@/platform";
+import type { DraftCard } from "@/types/limited";
 
 export interface EditionSlot {
   label: string;
@@ -30,4 +31,14 @@ export async function fetchEditionInfo(setCode: string): Promise<EditionInfo | n
   } catch {
     return null;
   }
+}
+
+/**
+ * Generate the full card pool for a given set from the engine's cached
+ * `EditionsRegistry` — no Scryfall round-trip. The DTO shape matches what
+ * `limited_start_sealed` / `limited_start_booster_draft` expect for their
+ * `setup.pool` field.
+ */
+export async function fetchSetPool(setCode: string): Promise<DraftCard[]> {
+  return getPlatform().invoke<DraftCard[]>("limited_get_set_pool", { setCode });
 }

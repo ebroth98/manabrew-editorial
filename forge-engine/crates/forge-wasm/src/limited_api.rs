@@ -493,10 +493,54 @@ fn rebuild_name_index(state: &mut WasmLimitedState) {
         return;
     };
     state.name_index.clear();
-    for (name, rules) in db.iter() {
-        state.name_index.insert(name.to_lowercase());
-        state.name_index.insert(rules.name().to_lowercase());
+    // Walk the archive index directly — name validation doesn't require the
+    // cards to be parsed, and a freshly-loaded archive-backed DB has none
+    // parsed yet.
+    for key in db.iter_card_keys() {
+        state.name_index.insert(key);
     }
+}
+
+/// Return every card in a given set, formatted as a `DraftCardDto[]` —
+/// the same shape `limited_start_sealed` / `limited_start_booster_draft`
+/// expect for their `setup.pool` field.
+///
+/// Replaces the React-side Scryfall round-trip: the archive's
+/// `EditionsRegistry` already knows every card in every set, and the
+/// engine's `CardDatabase` already knows each card's colors and
+/// dual-faced-ness, so there's no need to call out to Scryfall just to
+/// learn what's in a set. Card images remain a Scryfall concern.
+#[wasm_bindgen]
+pub fn limited_get_set_pool(set_code: String) -> Result<JsValue, JsError> {
+    let editions = crate::limited_bootstrap::editions()
+        .ok_or_else(|| JsError::new("editions registry not loaded"))?;
+    let edition = editions
+        .get(&set_code)
+        .ok_or_else(|| JsError::new(&format!("unknown set: {set_code}")))?;
+    let card_db = crate::card_loader::get_card_db()
+        .ok_or_else(|| JsError::new("card database not loaded"))?;
+
+    let pool: Vec<DraftCardDto> = edition
+        .cards
+        .iter()
+        .map(|entry| {
+            let (colors, dual_faced) = card_db
+                .get_by_card_name(&entry.name)
+                .map(|r| (r.color(), r.split_type.is_dual_faced()))
+                .unwrap_or_default();
+            DraftCardDto {
+                name: entry.name.clone(),
+                set_code: edition.code.clone(),
+                collector_number: entry.collector_number.clone(),
+                rarity: rarity_str(entry.rarity).to_string(),
+                colors: color_letters(colors),
+                is_double_faced: dual_faced,
+                foil: false,
+            }
+        })
+        .collect();
+
+    serde_wasm_bindgen::to_value(&pool).map_err(|e| JsError::new(&e.to_string()))
 }
 
 #[wasm_bindgen]
@@ -738,13 +782,14 @@ pub fn limited_start_winston(setup_json: JsValue) -> Result<JsValue, JsError> {
 }
 
 fn template_for_pool(pool: &[PaperCard], variant: Option<&str>) -> SealedTemplate {
-    let editions = crate::limited_bootstrap::editions();
-    let dominant = crate::limited_bootstrap::dominant_set_code(pool);
-    if let Some(code) = dominant.as_deref() {
-        if let Some(edition) = editions.get(code) {
-            let v = variant.filter(|s| !s.is_empty());
-            if let Some(tpl) = edition.to_sealed_template_named(v) {
-                return tpl;
+    if let Some(editions) = crate::limited_bootstrap::editions() {
+        let dominant = crate::limited_bootstrap::dominant_set_code(pool);
+        if let Some(code) = dominant.as_deref() {
+            if let Some(edition) = editions.get(code) {
+                let v = variant.filter(|s| !s.is_empty());
+                if let Some(tpl) = edition.to_sealed_template_named(v) {
+                    return tpl;
+                }
             }
         }
     }

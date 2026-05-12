@@ -66,16 +66,26 @@ pub fn prepare_player(
     let mut deck_names: Vec<String> = Vec::new();
     let mut cards: Vec<(CardInstance, ZoneType)> = Vec::new();
 
+    let mut skipped: Vec<String> = Vec::new();
     for deck_card in deck_cards {
-        let rules = card_db
-            .get_by_card_name(&deck_card.name)
-            .ok_or_else(|| format!("Card not found: {}", deck_card.name))?;
-
+        let Some(rules) = card_db.get_by_card_name(&deck_card.name) else {
+            skipped.push(deck_card.name.clone());
+            continue;
+        };
         for _ in 0..deck_card.count {
             deck_names.push(rules.name());
             let instance = card_rules_to_instance(rules, PlayerId(0)); // Owner set later
             cards.push((instance, ZoneType::Library));
         }
+    }
+    if !skipped.is_empty() {
+        web_sys::console::warn_1(
+            &format!(
+                "[deck] Unknown card(s) skipped for {name}: {}",
+                skipped.join(", ")
+            )
+            .into(),
+        );
     }
 
     let mut registered = RegisteredPlayer::new(name);

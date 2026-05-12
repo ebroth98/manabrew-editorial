@@ -9,15 +9,22 @@ fn main() {
     tauri_build::build();
 }
 
-/// Regenerate `resources/cardset.rkyv` whenever the cardsfolder is newer than
-/// the existing archive (or the archive is missing). The archive is bundled as
-/// a Tauri resource and mmap'd at runtime by `card_db.rs`.
+/// Regenerate `resources/cardset.rkyv` whenever the cardsfolder, tokenscripts,
+/// or editions are newer than the existing archive (or the archive is
+/// missing). The archive is bundled as a Tauri resource and mmap'd at runtime
+/// by `card_db.rs`.
 fn build_cardset_archive_if_stale() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cardsfolder = manifest_dir.join("../forge/forge-gui/res/cardsfolder");
+    let tokenscripts = manifest_dir.join("../forge/forge-gui/res/tokenscripts");
+    let editions = manifest_dir.join("../forge/forge-gui/res/editions");
+    let block_data = manifest_dir.join("../forge/forge-gui/res/blockdata");
     let archive_path = manifest_dir.join("resources/cardset.rkyv");
 
     println!("cargo:rerun-if-changed={}", cardsfolder.display());
+    println!("cargo:rerun-if-changed={}", tokenscripts.display());
+    println!("cargo:rerun-if-changed={}", editions.display());
+    println!("cargo:rerun-if-changed={}", block_data.display());
     println!("cargo:rerun-if-env-changed=FORCE_CARDSET_REBUILD");
 
     if !cardsfolder.exists() {
@@ -28,15 +35,24 @@ fn build_cardset_archive_if_stale() {
         return;
     }
 
-    if !needs_rebuild(&cardsfolder, &archive_path) {
+    let inputs = [&cardsfolder, &tokenscripts, &editions, &block_data];
+    if !needs_rebuild(&inputs, &archive_path) {
         return;
     }
 
-    match forge_cardset_archive::build_archive_from_dir(&cardsfolder, &archive_path) {
+    let sources = forge_cardset_archive::ArchiveSources {
+        cardsfolder: &cardsfolder,
+        tokenscripts: tokenscripts.exists().then_some(tokenscripts.as_path()),
+        editions: editions.exists().then_some(editions.as_path()),
+        block_data: block_data.exists().then_some(block_data.as_path()),
+    };
+    match forge_cardset_archive::build_archive_from_sources(sources, &archive_path) {
         Ok(stats) => {
             println!(
-                "cargo:warning=cardset archive built: {} cards, {:.2} MiB",
+                "cargo:warning=cardset archive built: {} cards, {} tokens, {} editions, {:.2} MiB",
                 stats.cards,
+                stats.tokens,
+                stats.editions,
                 stats.bytes_written as f64 / 1024.0 / 1024.0
             );
         }
@@ -46,15 +62,32 @@ fn build_cardset_archive_if_stale() {
     }
 }
 
-fn needs_rebuild(cardsfolder: &Path, archive: &Path) -> bool {
+fn needs_rebuild(inputs: &[&PathBuf], archive: &Path) -> bool {
     let archive_mtime = match archive.metadata().and_then(|m| m.modified()) {
         Ok(m) => m,
         Err(_) => return true,
     };
-    match latest_mtime(cardsfolder) {
-        Some(card_mtime) => card_mtime > archive_mtime,
-        None => true,
+
+    // Regenerate the archive cos it has changed
+    match std::fs::read(archive) {
+        Ok(bytes) => {
+            if forge_cardset_archive::load_checked(&bytes).is_err() {
+                return true;
+            }
+        }
+        Err(_) => return true,
     }
+    for dir in inputs {
+        if !dir.exists() {
+            continue;
+        }
+        match latest_mtime(dir) {
+            Some(t) if t > archive_mtime => return true,
+            None => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 fn latest_mtime(dir: &Path) -> Option<SystemTime> {

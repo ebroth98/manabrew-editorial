@@ -15,7 +15,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DECKS_DIR = path.join(__dirname, "..", "preset_decks");
+const DECKS_DIR = path.join(__dirname, "..", "public/preset_decks");
 const SCRYFALL_API = "https://api.scryfall.com";
 const COLLECTION_BATCH_SIZE = 75;
 const FORCE = process.argv.includes("--force");
@@ -76,7 +76,10 @@ async function fetchBatch(identifiers) {
 }
 
 async function main() {
-  const files = fs.readdirSync(DECKS_DIR).filter((f) => f.endsWith(".json")).sort();
+  const files = fs
+    .readdirSync(DECKS_DIR)
+    .filter((f) => f.endsWith(".json") && f !== "index.json")
+    .sort();
 
   // Step 1: collect every (name, set) printing that needs fetching.
   const needed = new Map();

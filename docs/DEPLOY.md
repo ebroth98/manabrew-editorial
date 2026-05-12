@@ -120,8 +120,7 @@ GITHUB_REPO=<org>/<repo>
 ### 3. Create preset decks directory
 
 ```bash
-mkdir -p preset_decks/
-# Copy deck JSON files into preset_decks/
+mkdir -p public/preset_decks/
 ```
 
 ### 4. First build & run

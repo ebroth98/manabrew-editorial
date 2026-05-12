@@ -16,7 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DECKS_DIR = path.join(__dirname, "..", "preset_decks");
+const DECKS_DIR = path.join(__dirname, "..", "public/preset_decks");
 const APPLY = process.argv.includes("--apply");
 // Scryfall asks for ≤ 10 req/s and recommends ≥ 50–100ms between calls.
 // 500ms is very generous and survives back-to-back script invocations
@@ -34,7 +34,7 @@ function log(...args) {
 function loadDecks() {
   const files = fs
     .readdirSync(DECKS_DIR)
-    .filter((f) => f.endsWith(".json"))
+    .filter((f) => f.endsWith(".json") && f !== "index.json")
     .map((f) => path.join(DECKS_DIR, f));
   return files.map((file) => {
     const raw = fs.readFileSync(file, "utf8");

@@ -1,48 +1,24 @@
 //! Card database loading for WASM.
 //!
-//! This module handles loading card data from a JSON bundle that's fetched
-//! by the web worker.
 
-use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use forge_carddb::CardDatabase;
+use forge_foundation::edition::EditionsRegistry;
+use forge_limited::bootstrap::build_registry;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-/// The global card database, loaded once from a JSON bundle.
+/// The global card database, populated by `load_card_archive`.
 static CARD_DB: OnceLock<CardDatabase> = OnceLock::new();
-/// The global token-script database, loaded once from a JSON bundle.
+/// The global token-script database, populated alongside `CARD_DB` from the
+/// unified archive.
 static TOKEN_DB: OnceLock<CardDatabase> = OnceLock::new();
+static EDITIONS: OnceLock<EditionsRegistry> = OnceLock::new();
 
-/// JSON structure for the card bundle.
-#[derive(Debug, Deserialize)]
-pub struct CardBundle {
-    pub version: u32,
-    #[serde(rename = "generatedAt")]
-    pub generated_at: String,
-    pub cards: HashMap<String, String>,
-}
-
-/// A preset deck from the JSON bundle.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PresetDeck {
-    pub id: String,
-    pub label: String,
-    pub desc: String,
-    pub color: String,
-    #[serde(default = "default_format")]
-    pub format: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub commander: Option<String>,
-    pub cards: Vec<DeckCard>,
-}
-
-fn default_format() -> String {
-    "standard".to_string()
-}
-
-/// A card entry in a preset deck.
+/// A card entry inside a deck list passed in from JS. The web worker
+/// deserializes preset-deck JSONs into `{ name, count, set? }`, so the
+/// engine entry points accept the same shape.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeckCard {
     pub name: String,
@@ -53,102 +29,109 @@ pub struct DeckCard {
     pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
-/// Load the card database from a JSON bundle string.
+/// Load the card + token + edition database from a single rkyv archive.
 ///
-/// This should be called once at startup with the contents of cards-bundle.json.
-/// Returns the number of cards loaded.
 #[wasm_bindgen]
-pub fn load_card_bundle(json_str: &str) -> Result<u32, JsError> {
-    // Parse the JSON bundle
-    let bundle: CardBundle = serde_json::from_str(json_str)
-        .map_err(|e| JsError::new(&format!("Failed to parse card bundle: {}", e)))?;
-
-    web_sys::console::log_1(
-        &format!(
-            "[card_loader] Loading {} cards from bundle (v{})",
-            bundle.cards.len(),
-            bundle.version
-        )
-        .into(),
-    );
-
-    // Convert to the format expected by CardDatabase::load_from_strings
-    let scripts: Vec<(&str, &str)> = bundle
-        .cards
-        .iter()
-        .map(|(filename, content)| (filename.as_str(), content.as_str()))
-        .collect();
-
-    // Load into the database
-    let (db, result) = CardDatabase::load_from_strings(scripts);
-
-    if result.failed > 0 {
-        web_sys::console::warn_1(
-            &format!("[card_loader] {} cards failed to parse", result.failed).into(),
-        );
-        for (file, err) in result.errors.iter().take(5) {
-            web_sys::console::warn_1(&format!("  - {}: {}", file, err).into());
-        }
-    }
-
-    let loaded = result.loaded as u32;
-
-    // Store in the global
-    if CARD_DB.set(db).is_err() {
+pub fn load_card_archive(bytes: &[u8]) -> Result<u64, JsError> {
+    if CARD_DB.get().is_some() {
         return Err(JsError::new("Card database already initialized"));
     }
 
-    web_sys::console::log_1(&format!("[card_loader] Successfully loaded {} cards", loaded).into());
-
-    Ok(loaded)
-}
-
-#[wasm_bindgen]
-pub fn load_token_bundle(json_str: &str) -> Result<u32, JsError> {
-    let bundle: CardBundle = serde_json::from_str(json_str)
-        .map_err(|e| JsError::new(&format!("Failed to parse token bundle: {}", e)))?;
-
     web_sys::console::log_1(
         &format!(
-            "[card_loader] Loading {} token scripts from bundle (v{})",
-            bundle.cards.len(),
-            bundle.version
+            "[card_loader] Loading rkyv archive ({:.2} MiB) …",
+            bytes.len() as f64 / 1024.0 / 1024.0
         )
         .into(),
     );
 
-    let scripts: Vec<(&str, &str)> = bundle
-        .cards
-        .iter()
-        .map(|(filename, content)| (filename.as_str(), content.as_str()))
-        .collect();
+    // `load_from_archive` copies into an `AlignedVec` itself — we just hand
+    // it the raw `Uint8Array` view.
+    let bundle = CardDatabase::load_from_archive(bytes)
+        .map_err(|e| JsError::new(&format!("Failed to load archive: {e}")))?;
 
-    let (db, result) = CardDatabase::load_from_strings(scripts);
+    let cards_loaded = bundle.cards_result.loaded as u32;
+    let tokens_loaded = bundle.tokens_result.loaded as u32;
 
-    if result.failed > 0 {
+    if bundle.cards_result.failed > 0 {
         web_sys::console::warn_1(
             &format!(
-                "[card_loader] {} token scripts failed to parse",
-                result.failed
+                "[card_loader] {} cards failed to parse",
+                bundle.cards_result.failed
             )
             .into(),
         );
-        for (file, err) in result.errors.iter().take(5) {
+        for (file, err) in bundle.cards_result.errors.iter().take(5) {
             web_sys::console::warn_1(&format!("  - {}: {}", file, err).into());
         }
     }
 
-    let loaded = result.loaded as u32;
+    CARD_DB
+        .set(bundle.cards)
+        .map_err(|_| JsError::new("Card database already initialized"))?;
+    TOKEN_DB
+        .set(bundle.tokens)
+        .map_err(|_| JsError::new("Token database already initialized"))?;
 
-    if TOKEN_DB.set(db).is_err() {
-        return Err(JsError::new("Token database already initialized"));
+    if let Some(archive) = CARD_DB.get().and_then(|db| db.archive()) {
+        let editions: Vec<(&str, &str)> = archive
+            .editions
+            .iter()
+            .map(|e| (e.name.as_str(), e.raw.as_str()))
+            .collect();
+        let block_data: Vec<(&str, &str)> = archive
+            .block_data
+            .iter()
+            .map(|b| (b.name.as_str(), b.raw.as_str()))
+            .collect();
+        let card_db = CARD_DB.get().expect("just set");
+        let (registry, report) = build_registry(
+            editions.iter().copied(),
+            block_data.iter().copied(),
+            |code, entry| {
+                let mut pc = forge_foundation::sealed_product::PaperCard::new(
+                    &entry.name,
+                    code,
+                    &entry.collector_number,
+                    entry.rarity,
+                );
+                if let Some(rules) = card_db.get(&entry.name) {
+                    pc = pc
+                        .with_colors(rules.color())
+                        .with_double_faced(rules.split_type.is_dual_faced());
+                }
+                pc
+            },
+        );
+        let _ = EDITIONS.set(registry);
+        web_sys::console::log_1(
+            &format!(
+                "[card_loader] Limited registry ready · {} editions ({} failed), templates: {}",
+                report.editions_loaded,
+                report.editions_failed,
+                if report.booster_templates_loaded {
+                    "yes"
+                } else {
+                    "no"
+                }
+            )
+            .into(),
+        );
     }
 
     web_sys::console::log_1(
-        &format!("[card_loader] Successfully loaded {} token scripts", loaded).into(),
+        &format!(
+            "[card_loader] Loaded {} cards, {} tokens from archive",
+            cards_loaded, tokens_loaded
+        )
+        .into(),
     );
 
-    Ok(loaded)
+    Ok(((cards_loaded as u64) << 32) | (tokens_loaded as u64))
+}
+
+pub fn get_editions() -> Option<&'static EditionsRegistry> {
+    EDITIONS.get()
 }
 
 /// Check if the card database is loaded.
@@ -172,10 +155,12 @@ pub fn get_card_db() -> Option<&'static CardDatabase> {
 pub fn is_token_db_loaded() -> bool {
     TOKEN_DB.get().is_some()
 }
+
 #[wasm_bindgen]
 pub fn get_token_count() -> u32 {
     TOKEN_DB.get().map(|db| db.len() as u32).unwrap_or(0)
 }
+
 pub fn get_token_db() -> Option<&'static CardDatabase> {
     TOKEN_DB.get()
 }
@@ -187,14 +172,4 @@ pub fn has_card(name: &str) -> bool {
         .get()
         .map(|db| db.get_by_card_name(name).is_some())
         .unwrap_or(false)
-}
-
-/// Parse preset decks JSON.
-#[wasm_bindgen]
-pub fn parse_preset_decks(json_str: &str) -> Result<JsValue, JsError> {
-    let decks: Vec<PresetDeck> = serde_json::from_str(json_str)
-        .map_err(|e| JsError::new(&format!("Failed to parse preset decks: {}", e)))?;
-
-    serde_wasm_bindgen::to_value(&decks)
-        .map_err(|e| JsError::new(&format!("Failed to serialize preset decks: {}", e)))
 }

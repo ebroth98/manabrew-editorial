@@ -1,6 +1,5 @@
 import { getPlatform } from "@/platform";
 import type {
-  DeckAvailabilityResult,
   RespondParams,
   RestoreSnapshotParams,
   StartGameParams,
@@ -241,13 +240,6 @@ export class ManualTabletopGameApi implements ManualTabletopApi {
 
   async getPresetDecks(): Promise<Deck[]> {
     return [];
-  }
-
-  async validateDeckAvailability(): Promise<DeckAvailabilityResult> {
-    return {
-      supported: true,
-      missingCards: [],
-    };
   }
 
   async getPrompt(): Promise<unknown> {

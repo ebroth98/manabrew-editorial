@@ -1,6 +1,7 @@
 pub mod booster_deck_builder;
 pub mod booster_draft;
 pub mod booster_draft_ai;
+pub mod bootstrap;
 pub mod card_ranker;
 pub mod card_ranking_comparator;
 pub mod conspiracy_hooks;

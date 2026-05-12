@@ -224,12 +224,15 @@ export const useScryfallStore = create<ScryfallState>()(
       hydrateSet: async (setCode) => {
         const code = setCode.toLowerCase();
         if (!get().hydratedSets[code]) {
-          // Mark hydrated up-front so concurrent callers don't double-fetch;
-          // we'd rather fail-soft than spam Scryfall.
+          // Mark hydrated only *after* the fetch lands. Setting it
+          // up-front means a single failed call (network blip, 429,
+          // Scryfall outage) sticks for the rest of the session and
+          // every subsequent caller silently sees an empty set —
+          // which propagates to "supplied 0 cards" in WASM.
+          const cards = await fetchCardsBySet(code);
           set((state) => {
             state.hydratedSets[code] = true;
           });
-          const cards = await fetchCardsBySet(code);
           set((state) => {
             for (const card of cards) {
               const uris = chooseImageUrisForCard(card, { frontOnly: true });

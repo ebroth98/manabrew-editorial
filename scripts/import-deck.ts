@@ -5,7 +5,7 @@
 //   yarn import-deck --url=<archidekt-url> [--format=<format>]
 //   yarn import-deck --url=<deck-url> --non-interactive [--label=...] [--filename=...] [--skip-enrich]
 // Searches Archidekt (or jumps directly to a deck when --url is passed),
-// prompts for a selection, and writes a preset deck JSON file to preset_decks/.
+// prompts for a selection, and writes a preset deck JSON file to public/preset_decks/.
 //
 // --non-interactive (alias -y) skips every prompt and uses default metadata
 // (label = deck name, slug from name, desc from deck description). Requires
@@ -30,7 +30,7 @@ import {
 import { fetchDeckBySource, fetchResultBySource, parseDeckUrl } from "../src/lib/deckImport.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PRESET_DIR = resolve(__dirname, "..", "preset_decks");
+const PRESET_DIR = resolve(__dirname, "..", "public/preset_decks");
 
 const USE_COLOR = process.stdout.isTTY && process.env.NO_COLOR == null;
 const ANSI = {
@@ -420,6 +420,16 @@ async function main() {
 
   const outPath = join(PRESET_DIR, `${slug}.json`);
   await writeFile(outPath, JSON.stringify(preset, null, 2) + "\n");
+
+  // Rebuild `index.json` so the web client picks up the new deck on next
+  // load. Tauri walks the directory and ignores the index, so it just
+  // tracks the on-disk truth.
+  const allFiles = await readdir(PRESET_DIR);
+  const ids = allFiles
+    .filter((f) => f.endsWith(".json") && f !== "index.json")
+    .map((f) => f.replace(/\.json$/, ""))
+    .sort();
+  await writeFile(join(PRESET_DIR, "index.json"), JSON.stringify(ids, null, 2) + "\n");
 
   const totalCount = allCards.reduce((s, c) => s + c.count, 0);
   console.log(header("Done"));

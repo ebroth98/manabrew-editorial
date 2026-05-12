@@ -20,8 +20,6 @@ import java.nio.file.Paths;
 
 /**
  * Builds preset decks from shared JSON files in the {@code parity_decks/} and
- * {@code preset_decks/} directories. Card lists are the single source of truth
- * shared with the Rust parity runner — the directory list mirrors
  * {@code DEFAULT_DECKS_DIRS} on the Rust side.
  */
 public final class PresetDecks {
@@ -32,7 +30,7 @@ public final class PresetDecks {
      * in order. Mirrors {@code DEFAULT_DECKS_DIRS} on the Rust side
      * ({@code forge-parity/src/runner.rs}).
      */
-    private static final String[] DEFAULT_DECKS_DIRS = { "parity_decks", "preset_decks" };
+    private static final String[] DEFAULT_DECKS_DIRS = { "parity_decks", "public/preset_decks" };
 
     /**
      * Returns the list of directories to search for preset decks, in order.

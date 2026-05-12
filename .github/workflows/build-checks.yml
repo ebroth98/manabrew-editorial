@@ -111,7 +111,7 @@ jobs:
       - name: Validate preset deck JSON files
         run: |
           EXIT=0
-          for f in preset_decks/*.json; do
+          for f in public/preset_decks/*.json; do
             if ! node -e "JSON.parse(require('fs').readFileSync('$f','utf-8'))" 2>/dev/null; then
               echo "::error file=$f::Invalid JSON in $f"
               EXIT=1

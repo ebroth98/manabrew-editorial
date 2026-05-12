@@ -185,7 +185,7 @@ struct Cli {
     cards_dir: Option<String>,
 
     /// Single deck folder override. When unset, the harness searches
-    /// `parity_decks/` then `preset_decks/` (see runner::DEFAULT_DECKS_DIRS).
+    /// `parity_decks/` then `public/preset_decks/` (see runner::DEFAULT_DECKS_DIRS).
     #[arg(long)]
     decks_dir: Option<String>,
 

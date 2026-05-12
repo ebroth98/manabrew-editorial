@@ -105,11 +105,11 @@ pub fn run_game(
     let token_image_map = get_token_image_map();
     for (script_name, rules) in token_db.iter() {
         let mut template = card_rules_to_instance(rules, p0);
-        if let Some(info) = token_image_map.get(script_name) {
+        if let Some(info) = token_image_map.get(&script_name) {
             template.set_code = Some(info.set_code.clone());
             template.card_number = Some(info.collector_number.clone());
         }
-        game_loop.register_token(script_name.clone(), template);
+        game_loop.register_token(script_name, template);
     }
 
     let mut rng = rand::rngs::StdRng::from_entropy();
@@ -214,11 +214,11 @@ pub fn run_multiplayer_game(
     let token_image_map = get_token_image_map();
     for (script_name, rules) in token_db.iter() {
         let mut template = card_rules_to_instance(rules, p0);
-        if let Some(info) = token_image_map.get(script_name) {
+        if let Some(info) = token_image_map.get(&script_name) {
             template.set_code = Some(info.set_code.clone());
             template.card_number = Some(info.collector_number.clone());
         }
-        game_loop.register_token(script_name.clone(), template);
+        game_loop.register_token(script_name, template);
     }
 
     let mut rng = rand::rngs::StdRng::from_entropy();

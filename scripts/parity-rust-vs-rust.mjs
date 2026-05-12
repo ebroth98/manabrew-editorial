@@ -12,7 +12,7 @@
 //     --main-bin   ./main-bin/forge-parity \
 //     --entries    existing-entries.json \
 //     --cards-dir  forge/forge-gui/res/cardsfolder \
-//     --decks-dir  preset_decks \
+//     --decks-dir  public/preset_decks \
 //     --out-dir    rust-vs-rust-out
 //
 // Exit codes: 0 = all match, 1 = at least one divergence, 2 = harness error.

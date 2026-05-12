@@ -173,17 +173,20 @@ export async function fetchCardsBySet(setCode: string): Promise<ScryfallCard[]> 
     `${SCRYFALL_API}/cards/search?q=${encodeURIComponent(`e:${setCode.toLowerCase()}`)}` +
     `&unique=prints&order=set&include_extras=true`;
 
+  // Don't silently swallow page-fetch failures: an empty result from this
+  // function flows all the way to the WASM draft pool and surfaces there as
+  // "supplied 0 cards" with no diagnostic. Propagating the error lets the
+  // limited UI show what actually went wrong.
   while (url) {
-    try {
-      const page: ScryfallListResponse = await scryfallFetch<ScryfallListResponse>(
-        url,
-        `Failed to fetch cards for set ${setCode}`,
-      );
-      out.push(...page.data);
-      url = page.has_more ? page.next_page : undefined;
-    } catch {
-      break;
-    }
+    const page: ScryfallListResponse = await scryfallFetch<ScryfallListResponse>(
+      url,
+      `Failed to fetch cards for set ${setCode}`,
+    );
+    out.push(...page.data);
+    url = page.has_more ? page.next_page : undefined;
+  }
+  if (out.length === 0) {
+    throw new Error(`Scryfall returned no cards for set ${setCode}`);
   }
   return out;
 }

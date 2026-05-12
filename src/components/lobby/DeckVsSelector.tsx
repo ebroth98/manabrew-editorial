@@ -1,18 +1,17 @@
 import { useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
+import { FEATURES } from "@/lib/features";
 import { usePresetDecks } from "@/stores/usePresetDecksStore";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { FormatBadge } from "@/components/game/FormatBadge";
+import { FormatPicker } from "./FormatPicker";
 import { DeckSelectionCard } from "./DeckSelectionCard";
-import { DeckCoverImage } from "@/components/deck/deckCover";
-import { DECK_NAME_SHADOW_CLASS, getDeckNameColorClass } from "@/components/deck/deckDisplay.utils";
 import { cn } from "@/lib/utils";
-import { GAME_FORMATS } from "@/lib/formats";
 import { getDeckFingerprint, serializeDeck } from "@/lib/decks";
 import { useDeckStore } from "@/stores/useDeckStore";
 import type { CardIdentity } from "@/types/server";
-import type { Card, Deck } from "@/types/manabrew";
-import { Hand, Search, Shuffle, Swords, User, Bot } from "lucide-react";
+import type { Deck } from "@/types/manabrew";
+import { ArrowLeft, Hand, Search, Shuffle, Swords, User, Bot, X } from "lucide-react";
 import { resolveCoverCard } from "../deck/deckCover.utils";
 
 interface SelectedDeck {
@@ -45,12 +44,21 @@ interface DeckVsSelectorProps {
 type PickingSide = "player" | "opponent";
 type PlayFormatId = string;
 
+// Lift `Math.random` out of the component body. React's idempotency check
+// flags any impure call statically present in render scope, even when the
+// surrounding function only runs from an event handler.
+function pickRandom<T>(arr: readonly T[]): T | undefined {
+  if (arr.length === 0) return undefined;
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
 export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps) {
   const presetDecks = usePresetDecks();
+  const [stage, setStage] = useState<"format" | "decks">("format");
   const [playerDeck, setPlayerDeck] = useState<SelectedDeck | null>(null);
   const [opponentDeck, setOpponentDeck] = useState<SelectedDeck | null>(null);
   const [pickingSide, setPickingSide] = useState<PickingSide>("player");
-  const [selectedFormat, setSelectedFormat] = useState<PlayFormatId>("standard");
+  const [selectedFormat, setSelectedFormat] = useState<PlayFormatId | null>(null);
   const [deckSearch, setDeckSearch] = useState("");
   const { savedDecks, currentDeck } = useDeckStore();
 
@@ -118,6 +126,7 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
   }
 
   function selectDeck(deck: Deck) {
+    if (!selectedFormat) return;
     const id = deck.id ?? deck.name;
     assignDeck({
       id,
@@ -137,9 +146,9 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
   }
 
   function handleRandomOpponent() {
-    if (formatFilteredPresets.length === 0) return;
-
-    const random = formatFilteredPresets[Math.floor(Math.random() * formatFilteredPresets.length)];
+    if (!selectedFormat) return;
+    const random = pickRandom(formatFilteredPresets);
+    if (!random) return;
     const id = random.id ?? random.name;
     setOpponentDeck({
       id,
@@ -177,129 +186,30 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
   const isReady = !!playerDeck && !!opponentDeck;
   const canStartTabletop = !!onStartTabletop && !!playerDeck && playerDeck.deckList.length > 0;
 
-  function resolveDeckCover(deck: SelectedDeck | null): Card | undefined {
-    if (!deck) return undefined;
-    if (deck.sourceDeck) return resolveCoverCard(deck.sourceDeck);
-    return undefined;
+  if (stage === "format" || selectedFormat === null) {
+    return (
+      <FormatPicker
+        onSelect={(id) => {
+          setSelectedFormat(id);
+          setStage("decks");
+        }}
+      />
+    );
   }
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-stretch gap-0 border-b flex-shrink-0 h-72">
-        <FighterPanel
-          side="player"
-          label="YOU"
-          icon={<User className="h-4 w-4" />}
-          deck={playerDeck}
-          cover={resolveDeckCover(playerDeck)}
-          isActive={pickingSide === "player"}
-          onClick={() => setPickingSide("player")}
-          onClear={() => setPlayerDeck(null)}
-        />
-
-        <div className="flex flex-col items-center justify-center px-4 flex-shrink-0 bg-muted/30 border-x">
-          <span className="text-2xl font-black tracking-tighter text-muted-foreground/60">VS</span>
-        </div>
-
-        <FighterPanel
-          side="opponent"
-          label="AI"
-          icon={<Bot className="h-4 w-4" />}
-          deck={opponentDeck}
-          cover={resolveDeckCover(opponentDeck)}
-          isActive={pickingSide === "opponent"}
-          onClick={() => setPickingSide("opponent")}
-          onClear={() => setOpponentDeck(null)}
-          extra={
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleRandomOpponent();
-              }}
-              className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-1"
-            >
-              <Shuffle className="h-3 w-3" />
-              Random
-            </button>
-          }
-        />
-      </div>
-
-      <div className="px-4 py-2 border-b bg-muted/10 flex items-center gap-2 flex-shrink-0">
-        <span className="text-xs text-muted-foreground">Picking for:</span>
-        <div className="flex gap-1">
-          <button
-            type="button"
-            onClick={() => setPickingSide("player")}
-            className={cn(
-              "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
-              pickingSide === "player" ? "ring-1" : "text-muted-foreground hover:bg-muted/60",
-            )}
-            style={
-              pickingSide === "player"
-                ? {
-                    color: "var(--player-colors-self)",
-                    backgroundColor:
-                      "color-mix(in srgb, var(--player-colors-self) 10%, transparent)",
-                    boxShadow:
-                      "inset 0 0 0 1px color-mix(in srgb, var(--player-colors-self) 30%, transparent)",
-                  }
-                : undefined
-            }
-          >
-            <User className="h-3 w-3 inline mr-1" />
-            You
-          </button>
-          <button
-            type="button"
-            onClick={() => setPickingSide("opponent")}
-            className={cn(
-              "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
-              pickingSide === "opponent" ? "ring-1" : "text-muted-foreground hover:bg-muted/60",
-            )}
-            style={
-              pickingSide === "opponent"
-                ? {
-                    color: "var(--player-colors-opponent1)",
-                    backgroundColor:
-                      "color-mix(in srgb, var(--player-colors-opponent1) 10%, transparent)",
-                    boxShadow:
-                      "inset 0 0 0 1px color-mix(in srgb, var(--player-colors-opponent1) 30%, transparent)",
-                  }
-                : undefined
-            }
-          >
-            <Bot className="h-3 w-3 inline mr-1" />
-            AI
-          </button>
-        </div>
-      </div>
-
-      <div className="px-4 py-3 border-b bg-muted/5 flex items-center justify-between gap-3 flex-shrink-0">
-        <div>
-          <p className="text-xs font-medium">Format</p>
-          <p className="text-[10px] text-muted-foreground">
-            Choose the game mode before selecting decks.
-          </p>
-        </div>
-        <div className="flex gap-1.5 flex-wrap justify-end">
-          {GAME_FORMATS.map((format) => (
-            <button
-              key={format.id}
-              type="button"
-              onClick={() => setSelectedFormat(format.id)}
-              className={cn(
-                "rounded-md border px-2 py-1 text-xs transition-colors",
-                selectedFormat === format.id
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:bg-muted/60",
-              )}
-            >
-              <FormatBadge formatId={format.id} />
-            </button>
-          ))}
-        </div>
+      <div className="px-4 py-2 border-b bg-muted/5 flex items-center gap-2 flex-shrink-0">
+        <button
+          type="button"
+          onClick={() => setStage("format")}
+          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="h-3 w-3" />
+          Change format
+        </button>
+        <span className="text-muted-foreground/40">·</span>
+        <FormatBadge formatId={selectedFormat} />
       </div>
 
       <div className="px-4 pt-3 pb-2 flex-shrink-0">
@@ -319,13 +229,24 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-4">
-        {filteredUserDecks.length > 0 && (
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold pt-2 pb-1">
-              My Decks
+      <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-6">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold pt-2 pb-1">
+            Your Decks
+          </p>
+          {filteredUserDecks.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic py-2">
+              No decks yet — build one in{" "}
+              <Link
+                to="/deck-editor"
+                className="text-primary underline-offset-2 hover:underline not-italic"
+              >
+                My Decks
+              </Link>
+              .
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
               {filteredUserDecks.map((entry) => {
                 const displayCards = [
                   ...(entry.sourceDeck?.cards ?? []),
@@ -352,21 +273,19 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
                 );
               })}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         <div>
-          {filteredUserDecks.length > 0 && (
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold pb-1">
-              Preset Decks
-            </p>
-          )}
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold pb-1">
+            Starter Decks
+          </p>
           {filteredDecks.length === 0 ? (
-            <p className="text-xs text-muted-foreground italic py-4">
-              No preset decks for this format.
+            <p className="text-xs text-muted-foreground italic py-2">
+              No starter decks for this format.
             </p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 pt-1">
               {filteredDecks.map((deck) => (
                 <DeckSelectionCard
                   key={deck.id ?? deck.name}
@@ -391,28 +310,45 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
         </div>
       </div>
 
-      <div className="px-4 py-3 border-t flex items-center justify-between bg-muted/10 flex-shrink-0">
-        <div className="flex items-center gap-2 text-sm min-w-0">
-          {playerDeck ? (
-            <span className="text-xs truncate">
-              <span className="font-medium" style={{ color: "var(--player-colors-self)" }}>
-                {playerDeck.name}
-              </span>
-              <span className="text-muted-foreground mx-1.5">vs</span>
-              {opponentDeck ? (
-                <span className="font-medium" style={{ color: "var(--player-colors-opponent1)" }}>
-                  {opponentDeck.name}
-                </span>
-              ) : (
-                <span className="text-muted-foreground italic">Pick opponent...</span>
-              )}
-            </span>
-          ) : (
-            <span className="text-xs text-muted-foreground italic">Pick your deck to start</span>
-          )}
+      <div className="px-4 py-3 border-t flex items-center justify-between gap-3 bg-muted/10 flex-shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <DeckSlot
+            label="YOU"
+            icon={<User className="h-3 w-3" />}
+            deck={playerDeck}
+            sideColor="var(--player-colors-self)"
+            isActive={pickingSide === "player"}
+            onClick={() => setPickingSide("player")}
+            onClear={() => setPlayerDeck(null)}
+          />
+          <span className="text-xs font-bold tracking-wider text-muted-foreground/60">VS</span>
+          <DeckSlot
+            label="AI"
+            icon={<Bot className="h-3 w-3" />}
+            deck={opponentDeck}
+            sideColor="var(--player-colors-opponent1)"
+            isActive={pickingSide === "opponent"}
+            onClick={() => setPickingSide("opponent")}
+            onClear={() => setOpponentDeck(null)}
+            placeholderExtra={
+              !opponentDeck && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRandomOpponent();
+                  }}
+                  className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+                  title="Random AI deck"
+                >
+                  <Shuffle className="h-3 w-3" />
+                </button>
+              )
+            }
+          />
         </div>
-        <div className="flex items-center gap-2">
-          {onStartTabletop && (
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {FEATURES.tabletop && onStartTabletop && (
             <Button
               size="sm"
               variant="outline"
@@ -434,136 +370,78 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
   );
 }
 
-interface FighterPanelProps {
-  side: PickingSide;
+interface DeckSlotProps {
   label: string;
   icon: ReactNode;
   deck: SelectedDeck | null;
-  cover?: Card;
+  sideColor: string;
   isActive: boolean;
   onClick: () => void;
   onClear: () => void;
-  extra?: ReactNode;
+  placeholderExtra?: ReactNode;
 }
 
-function FighterPanel({
-  side,
+function DeckSlot({
   label,
   icon,
   deck,
-  cover,
+  sideColor,
   isActive,
   onClick,
   onClear,
-  extra,
-}: FighterPanelProps) {
-  const sideStyleVars: React.CSSProperties = {
-    "--fighter-color":
-      side === "player" ? "var(--player-colors-self)" : "var(--player-colors-opponent1)",
-  } as React.CSSProperties;
-
+  placeholderExtra,
+}: DeckSlotProps) {
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
       className={cn(
-        "relative flex-1 h-full text-left transition-all flex flex-col justify-between cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring overflow-hidden",
-        !cover && (isActive ? "bg-muted/20" : "hover:bg-muted/30"),
+        "group inline-flex max-w-[14rem] items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors",
+        isActive ? "ring-1" : "border-border/40 hover:border-border hover:bg-muted/40",
       )}
       style={{
-        ...sideStyleVars,
-        ...(isActive ? { boxShadow: "inset 0 0 0 1px var(--fighter-color)" } : {}),
+        borderColor: isActive ? sideColor : undefined,
+        boxShadow: isActive
+          ? `inset 0 0 0 1px color-mix(in srgb, ${sideColor} 35%, transparent)`
+          : undefined,
       }}
     >
-      {cover && (
+      <span
+        className="inline-flex items-center gap-0.5 font-bold text-[10px] uppercase tracking-wider"
+        style={{ color: sideColor }}
+      >
+        {icon}
+        {label}
+      </span>
+      {deck ? (
         <>
-          <DeckCoverImage cover={cover} alt="" className="scale-110 blur-2xl opacity-60" />
-          <DeckCoverImage cover={cover} alt={deck?.name} className="object-contain" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent z-[1]" />
-        </>
-      )}
-
-      <div className={cn("relative z-10 p-4 flex flex-col justify-between h-full")}>
-        <div className="flex items-center gap-2 mb-2">
-          <Badge
-            variant="outline"
-            className="text-[10px] font-bold gap-1 text-white border"
-            style={{
-              backgroundColor: "var(--fighter-color)",
-              borderColor: "var(--fighter-color)",
+          <span className="truncate font-medium text-foreground/90">{deck.name}</span>
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClear();
             }}
-          >
-            {icon}
-            {label}
-          </Badge>
-          {isActive && (
-            <span
-              className={cn(
-                "text-[9px] animate-pulse",
-                cover ? "text-white/70" : "text-muted-foreground",
-              )}
-            >
-              selecting...
-            </span>
-          )}
-        </div>
-
-        {deck ? (
-          <div>
-            <p
-              className={cn(
-                "font-semibold text-sm",
-                cover
-                  ? "text-white"
-                  : deck.sourceDeck
-                    ? getDeckNameColorClass(
-                        [...deck.sourceDeck.cards, ...(deck.sourceDeck.commanders ?? [])],
-                        deck.color,
-                      )
-                    : deck.color,
-                DECK_NAME_SHADOW_CLASS,
-              )}
-            >
-              {deck.name}
-            </p>
-            <p
-              className={cn(
-                "text-[10px] leading-tight mt-0.5 line-clamp-2",
-                cover ? "text-white/80" : "text-muted-foreground",
-              )}
-            >
-              {deck.desc}
-            </p>
-            <button
-              type="button"
-              onClick={(e) => {
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
                 e.stopPropagation();
                 onClear();
-              }}
-              className={cn(
-                "text-[10px] transition-colors mt-1 underline",
-                cover
-                  ? "text-white/70 hover:text-white"
-                  : "text-muted-foreground hover:text-destructive",
-              )}
-            >
-              Clear
-            </button>
-          </div>
-        ) : (
-          <div>
-            <p className="text-xs text-muted-foreground italic">No deck selected</p>
-            {extra}
-          </div>
-        )}
-      </div>
-    </div>
+              }
+            }}
+            className="ml-0.5 inline-flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-destructive"
+            title="Clear"
+          >
+            <X className="h-2.5 w-2.5" />
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="italic text-muted-foreground">pick a deck</span>
+          {placeholderExtra}
+        </>
+      )}
+    </button>
   );
 }

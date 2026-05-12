@@ -57,7 +57,7 @@ WORKDIR /build
 # Copy workspace manifests for dependency caching
 COPY Cargo.toml Cargo.lock ./
 COPY forge-engine/ forge-engine/
-COPY preset_decks/ preset_decks/
+COPY public/preset_decks/ public/preset_decks/
 COPY src-tauri/Cargo.toml src-tauri/Cargo.toml
 RUN mkdir -p src-tauri/src && echo "fn main() {}" > src-tauri/src/main.rs && touch src-tauri/src/lib.rs
 # tree-sitter-forge-card-script is also a workspace member (declared at the
@@ -87,7 +87,7 @@ WORKDIR /app
 COPY --from=rust-builder /usr/local/bin/forge-parity /app/forge-parity
 COPY --from=java-builder /build/forge/forge-harness/target/forge-harness-jar-with-dependencies.jar /app/forge-harness.jar
 COPY forge/forge-gui/res/ /app/forge-gui/res/
-COPY preset_decks/ /app/preset_decks/
+COPY public/preset_decks/ /app/preset_decks/
 
 # Download MTG Comprehensive Rules for agent analysis
 RUN curl -fsSL -o /app/mtg_rules.txt "https://media.wizards.com/2026/downloads/MagicCompRules%2020260227.txt" || true

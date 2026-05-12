@@ -5,12 +5,17 @@ import { queryClient } from "@/api/queryClient";
 import { router } from "@/router";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AppInitGate } from "@/components/AppInitGate";
 import { useTheme } from "@/hooks/useTheme";
 import { useGameDevStore } from "@/stores/useGameDevStore";
 import { lazy, Suspense, useEffect } from "react";
 import { toast } from "sonner";
 import { getPlatformType } from "@/platform";
 import { initApp } from "@/lib/appInit";
+// Importing the store wires the `worker:init` event subscription at module
+// load — earlier than App mounts — so the gate can observe the worker's
+// download/parse stages from the very first event.
+import "@/stores/useAppInitStore";
 
 void initApp();
 const DevToolsPanel = import.meta.env.DEV
@@ -59,7 +64,9 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <TooltipProvider delayDuration={120} skipDelayDuration={300}>
             <PlatformRuntimeChecks />
-            <RouterProvider router={router} />
+            <AppInitGate>
+              <RouterProvider router={router} />
+            </AppInitGate>
             <Toaster />
             {import.meta.env.DEV && devToolsEnabled && (
               <Suspense>

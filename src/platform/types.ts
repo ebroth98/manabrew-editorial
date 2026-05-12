@@ -38,11 +38,6 @@ export interface RestoreSnapshotParams {
   checkpointId: number;
 }
 
-export interface DeckAvailabilityResult {
-  supported: boolean;
-  missingCards: string[];
-}
-
 // ============================================================================
 // Server API Types
 // ============================================================================
@@ -107,9 +102,6 @@ export interface IGameApi {
 
   /** Get preset deck list */
   getPresetDecks(): Promise<Deck[]>;
-
-  /** Check whether a deck is playable on the current platform backend */
-  validateDeckAvailability(deckList: CardIdentity[]): Promise<DeckAvailabilityResult>;
 
   /** Get current prompt (for debugging/polling) */
   getPrompt(): Promise<unknown>;

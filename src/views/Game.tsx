@@ -15,6 +15,7 @@ import { Card } from "@/components/game/Card";
 import { GameModals } from "@/components/game/GameModals";
 import { GameOverScreen } from "@/components/game/GameOverScreen";
 import { GameLoadingScreen } from "@/components/game/GameLoadingScreen";
+import { FullscreenToggle } from "@/components/game/FullscreenToggle";
 import { ManualTabletopControls } from "@/components/game/ManualTabletopControls";
 import { MainActionOverlay, RightActionPanel } from "@/components/game/panels";
 import { StackDisplay } from "@/components/game/panels/StackDisplay";
@@ -1471,6 +1472,7 @@ export default function Game({ exitTo }: GameProps = {}) {
         } as React.CSSProperties
       }
     >
+      <FullscreenToggle />
       <PixiArrowsCanvas
         mainSceneRef={pixiSceneRef}
         opponentSceneRefs={opponentSceneRefsRef.current}

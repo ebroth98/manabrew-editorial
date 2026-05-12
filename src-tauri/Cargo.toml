@@ -12,7 +12,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
-forge-cardset-archive = { path = "../forge-engine/crates/forge-cardset-archive" }
+forge-cardset-archive = { path = "../forge-engine/crates/forge-cardset-archive", features = [
+    "build",
+] }
 walkdir = "2"
 
 [dependencies]
