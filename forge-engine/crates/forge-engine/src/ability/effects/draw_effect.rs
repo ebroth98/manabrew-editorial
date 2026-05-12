@@ -42,7 +42,15 @@ fn draw_for_player(
         }
     }
 
-    if sa.ir.optional_present {
+    // Mirrors Java `DrawEffect.resolve` (DrawEffect.java:60-92):
+    //   final boolean upto = sa.hasParam("Upto");
+    //   final boolean optional = sa.hasParam("OptionalDecider") || upto;
+    //   if (optional) confirm "draw N cards?" — return on decline.
+    //   if (upto)     chooseNumber(0..=N) for the actual count.
+    let upto = sa.ir.upto;
+    let optional = sa.ir.optional_present || sa.ir.optional_decider.is_some() || upto;
+    let mut num = num;
+    if optional {
         let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
         let accepted = ctx.agents[target.index()].confirm_action(
             target,
@@ -54,6 +62,17 @@ fn draw_for_player(
         );
         if !accepted {
             return;
+        }
+    }
+    if upto {
+        match ctx.agents[target.index()].choose_number(target, 0, num) {
+            Some(picked) => {
+                num = picked.clamp(0, num);
+                if num == 0 {
+                    return;
+                }
+            }
+            None => return,
         }
     }
     // Draw cards one at a time and fire Drawn trigger after each draw.

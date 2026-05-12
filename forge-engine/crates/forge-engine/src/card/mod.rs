@@ -177,6 +177,16 @@ pub struct CloneState {
     pub original_svars: BTreeMap<String, String>,
     pub original_static_abilities: Vec<StaticAbility>,
     pub original_replacement_effects: Vec<ReplacementEffect>,
+    /// Intrinsic ability count *before* the clone overwrote it. The static
+    /// layer truncates `activated_abilities` to `base_ability_count` each
+    /// pass, so reverting `activated_abilities` without also restoring this
+    /// would let the layer trim the recovered abilities right back to the
+    /// clone's count.
+    #[serde(default)]
+    pub original_base_ability_count: usize,
+    /// Intrinsic trigger count *before* the clone, for the same reason.
+    #[serde(default)]
+    pub original_base_trigger_count: usize,
 }
 
 /// A card instance in a game. This is the mutable game-state representation,
@@ -2270,6 +2280,8 @@ impl Card {
             original_svars: self.svars.clone(),
             original_static_abilities: self.static_abilities.clone(),
             original_replacement_effects: self.replacement_effects.clone(),
+            original_base_ability_count: self.base_ability_count,
+            original_base_trigger_count: self.base_trigger_count,
         }
     }
 
@@ -2287,6 +2299,8 @@ impl Card {
         self.svars = state.original_svars;
         self.static_abilities = state.original_static_abilities;
         self.replacement_effects = state.original_replacement_effects;
+        self.base_ability_count = state.original_base_ability_count;
+        self.base_trigger_count = state.original_base_trigger_count;
         self.ensure_crew_activated_ability();
         self.remove_clone_state();
     }

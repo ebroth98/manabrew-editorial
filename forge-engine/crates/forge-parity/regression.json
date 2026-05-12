@@ -88,6 +88,10 @@
     "args": "--deck1 poison_test --deck2 comprehensive_test --seed 1521 --max-turns 15 --games 1"
   },
   {
+    "name": "teval",
+    "args": "--commander 'Teval, the Balanced Scale' --commander 'Teval, the Balanced Scale' --deck1 real_teval_commander --deck2 real_teval_commander --seed 42 --max-turns 40 --games 1 --variant Commander"
+  },
+  {
     "name": "starter_bant_rhythm",
     "args": "--deck1 starter_deck_bant_rhythm --deck2 starter_deck_bant_rhythm --seed 42 --max-turns 40 --games 10"
   }

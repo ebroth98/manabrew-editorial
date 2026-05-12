@@ -480,6 +480,7 @@ impl GameLoop {
                                 target_card: Some(card_id),
                                 remembered_amount: 0,
                                 remembered_cards: Vec::new(),
+                                remembered_players: Vec::new(),
                                 remembered_lki_cards: Vec::new(),
                                 sort_after_active: i > 0,
                 trigger_order: None,
@@ -543,6 +544,7 @@ impl GameLoop {
                             target_card: Some(card_id),
                             remembered_amount: 0,
                             remembered_cards: Vec::new(),
+                            remembered_players: Vec::new(),
                             remembered_lki_cards: Vec::new(),
                             sort_after_active: false,
                 trigger_order: None,
@@ -575,6 +577,7 @@ impl GameLoop {
                             target_card: Some(card_id),
                             remembered_amount: 0,
                             remembered_cards: Vec::new(),
+                            remembered_players: Vec::new(),
                             remembered_lki_cards: Vec::new(),
                             sort_after_active: false,
                 trigger_order: None,
@@ -667,6 +670,7 @@ impl GameLoop {
                             target_card: Some(card_id),
                             remembered_amount: 0,
                             remembered_cards: Vec::new(),
+                            remembered_players: Vec::new(),
                             remembered_lki_cards: Vec::new(),
                             sort_after_active: false,
                             trigger_order: None,
@@ -736,6 +740,7 @@ impl GameLoop {
                                 target_card: Some(card_id),
                                 remembered_amount: 0,
                                 remembered_cards: Vec::new(),
+                                remembered_players: Vec::new(),
                                 remembered_lki_cards: Vec::new(),
                                 sort_after_active: false,
                                 trigger_order: None,
@@ -773,9 +778,19 @@ impl GameLoop {
         agents: &mut [Box<dyn PlayerAgent>],
         entry: &StackEntry,
     ) {
-        // Reset shared parity tables for this stack resolution.
+        // Reset shared parity tables for this stack resolution. The
+        // change-zone table must exist (not None) so that moves performed
+        // during this resolution are recorded for the post-pass
+        // `ChangesZoneAll` trigger fire below.
         game.clear_pending_damage_maps();
         game.clear_pending_change_zone_table();
+        game.ensure_pending_change_zone_table();
+
+        // Mirrors Java `MagicStack.resolveStack` (MagicStack.java:651-653):
+        // call `handleRemembering` on the root SA before resolving so
+        // `RememberTargets$` populates the host's remembered lists in time
+        // for sub-abilities like `RememberObjects$ RememberedController`.
+        crate::ability::ability_utils::handle_remembering(game, &entry.spell_ability);
 
         // Walk the SpellAbility chain: resolve each node's effect, propagating
         // the parent SA's chosen target card so sub-abilities can resolve
@@ -833,6 +848,15 @@ impl GameLoop {
             parent_target_stack_entry = sa_ref.target_chosen.target_stack_entry;
             inherited_trigger_index = sa_ref.trigger_index;
             current = sa.get_sub_ability();
+        }
+
+        // Mirror Java's `SpellAbility.resolve` post-pass: fire `ChangesZoneAll`
+        // for every move accumulated during this spell/ability so triggers like
+        // Teval's "whenever a card leaves your graveyard, create a token" see
+        // moves performed by the resolving SA chain (e.g. its DBReturn pulling
+        // a land from the graveyard back onto the battlefield).
+        if let Some(table) = game.pending_change_zone_table.take() {
+            table.trigger_changes_zone_all(&mut self.trigger_handler, game, None);
         }
 
         // Avoid leaking shared tables into subsequent stack entries.

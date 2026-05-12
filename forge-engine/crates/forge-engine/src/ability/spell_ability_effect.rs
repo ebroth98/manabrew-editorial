@@ -810,6 +810,7 @@ pub fn register_at_eot(
         target_card: None,
         remembered_amount: 0,
         remembered_cards: remembered.clone(),
+        remembered_players: Vec::new(),
         remembered_lki_cards: remembered,
         sort_after_active: false,
         trigger_order: None,

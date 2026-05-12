@@ -525,12 +525,24 @@ impl GameLoop {
                                     session.player,
                                     session.card_id,
                                 );
+                                // For SPELLS being cast, the card is on the
+                                // stack and cannot be tapped for its own mana.
+                                // For ACTIVATED abilities of a permanent, the
+                                // source IS on the battlefield and may tap
+                                // itself for the cost (Java parity:
+                                // `ComputerUtilMana` does not exclude the
+                                // source for activated-ability payments).
+                                let exclude_source = if session.is_activated_ability {
+                                    None
+                                } else {
+                                    Some(session.card_id)
+                                };
                                 mana::auto_tap_lands_allow_reserved_source_reuse_trace_with_callbacks_and_reserved_sacrifices(
                                     game,
                                     &mut slf.mana_pools[session.player.index()],
                                     session.player,
                                     session.mana_cost,
-                                    Some(session.card_id),
+                                    exclude_source,
                                     session.reserved_sacrifices,
                                     &mut callback,
                                 )
@@ -2826,6 +2838,7 @@ impl GameLoop {
                     target_card: None,
                     remembered_amount: enlisted_power,
                     remembered_cards: vec![chosen],
+                    remembered_players: Vec::new(),
                     remembered_lki_cards: vec![chosen],
                     sort_after_active: true,
                     trigger_order: None,

@@ -186,6 +186,7 @@ pub(super) fn move_cards(
                     target_card: Some(cid),
                     remembered_amount: 0,
                     remembered_cards: Vec::new(),
+                    remembered_players: Vec::new(),
                     remembered_lki_cards: Vec::new(),
                     sort_after_active: false,
                     trigger_order: None,

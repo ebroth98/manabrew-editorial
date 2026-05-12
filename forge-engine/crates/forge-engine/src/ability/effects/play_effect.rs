@@ -42,8 +42,11 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         Some(GameEntity::Player(_)) => return,
     };
 
-    // ── Step 2: Optional confirm
-    if optional {
+    // ── Step 2: Optional confirm — Java only asks the outer "Do you want
+    // to play X?" prompt in the single-option case (`PlayEffect.java:250`).
+    // For multi-option, the chooser at Step 1 already lets the player decline
+    // by returning `None`. The non-mandatory-cost confirm below is separate.
+    if single_option {
         let card_name = ctx.game.card(card_id).card_name.clone();
         let accepted = ctx.agents[controller.index()].confirm_action(
             controller,
@@ -152,6 +155,14 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
 
     // ── Step 6: Set up targets ──────────────────────────────────────
     spell_sa.setup_targets(ctx.game, ctx.agents, ctx.mana_pools);
+
+    // `ReplaceGraveyard$ <Zone>` — install a one-shot replacement that
+    // reroutes the played card if it would be put into the graveyard
+    // (e.g. Diviner of Mist exiles the spell on resolve).
+    if let Some(zone) = sa.ir.replace_graveyard.clone() {
+        let host_card = sa.source.unwrap_or(card_id);
+        add_replace_graveyard_effect(ctx, card_id, host_card, sa, &zone);
+    }
 
     // ── Step 7: Push to stack ───────────────────────────────────────
     let label = if is_madness {
@@ -280,8 +291,9 @@ fn push_spell_to_stack(
     crate::agent::notify_all_agents(ctx.agents, event);
 }
 
-/// Create a replacement effect that exiles a card instead of putting it into
-/// the graveyard from the stack.
+/// Create a one-shot replacement effect on a Command-zone effect card that
+/// reroutes `card_id` to `dest_zone` if it would be put into the graveyard
+/// from the stack (e.g. Diviner of Mist's `ReplaceGraveyard$ Exile`).
 pub fn add_replace_graveyard_effect(
     ctx: &mut EffectContext,
     card_id: CardId,
@@ -290,35 +302,22 @@ pub fn add_replace_graveyard_effect(
     zone: &str,
 ) {
     let controller = sa.activating_player;
-
-    let effect_card = crate::card::Card::new(
-        CardId(0),
-        "ReplaceGraveyard Effect".to_string(),
-        controller,
-        forge_foundation::CardTypeLine::default(),
-        forge_foundation::ManaCost::no_cost(),
-        forge_foundation::ColorSet::COLORLESS,
-        None,
-        None,
-        vec![],
-        vec![],
-    );
-    let effect_id = ctx.game.create_card(effect_card);
-
-    ctx.game.card_mut(effect_id).remembered_cards.push(card_id);
-
     let dest_zone = if zone.is_empty() { "Exile" } else { zone };
-    ctx.game.card_mut(effect_id).set_s_var(
-        "ReplacementEffect",
-        "Event$ Moved | ValidCard$ Card.IsRemembered | Origin$ Stack | Destination$ Graveyard | Description$ If that card would be put into your graveyard this turn, exile it instead.".to_string(),
+
+    let mut effect = crate::player::player_factory_util::new_player_effect_card(
+        controller,
+        "ReplaceGraveyard Effect",
+        None,
     );
-    ctx.game
-        .card_mut(effect_id)
-        .set_s_var("ReplacementDestination", dest_zone.to_string());
+    effect.remembered_cards.push(card_id);
+    let raw = format!(
+        "R$ Event$ Moved | ValidCard$ Card.IsRemembered | Origin$ Stack | Destination$ Graveyard | NewDestination$ {} | ForgetOnMoved$ Origin | Description$ If that card would be put into your graveyard this turn, put it into {} instead.",
+        dest_zone, dest_zone
+    );
+    crate::player::player_factory_util::add_replacement_effect(&mut effect, &raw);
+    effect.exile_when_no_remembered = true;
+    effect.forget_on_moved_origin = Some(ZoneType::Stack);
 
+    let effect_id = ctx.game.create_card(effect);
     ctx.game.move_card(effect_id, ZoneType::Command, controller);
-
-    ctx.game
-        .card_mut(effect_id)
-        .set_s_var("ExileAtEndOfTurn", "True".to_string());
 }

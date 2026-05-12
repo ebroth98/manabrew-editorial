@@ -271,10 +271,39 @@ pub fn make_choices_precast_with_count(
         })
         .collect();
 
+    // Drop modes already chosen on this source within the `ChoiceRestriction$`
+    // scope (mirror of the same filter in `resolve` — must run here too because
+    // triggered abilities make their mode choices precast and the resolver only
+    // consumes the pre-selected list).
+    let restriction = sa
+        .ir
+        .choice_restriction_text
+        .as_deref()
+        .and_then(|s| s.parse::<ChoiceRestriction>().ok());
+    let current_turn = game.turn.turn_number as i32;
+    let last_combat_turn = game.last_combat_turn_of(player).unwrap_or(i32::MIN);
+    let is_restricted_index = |mode_svar: &str| -> bool {
+        let Some(scope) = restriction else {
+            return false;
+        };
+        let history = &game.card(source_id).chosen_charm_modes;
+        let Some(&turn) = history.get(mode_svar) else {
+            return false;
+        };
+        match scope {
+            ChoiceRestriction::ThisGame => true,
+            ChoiceRestriction::ThisTurn => turn == current_turn,
+            ChoiceRestriction::YourLastCombat => turn >= last_combat_turn,
+        }
+    };
+
     let valid_mode_indices: Vec<usize> = mode_texts
         .iter()
         .enumerate()
-        .filter(|(_, text)| mode_has_valid_targets_in_game(game, text, player, source_id))
+        .filter(|(i, text)| {
+            !is_restricted_index(mode_svars[*i])
+                && mode_has_valid_targets_in_game(game, text, player, source_id)
+        })
         .map(|(i, _)| i)
         .collect();
     if valid_mode_indices.is_empty() {
@@ -336,6 +365,20 @@ pub fn make_choices_precast_with_count(
     // cascade RNG divergences vs Java.
     chosen_indices.sort();
     let selected_mode_count = chosen_indices.len();
+
+    // Record chosen modes into the source's history so the *next* trigger
+    // fire on this source (e.g. another Teval's Judgment trigger from the
+    // same turn's graveyard movements) honors `ChoiceRestriction$ ThisTurn`.
+    // The resolve-time path also records, but precast-driven flows like
+    // triggered Charms never reach the resolver's recorder for the freshly
+    // built SA, so we have to do it here too.
+    for &idx in &chosen_indices {
+        if let Some(svar_name) = mode_svars.get(idx).copied() {
+            game.card_mut(source_id)
+                .chosen_charm_modes
+                .insert(svar_name.to_string(), current_turn);
+        }
+    }
 
     sa.sub_ability = None;
     let parent_trigger_remembered = sa.trigger_remembered_amount;
@@ -557,7 +600,7 @@ fn should_use_preselected_modes(
     })
 }
 
-fn mode_has_valid_targets_in_game(
+pub(crate) fn mode_has_valid_targets_in_game(
     game: &GameState,
     mode_text: &str,
     player: PlayerId,

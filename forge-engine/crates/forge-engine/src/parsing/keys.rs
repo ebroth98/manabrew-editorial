@@ -202,6 +202,18 @@ pub const IS_DAMAGE: &str = "IsDamage";
 pub const MANDATORY: &str = "Mandatory";
 pub const MODULAR: &str = "Modular";
 pub const OPTIONAL: &str = "Optional";
+/// `Upto$` (lowercase 'pto') — used by `DrawEffect` to let the decider pick
+/// how many cards to draw (0..=N). Distinct from `UpTo` (different effects).
+pub const UPTO: &str = "Upto";
+/// `ReplaceGraveyard$` — `PlayEffect` adds a replacement that reroutes the
+/// played card to the named zone instead of the graveyard. Diviner of Mist
+/// uses `ReplaceGraveyard$ Exile`.
+pub const REPLACE_GRAVEYARD: &str = "ReplaceGraveyard";
+/// `TgtZone$` — explicit override for target-search zone. Mirrors Java
+/// `TargetRestrictions.setupTargeting` (TargetRestrictions.java:152). Distinct
+/// from `Origin$` (which most effects use for the source zone of a ChangeZone
+/// move). When both appear, `TgtZone$` wins.
+pub const TGT_ZONE: &str = "TgtZone";
 pub const RESULT: &str = "Result";
 pub const PREVENT: &str = "Prevent";
 pub const REMEMBER_CHANGED: &str = "RememberChanged";

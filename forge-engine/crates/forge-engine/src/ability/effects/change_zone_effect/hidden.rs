@@ -186,7 +186,7 @@ pub(super) fn resolve_hidden_origin(
         return;
     }
 
-    let chooser = if let Some(chooser_def) = sa.chooser() {
+    let explicit_chooser: Option<PlayerId> = if let Some(chooser_def) = sa.chooser() {
         let chooser_players = crate::ability::ability_utils::resolve_defined_players_with_sa(
             chooser_def,
             sa,
@@ -194,7 +194,7 @@ pub(super) fn resolve_hidden_origin(
             ctx.game,
         );
         if chooser_players.is_empty() {
-            controller
+            None
         } else {
             let chooser_entities: Vec<_> = chooser_players
                 .iter()
@@ -202,18 +202,25 @@ pub(super) fn resolve_hidden_origin(
                 .map(GameEntity::Player)
                 .collect();
             ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
-            match ctx.agents[controller.index()].choose_single_entity_for_effect(
-                controller,
-                &chooser_entities,
-                false,
-            ) {
-                Some(GameEntity::Player(pid)) => pid,
-                _ => chooser_players[0],
-            }
+            Some(
+                match ctx.agents[controller.index()].choose_single_entity_for_effect(
+                    controller,
+                    &chooser_entities,
+                    false,
+                ) {
+                    Some(GameEntity::Player(pid)) => pid,
+                    _ => chooser_players[0],
+                },
+            )
         }
     } else {
-        controller
+        None
     };
+    // Java `changeZonePlayerInvariant` (ChangeZoneEffect.java:917-921):
+    //   `decider = chooser; if (decider == null) decider = player;`
+    // Without an explicit `Chooser$`, the per-iteration affected fetcher decides
+    // (e.g. Assassin's Trophy: the destroyed permanent's controller searches).
+    let chooser = explicit_chooser.unwrap_or(controller);
 
     // DefinedPlayer$ for hidden-origin
     if sa.defined_player().is_some()
@@ -221,10 +228,11 @@ pub(super) fn resolve_hidden_origin(
         && !defined.eq_ignore_ascii_case("Opponent")
     {
         for affected_player in resolve_defined_players_for_hidden_origin(ctx, sa) {
+            let decider = explicit_chooser.unwrap_or(affected_player);
             let effective_chooser = if origin_zone == ZoneType::Library {
-                find_opposition_agent(ctx, controller).unwrap_or(chooser)
+                find_opposition_agent(ctx, controller).unwrap_or(decider)
             } else {
-                chooser
+                decider
             };
 
             if optional_confirm {

@@ -68,25 +68,36 @@ impl TargetRestrictions {
             .split(',')
             .map(|s| s.trim().to_string())
             .collect();
+        // `TgtZone$` overrides the target-search zone (Java
+        // `TargetRestrictions.setupTargeting` line 152). Falls back to
+        // `Origin$` (the move-from zone used by most ChangeZone effects),
+        // and finally to Battlefield as the implicit default.
+        let target_zone = parsed_zone_type(parsed.get(keys::TGT_ZONE));
         let origin_zone = parsed_zone_type(parsed.get(keys::ORIGIN));
-        let enhanced_input = if origin_zone.is_some_and(|z| z != ZoneType::Battlefield) {
+        let effective_zone = target_zone.or(origin_zone);
+        let enhanced_input = if effective_zone.is_some_and(|z| z != ZoneType::Battlefield) {
             valid_tgts_str
         } else {
             &valid_tgts[0]
         };
-        let mut target_kind = parse_target_kind_enhanced(enhanced_input, origin_zone);
+        let mut target_kind = parse_target_kind_enhanced(enhanced_input, effective_zone);
+        // Multi-clause `ValidTgts$` (e.g. `Creature.YouCtrl,Artifact.YouCtrl`)
+        // collapses to a single TargetKind. The first-clause-only parse drops
+        // the other clauses' candidates. Promote to `Any` so the per-clause
+        // valid_tgts filter is applied against the full battlefield.
+        if effective_zone.is_none_or(|z| z == ZoneType::Battlefield) && valid_tgts.len() > 1 {
+            target_kind = TargetKind::Any;
+        }
         let min_targets = parsed.get(keys::TARGET_MIN).unwrap_or("1").to_string();
         let max_targets = parsed.get(keys::TARGET_MAX).unwrap_or("1").to_string();
         let target_type_filter = parsed.get(keys::TARGET_TYPE).map(str::to_string);
 
-        if let Some(ref target_type) = target_type_filter {
-            if target_type
-                .split('.')
-                .next()
-                .is_some_and(|kind| kind.eq_ignore_ascii_case("Spell"))
-            {
-                target_kind = TargetKind::Spell;
-            }
+        // Any TargetType$ value targets the stack (the script convention is
+        // exclusively SA-kind tokens like Spell, Activated, Triggered, …).
+        // Route these through the stack-entry filtering path instead of the
+        // battlefield-permanent path.
+        if target_type_filter.is_some() {
+            target_kind = TargetKind::Spell;
         }
 
         Some(TargetRestrictions {
@@ -99,7 +110,7 @@ impl TargetRestrictions {
             target_type_filter,
             min_targets,
             max_targets,
-            tgt_zone: origin_zone
+            tgt_zone: effective_zone
                 .map(|zone| vec![zone])
                 .unwrap_or_else(|| vec![ZoneType::Battlefield]),
         })
@@ -113,17 +124,30 @@ impl TargetRestrictions {
             .split(',')
             .map(|s| s.trim().to_string())
             .collect();
+        // `TgtZone$` overrides the target-search zone (Java
+        // `TargetRestrictions.setupTargeting` line 152). Falls back to
+        // `Origin$` (the move-from zone used by most ChangeZone effects),
+        // and finally to Battlefield as the implicit default.
+        let target_zone = params.zone_type(keys::TGT_ZONE);
         let origin_zone = params.zone_type(keys::ORIGIN);
-        // For CardInZone targeting (non-battlefield origin), pass the full
+        let effective_zone = target_zone.or(origin_zone);
+        // For CardInZone targeting (non-battlefield zone), pass the full
         // ValidTgts string so comma-separated types (e.g. "Creature,Land")
         // are all included in the filter. For battlefield targeting, use
         // only the first token (legacy parser handles single types).
-        let enhanced_input = if origin_zone.is_some_and(|z| z != ZoneType::Battlefield) {
+        let enhanced_input = if effective_zone.is_some_and(|z| z != ZoneType::Battlefield) {
             valid_tgts_str
         } else {
             &valid_tgts[0]
         };
-        let mut target_kind = parse_target_kind_enhanced(enhanced_input, origin_zone);
+        let mut target_kind = parse_target_kind_enhanced(enhanced_input, effective_zone);
+        // Multi-clause `ValidTgts$` (e.g. `Creature.YouCtrl,Artifact.YouCtrl`)
+        // collapses to a single TargetKind. The first-clause-only parse drops
+        // the other clauses' candidates. Promote to `Any` so the per-clause
+        // valid_tgts filter is applied against the full battlefield.
+        if effective_zone.is_none_or(|z| z == ZoneType::Battlefield) && valid_tgts.len() > 1 {
+            target_kind = TargetKind::Any;
+        }
         let min_targets = params
             .get_cloned(keys::TARGET_MIN)
             .unwrap_or_else(|| "1".to_string());
@@ -137,14 +161,12 @@ impl TargetRestrictions {
         // If TargetType$ Spell* is specified, override to Spell targeting.
         // This handles cases like Counterspell ("Spell") and Imp's Mischief
         // ("Spell.singleTarget").
-        if let Some(ref target_type) = target_type_filter {
-            if target_type
-                .split('.')
-                .next()
-                .is_some_and(|kind| kind.eq_ignore_ascii_case("Spell"))
-            {
-                target_kind = TargetKind::Spell;
-            }
+        // Any TargetType$ value targets the stack (the script convention is
+        // exclusively SA-kind tokens like Spell, Activated, Triggered, …).
+        // Route these through the stack-entry filtering path instead of the
+        // battlefield-permanent path.
+        if target_type_filter.is_some() {
+            target_kind = TargetKind::Spell;
         }
 
         Some(TargetRestrictions {
@@ -157,7 +179,7 @@ impl TargetRestrictions {
             target_type_filter,
             min_targets,
             max_targets,
-            tgt_zone: origin_zone
+            tgt_zone: effective_zone
                 .map(|zone| vec![zone])
                 .unwrap_or_else(|| vec![ZoneType::Battlefield]),
         })
@@ -396,59 +418,53 @@ pub fn filter_spells_for_target_restrictions(
     filtered
 }
 
-/// Filter stack entries to only include spells matching the TargetType$ filter.
+/// Filter stack entries by a comma-separated TargetType$/ValidTgts$ filter.
+/// SA-kind clauses (Spell, Activated, Triggered, …) dispatch through
+/// `valid_sa::matches_valid_sa`, mirroring Java's `SpellAbility.isValid`.
+/// Per-clause fallback then checks the entry's source-card properties so
+/// ValidTgts tokens like `Card` and `OppCtrl` still match.
 pub fn filter_spells_by_type(game: &GameState, candidates: &[u32], filter: &str) -> Vec<u32> {
-    let clauses: Vec<&str> = filter
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .collect();
-
     candidates
         .iter()
         .filter(|&&id| {
             let Some(entry) = game.stack.iter().find(|entry| entry.id == id) else {
                 return false;
             };
-            if !entry.spell_ability.is_spell {
-                return false;
-            }
-            if clauses.is_empty()
-                || clauses
-                    .iter()
-                    .any(|clause| clause.eq_ignore_ascii_case("Spell"))
-            {
-                return true;
-            }
-
-            let Some(source_card) = entry.spell_ability.source else {
-                return false;
-            };
-            clauses.iter().any(|clause| {
-                if clause.eq_ignore_ascii_case("Card") {
-                    return true;
-                }
-                let mut parts = clause.split('.');
-                if parts
-                    .next()
-                    .is_some_and(|kind| kind.eq_ignore_ascii_case("Spell"))
-                {
-                    return parts.all(|qualifier| match qualifier {
-                        q if q.eq_ignore_ascii_case("singleTarget") => {
-                            entry.spell_ability.targets_single_target()
-                        }
-                        _ => false,
-                    });
-                }
-                card_property::card_has_property(
-                    game.card(source_card),
-                    clause,
-                    entry.spell_ability.activating_player,
-                )
-            })
+            stack_entry_matches_filter(game, &entry.spell_ability, filter)
         })
         .copied()
         .collect()
+}
+
+fn stack_entry_matches_filter(
+    game: &GameState,
+    sa: &crate::spellability::SpellAbility,
+    filter: &str,
+) -> bool {
+    if filter.trim().is_empty() {
+        return sa.is_spell;
+    }
+    let Some(source_id) = sa.source else {
+        return false;
+    };
+    let source = game.card(source_id);
+
+    if crate::spellability::matches_valid_sa(filter, sa, source, Some(source)) {
+        return true;
+    }
+
+    filter
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .any(|clause| {
+            // Bare `Card` is the catch-all "any source" clause; `Card.<qual>`
+            // still has to match the qualifier on the source card.
+            if clause == crate::card::filter_constants::CARD {
+                return true;
+            }
+            card_property::card_has_property(source, clause, sa.activating_player)
+        })
 }
 
 /// Parse a single ValidTgts value into a TargetKind.
@@ -1069,12 +1085,19 @@ fn candidate_zone_cards(
 
 /// Get all stack entry IDs for spells that can be countered.
 /// Mirrors Java's `TargetRestrictions.getAllCandidates()` for Spell targets.
+/// Returned in top-of-stack-first order to match Java's `LinkedBlockingDeque`
+/// iteration (entries are pushed via `addFirst`, so `iterator()` walks the
+/// top of the stack downward). Without this ordering, Stifle and similar
+/// counters target the wrong stack entry under deterministic-agent picks.
 pub fn get_all_candidates_spells(game: &GameState) -> Vec<u32> {
-    game.stack
+    let mut ids: Vec<u32> = game
+        .stack
         .iter()
         .filter(|entry| !entry.is_pending_cast)
         .map(|entry| entry.id)
-        .collect()
+        .collect();
+    ids.reverse();
+    ids
 }
 
 fn token_allows_player_targets(token: &str) -> bool {

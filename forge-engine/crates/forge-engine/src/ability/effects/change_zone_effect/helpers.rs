@@ -368,6 +368,7 @@ pub(super) fn apply_post_move(
                     target_card: Some(card_id),
                     remembered_amount: 0,
                     remembered_cards: Vec::new(),
+                    remembered_players: Vec::new(),
                     remembered_lki_cards: Vec::new(),
                     sort_after_active: false,
                     trigger_order: None,

@@ -456,23 +456,12 @@ impl GameLoop {
                     false
                 };
 
-                // Spree: base cost + cheapest ModeCost must be affordable
-                let normal_ok = if card.has_keyword("Spree") && normal_ok {
-                    if let Some(min_mode_cost) = card.spree_min_mode_cost {
-                        let base = cost_adj.apply(&card.mana_cost);
-                        let spree_min =
-                            base.add(&forge_foundation::ManaCost::generic(min_mode_cost));
-                        if any_color {
-                            available_mana.can_pay_any_color(&spree_min)
-                        } else {
-                            available_mana.can_pay(&spree_min)
-                        }
-                    } else {
-                        normal_ok
-                    }
-                } else {
-                    normal_ok
-                };
+                // Spree: Java's `CostAdjustment` only folds `ModeCost$` into
+                // the spell's cost AFTER modes are chosen, so playability
+                // gates only the base cost. Mode affordability is rechecked
+                // at cast time. Mirror that here — gating on
+                // `base + cheapest mode` here makes Rust drop Spree spells
+                // from the action space that Java still offers.
 
                 // Offering: sacrifice a permanent of a type to reduce cost
                 let offering_ok = if let Some(offering_type) = card.get_offering_type() {

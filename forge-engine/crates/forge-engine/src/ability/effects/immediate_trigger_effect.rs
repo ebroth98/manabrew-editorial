@@ -43,6 +43,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                     target_card: None,
                     remembered_amount: 0,
                     remembered_cards: Vec::new(),
+                    remembered_players: Vec::new(),
                     remembered_lki_cards: Vec::new(),
                     sort_after_active: false,
                     trigger_order: None,

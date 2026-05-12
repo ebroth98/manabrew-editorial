@@ -267,6 +267,16 @@ pub struct SpellAbilityIr {
     pub replace_dying_zone_text: Option<String>,
     pub replace_dying_zone: Option<ZoneType>,
     pub remember_objects: Option<String>,
+    /// `RememberObjects$ Remembered` — lowered from the CSV at IR build so
+    /// runtime sites read a bool instead of re-splitting the raw string.
+    pub remember_objects_remembered: bool,
+    /// `RememberObjects$ RememberedController` (Arcane Denial, Sudden
+    /// Substitution).
+    pub remember_objects_remembered_controller: bool,
+    /// `RememberObjects$ RememberedLKI`.
+    pub remember_objects_remembered_lki: bool,
+    /// `RememberObjects$ TriggeredAttackerLKICopy` (Teferi's Veil).
+    pub remember_objects_triggered_attacker_lki_copy: bool,
     pub remember_number: bool,
     pub remember_svar_amount: Option<String>,
     pub remember_exiled: bool,
@@ -313,6 +323,16 @@ pub struct SpellAbilityIr {
     pub add_keywords: Option<String>,
     pub kw_choice: Option<String>,
     pub up_to: bool,
+    /// `Upto$` for `DrawEffect`: decider chooses how many to draw (0..=NumCards).
+    /// Mirrors Java `DrawEffect.resolve`'s `final boolean upto = sa.hasParam("Upto")`.
+    pub upto: bool,
+    /// `OptionalDecider$` — optional-effect gatekeeper for the drawing player
+    /// (and similar effects). Stored as the raw player reference (e.g. "You").
+    pub optional_decider: Option<String>,
+    /// `ReplaceGraveyard$ <Zone>` for `PlayEffect`: install a one-shot
+    /// replacement that reroutes the played card to `<Zone>` if it would
+    /// otherwise be put into the graveyard from the stack.
+    pub replace_graveyard: Option<String>,
     pub two_colors: bool,
     pub or_colors: bool,
     pub can_block_any: bool,
@@ -754,6 +774,16 @@ impl SpellAbilityIr {
             replace_dying_zone_text: params.get("ReplaceDyingZone").map(str::to_string),
             replace_dying_zone: parsed_zone_type(params.get("ReplaceDyingZone")),
             remember_objects: params.get(keys::REMEMBER_OBJECTS).map(str::to_string),
+            remember_objects_remembered: has_remember_objects_token(params, "Remembered"),
+            remember_objects_remembered_controller: has_remember_objects_token(
+                params,
+                "RememberedController",
+            ),
+            remember_objects_remembered_lki: has_remember_objects_token(params, "RememberedLKI"),
+            remember_objects_triggered_attacker_lki_copy: has_remember_objects_token(
+                params,
+                "TriggeredAttackerLKICopy",
+            ),
             remember_number: parsed_true(params.get(keys::REMEMBER_NUMBER)),
             remember_svar_amount: params.get(keys::REMEMBER_SVAR_AMOUNT).map(str::to_string),
             remember_exiled: params.has("RememberExiled"),
@@ -807,6 +837,9 @@ impl SpellAbilityIr {
             add_keywords: params.get(keys::ADD_KEYWORDS).map(str::to_string),
             kw_choice: params.get("KWChoice").map(str::to_string),
             up_to: params.has("UpTo"),
+            upto: params.has(keys::UPTO),
+            optional_decider: params.get(keys::OPTIONAL_DECIDER).map(str::to_string),
+            replace_graveyard: params.get(keys::REPLACE_GRAVEYARD).map(str::to_string),
             two_colors: params.has("TwoColors"),
             or_colors: params.has("OrColors"),
             can_block_any: parsed_true(params.get("CanBlockAny")),
@@ -1297,6 +1330,12 @@ fn parsed_bool_default(value: Option<&str>, default: bool) -> bool {
 
 fn parsed_true(value: Option<&str>) -> bool {
     value.is_some_and(|value| value.eq_ignore_ascii_case("True"))
+}
+
+fn has_remember_objects_token(params: &ParsedParams<'_>, token: &str) -> bool {
+    params
+        .get(keys::REMEMBER_OBJECTS)
+        .is_some_and(|raw| raw.split(',').any(|t| t.trim() == token))
 }
 
 #[cfg(test)]

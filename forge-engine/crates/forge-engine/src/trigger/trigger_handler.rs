@@ -53,6 +53,13 @@ pub struct DelayedTrigger {
     /// Exposed to the executed ability via `SpellAbility::trigger_remembered`.
     #[allow(dead_code)]
     pub remembered_cards: Vec<CardId>,
+    /// Players remembered by the delayed trigger (e.g.
+    /// `RememberObjects$ RememberedController` snapshots the controllers of
+    /// the source's remembered cards at registration time, used by Arcane
+    /// Denial's "may draw up to two cards" trigger to remember the controller
+    /// of the countered spell). Exposed via `SpellAbility::trigger_remembered`
+    /// as `AbilityValue::Player(_)` entries.
+    pub remembered_players: Vec<PlayerId>,
     /// Snapshot of remembered cards for delayed-trigger `RememberedLKI` lookups.
     pub remembered_lki_cards: Vec<CardId>,
     /// When true, this delayed trigger should sort AFTER same-event active
@@ -716,6 +723,16 @@ impl TriggerHandler {
                         .iter()
                         .copied()
                         .map(crate::event::AbilityValue::Card),
+                );
+                // Players from `RememberObjects$ RememberedController` (e.g.
+                // Arcane Denial's "may draw up to two cards" trigger snapshots
+                // the controller of the countered spell at registration).
+                sa.trigger_remembered.extend(
+                    delayed
+                        .remembered_players
+                        .iter()
+                        .copied()
+                        .map(crate::event::AbilityValue::Player),
                 );
                 if !delayed.remembered_lki_cards.is_empty() {
                     sa.trigger_remembered.extend(

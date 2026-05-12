@@ -102,6 +102,7 @@ fn matches_property_token_positive(
         "nonmanaability" => !(sa.is_mana_ability || sa.api == Some(ApiType::Mana)),
         "istargeting" => sa.target_restrictions.is_some(),
         "xcost" => sa.cost_has_x(),
+        "singletarget" => sa.targets_single_target(),
         "crew" => is_crew(sa, ability_host),
         "saddle" => is_keyword_ability(sa, ability_host, Keyword::Saddle, "saddle"),
         "station" => is_keyword_ability(sa, ability_host, Keyword::Station, "station"),

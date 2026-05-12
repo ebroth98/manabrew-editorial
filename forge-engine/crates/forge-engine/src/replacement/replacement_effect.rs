@@ -831,13 +831,16 @@ pub fn zone_matches(expr: &str, zone: ZoneType) -> bool {
 /// Reference: Java `ReplacementEffect.java` in `forge/game/replacement/`.
 pub fn parse_replacement_effect(raw: &str) -> Option<ReplacementEffect> {
     let trimmed = raw.trim();
-    // Accept "R$ ..." or "R: ..." prefixes (both appear in Forge card files).
+    // Accept "R$ ..." / "R: ..." discriminator prefixes (used in card files),
+    // AND bare "Event$ … | …" bodies (used by `EffectEffect`'s
+    // `ReplacementEffects$` SVar lookups, which Java parses without a
+    // discriminator via `ReplacementHandler.parseReplacement(svarText, …)`).
     let body = if let Some(rest) = trimmed.strip_prefix("R$ ") {
         rest
     } else if let Some(rest) = trimmed.strip_prefix("R:") {
         rest.trim_start()
     } else {
-        return None;
+        trimmed
     };
 
     // Parse "|"-separated "Key$ Value" pairs.

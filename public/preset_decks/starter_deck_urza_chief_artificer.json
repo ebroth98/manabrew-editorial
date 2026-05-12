@@ -77,7 +77,19 @@
       "name": "Phyrexian Metamorph",
       "count": 1,
       "set": "plst",
-      "cardNumber": "NPH-42"
+      "cardNumber": "NPH-42",
+      "manaCost": "{3}{U/P}",
+      "colors": ["U"],
+      "colorIdentity": ["U"],
+      "cmc": 4,
+      "types": ["Artifact", "Creature"],
+      "subtypes": ["Phyrexian", "Shapeshifter"],
+      "supertypes": [],
+      "text": "({U/P} can be paid with either {U} or 2 life.)\nYou may have this creature enter as a copy of any artifact or creature on the battlefield, except it's an artifact in addition to its other types.",
+      "imageUrl": "https://cards.scryfall.io/normal/front/d/2/d2e27911-87cb-49a0-a34f-6afe4bddd592.jpg?1562881786",
+      "layout": "normal",
+      "power": "0",
+      "toughness": "0"
     },
     {
       "name": "Godless Shrine",
@@ -461,7 +473,17 @@
       "name": "Inventors' Fair",
       "count": 1,
       "set": "plst",
-      "cardNumber": "KLD-247"
+      "cardNumber": "KLD-247",
+      "manaCost": "",
+      "colors": [],
+      "colorIdentity": [],
+      "cmc": 0,
+      "types": ["Land"],
+      "subtypes": [],
+      "supertypes": ["Legendary"],
+      "text": "At the beginning of your upkeep, if you control three or more artifacts, you gain 1 life.\n{T}: Add {C}.\n{4}, {T}, Sacrifice Inventors' Fair: Search your library for an artifact card, reveal it, put it into your hand, then shuffle. Activate only if you control three or more artifacts.",
+      "imageUrl": "https://cards.scryfall.io/normal/front/2/7/275471e3-ded1-40ac-91ef-369dce5764d9.jpg?1576383555",
+      "layout": "normal"
     },
     {
       "name": "Armix, Filigree Thrasher",
@@ -855,7 +877,17 @@
       "name": "Academy Ruins",
       "count": 1,
       "set": "plst",
-      "cardNumber": "2XM-309"
+      "cardNumber": "2XM-309",
+      "manaCost": "",
+      "colors": [],
+      "colorIdentity": ["U"],
+      "cmc": 0,
+      "types": ["Land"],
+      "subtypes": [],
+      "supertypes": ["Legendary"],
+      "text": "{T}: Add {C}.\n{1}{U}, {T}: Put target artifact card from your graveyard on top of your library.",
+      "imageUrl": "https://cards.scryfall.io/normal/front/a/f/af09af65-0a3b-42df-b0fd-372e2158beac.jpg?1562931959",
+      "layout": "normal"
     },
     {
       "name": "Raffine's Tower",

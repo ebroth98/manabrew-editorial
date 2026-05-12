@@ -3,10 +3,26 @@
   "desc": "Sultai graveyard-value commander deck",
   "color": "text-cyan-400",
   "format": "commander",
-  "commander": "Tatyova, Benthic Druid",
+  "commander": "Teval, the Balanced Scale",
   "ai_eligible": false,
   "order": 112,
   "cards": [
+    {
+      "name": "Teval, the Balanced Scale",
+      "count": 1,
+      "manaCost": "{1}{B}{G}{U}",
+      "colors": ["B", "G", "U"],
+      "colorIdentity": ["B", "G", "U"],
+      "cmc": 4,
+      "types": ["Creature"],
+      "subtypes": ["Spirit", "Dragon"],
+      "supertypes": ["Legendary"],
+      "text": "Flying\nWhenever Teval attacks, mill three cards. Then you may return a land card from your graveyard to the battlefield tapped.\nWhenever one or more cards leave your graveyard, create a 2/2 black Zombie Druid creature token.",
+      "imageUrl": "https://cards.scryfall.io/normal/front/b/5/b5d1955a-9ff0-4f8b-9af8-341371957299.jpg?1745970978",
+      "layout": "normal",
+      "power": "4",
+      "toughness": "4"
+    },
     {
       "name": "Susurian Voidborn",
       "count": 1,

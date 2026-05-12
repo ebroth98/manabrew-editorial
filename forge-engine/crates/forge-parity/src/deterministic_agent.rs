@@ -406,7 +406,7 @@ impl DeterministicAgent {
     /// `sa.toUnsuppressedString()` as the 5th sort key field.
     /// When variant is the same (e.g., Normal and Warp both return "0"),
     /// this ensures a deterministic ordering.
-    fn play_option_fallback(play: PlayOption) -> String {
+    fn play_option_fallback(&self, play: PlayOption) -> String {
         // Disambiguate multi-cost alt entries (e.g. intrinsic vs granted
         // Evoke) so the stable sort places them in a predictable order that
         // matches Java's SA text ordering.
@@ -415,16 +415,41 @@ impl DeterministicAgent {
         } else {
             String::new()
         };
-        let base = match play.mode {
-            PlayCardMode::Normal => "0",
-            PlayCardMode::BackFaceLand => "1",
-            PlayCardMode::RoomRightSplit => "2",
-            PlayCardMode::Alternative(AlternativeCost::Warp) => "Warp",
-            PlayCardMode::StaticAlternative => "StaticAlternative",
+        // Split cards expose one playable per face — Java's
+        // `sa.toUnsuppressedString()` therefore differs per face (front vs
+        // back oracle text). Mirror that by feeding the per-face name into
+        // the fallback. We read it from `Card::full_name` (the canonical
+        // "Front // Back" form for split-type cards) so the lookup stays
+        // generic — no Room-specific SVars.
+        let base: String = match play.mode {
+            PlayCardMode::Normal => self
+                .play_option_face_name(play)
+                .unwrap_or_else(|| "0".to_string()),
+            PlayCardMode::BackFaceLand => "1".to_string(),
+            PlayCardMode::RoomRightSplit => self
+                .play_option_face_name(play)
+                .unwrap_or_else(|| "2".to_string()),
+            PlayCardMode::Alternative(AlternativeCost::Warp) => "Warp".to_string(),
+            PlayCardMode::StaticAlternative => "StaticAlternative".to_string(),
             // Other modes already have unique variant strings, so fallback rarely matters.
-            _ => "",
+            _ => String::new(),
         };
         format!("{base}{idx_suffix}")
+    }
+
+    /// For a playable on a split card (`"Front // Back"` `full_name`), return
+    /// the name of the face being cast — front for `Normal`, back for
+    /// `RoomRightSplit`. Returns `None` for non-split cards or modes that
+    /// don't pick a face.
+    fn play_option_face_name(&self, play: PlayOption) -> Option<String> {
+        let snap = self.last_game_snapshot.as_ref()?;
+        let card = snap.cards.iter().find(|c| c.id == play.card_id)?;
+        let (front, back) = card.full_name.split_once(" // ")?;
+        Some(match play.mode {
+            PlayCardMode::Normal => front.trim().to_string(),
+            PlayCardMode::RoomRightSplit => back.trim().to_string(),
+            _ => return None,
+        })
     }
 
     fn action_sort_key(&self, choice: &ActionChoice) -> String {
@@ -461,7 +486,7 @@ impl DeterministicAgent {
                     label,
                     self.parity_map.id(play.card_id),
                     Self::play_option_sort_text(play),
-                    Self::play_option_fallback(play),
+                    self.play_option_fallback(play),
                 )
             }
             ActionChoice::Ability(card_id, ability_idx) => {

@@ -876,11 +876,21 @@ impl GameLoop {
             if let Some(choices_str) = ability_params.get(keys::CHOICES) {
                 let choice_names: Vec<&str> = choices_str.split(',').collect();
                 let svars = game.card(card_id).svars.clone();
-                // Extract ModeCost and description for each mode
+                // Extract ModeCost and description for each mode, then filter
+                // by valid-target presence so modes whose targets can't be
+                // satisfied (e.g. Three Steps Ahead's Counter mode when the
+                // stack is empty) aren't even offered. Mirrors Java's
+                // `CharmEffect.makePossibleOptions` precheck.
                 let mut mode_costs: Vec<forge_foundation::ManaCost> = Vec::new();
                 let mut mode_descriptions: Vec<String> = Vec::new();
-                for name in &choice_names {
+                let mut original_indices: Vec<usize> = Vec::new();
+                for (idx, name) in choice_names.iter().enumerate() {
                     if let Some(svar_val) = svars.get(*name) {
+                        if !crate::ability::effects::charm_effect::mode_has_valid_targets_in_game(
+                            game, svar_val, player, card_id,
+                        ) {
+                            continue;
+                        }
                         let params = Params::from_raw(svar_val);
                         let cost = params
                             .get(keys::MODE_COST)
@@ -891,6 +901,7 @@ impl GameLoop {
                             .unwrap_or_else(|| name.to_string());
                         mode_descriptions.push(format!("+ {} — {}", cost, desc));
                         mode_costs.push(cost);
+                        original_indices.push(idx);
                     }
                 }
                 // Ask player to choose modes
@@ -909,13 +920,16 @@ impl GameLoop {
                 );
                 // Add selected ModeCosts to base cost
                 let mut total = mana_cost.clone();
-                for &idx in &chosen {
-                    if idx < mode_costs.len() {
-                        total = total.add(&mode_costs[idx]);
+                let mut chosen_original: Vec<usize> = Vec::with_capacity(chosen.len());
+                for &filtered_idx in &chosen {
+                    if filtered_idx < mode_costs.len() {
+                        total = total.add(&mode_costs[filtered_idx]);
+                        chosen_original.push(original_indices[filtered_idx]);
                     }
                 }
-                // Store chosen modes on card for charm_effect to reuse
-                game.card_mut(card_id).set_chosen_modes(chosen);
+                // Store chosen modes (in original `Choices$` index space) on
+                // card for charm_effect to reuse at resolve time.
+                game.card_mut(card_id).set_chosen_modes(chosen_original);
                 total
             } else {
                 mana_cost

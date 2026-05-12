@@ -135,7 +135,19 @@
     },
     {
       "name": "Troll of Khazad-dûm",
-      "count": 3
+      "count": 3,
+      "manaCost": "{5}{B}",
+      "colors": ["B"],
+      "colorIdentity": ["B"],
+      "cmc": 6,
+      "types": ["Creature"],
+      "subtypes": ["Troll"],
+      "supertypes": [],
+      "text": "This creature can't be blocked except by three or more creatures.\nSwampcycling {1} ({1}, Discard this card: Search your library for a Swamp card, reveal it, put it into your hand, then shuffle.)",
+      "imageUrl": "https://cards.scryfall.io/normal/front/a/6/a6539e26-b63b-4725-9407-caaf451de084.jpg?1743419034",
+      "layout": "normal",
+      "power": "6",
+      "toughness": "5"
     },
     {
       "name": "Village Rites",

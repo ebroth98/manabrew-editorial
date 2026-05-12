@@ -480,6 +480,27 @@ pub fn resolve_defined_players_with_sa(
     }
     match key {
         "Player" | "Players" => game.alive_players(),
+        // Player payload of a delayed trigger's remembered objects (e.g. Arcane
+        // Denial's `RememberObjects$ RememberedController` records the
+        // controller of the countered spell at registration; the spawned
+        // delayed-trigger SA reads it here via `Defined$ DelayTriggerRemembered`).
+        "DelayTriggerRemembered" | "TriggerRemembered" => {
+            let mut players = Vec::new();
+            for value in &sa.trigger_remembered {
+                match value {
+                    crate::event::AbilityValue::Player(pid) => {
+                        push_unique_player(&mut players, *pid)
+                    }
+                    crate::event::AbilityValue::Players(list) => {
+                        for pid in list {
+                            push_unique_player(&mut players, *pid);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            players
+        }
         _ if key.starts_with("Remembered") => remembered_players_for_def(key, sa, game),
         "TriggeredPlayer" | "Targeted" | "TargetedPlayer" => {
             let mut players = Vec::new();
@@ -1629,6 +1650,17 @@ pub fn handle_remembering(game: &mut GameState, sa: &SpellAbility) {
         }
         if let Some(target_player) = sa.target_chosen.target_player {
             game.card_mut(host_id).add_remembered_player(target_player);
+        }
+        // Counter-style targets: the target is a stack entry (a SpellAbility),
+        // and Java's `host.addRemembered(sa.getTargets())` records the source
+        // card of that ability so `RememberObjects$ RememberedController` can
+        // later resolve to the original spell's controller (e.g. Arcane Denial).
+        if let Some(stack_id) = sa.target_chosen.target_stack_entry {
+            if let Some(entry) = game.stack.find_by_id(stack_id) {
+                if let Some(source) = entry.spell_ability.source {
+                    game.card_mut(host_id).add_remembered_card(source);
+                }
+            }
         }
     }
 

@@ -50,3 +50,16 @@ pub const BASIC: &str = "Basic";
 pub const ATTACKING: &str = "attacking";
 pub const KICKED: &str = "kicked";
 pub const WITH_FLYING: &str = "withFlying";
+
+// SpellAbility kind tokens (used by `SpellAbility.isValid` — TargetType$ /
+// SubAbilityKind$ / SubType$ filters). Mirror Java SpellAbility.isValid:2194-2236.
+pub const ABILITY: &str = "Ability";
+pub const TRIGGERED: &str = "Triggered";
+pub const ACTIVATED: &str = "Activated";
+pub const STATIC: &str = "Static";
+pub const LAND_ABILITY: &str = "LandAbility";
+pub const SPELL_ABILITY: &str = "SpellAbility";
+
+// SpellAbility property qualifiers (after the `.` in tokens like
+// `Spell.singleTarget`). Mirror Java ForgeScript.spellAbilityHasProperty.
+pub const SINGLE_TARGET: &str = "singleTarget";

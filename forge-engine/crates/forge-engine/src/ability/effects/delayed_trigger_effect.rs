@@ -53,23 +53,33 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     } else {
         sa.activating_player
     };
-    let remember_objects = sa.ir.remember_objects.as_deref();
     let mut remembered_lki_cards = Vec::new();
-    if remember_objects.is_some_and(|value| {
-        value
-            .split(',')
-            .any(|token| token.trim() == "RememberedLKI")
-    }) {
+    if sa.ir.remember_objects_remembered_lki {
         remembered_lki_cards = ctx.game.card(source_id).remembered_cards.clone();
     }
     // `RememberObjects$ Remembered` — snapshot the source card's current
     // remembered_cards into the delayed trigger so the executed ability sees
     // them later via `SpellAbility::trigger_remembered`. Ashling uses this to
     // track the token copy it created for its end-step sacrifice clause.
-    let mut remembered_cards: Vec<crate::ids::CardId> = match remember_objects {
-        Some("Remembered") => ctx.game.card(source_id).remembered_cards.clone(),
-        _ => Vec::new(),
+    let mut remembered_cards: Vec<crate::ids::CardId> = if sa.ir.remember_objects_remembered {
+        ctx.game.card(source_id).remembered_cards.clone()
+    } else {
+        Vec::new()
     };
+    // `RememberObjects$ RememberedController` — snapshot the controllers of
+    // the source's remembered cards. Arcane Denial uses this to remember the
+    // controller of the countered spell so its delayed "may draw up to two
+    // cards" trigger fires for the right player. Mirrors Java's
+    // `DelayedTriggerEffect.resolve` registration of remembered objects.
+    let mut remembered_players: Vec<crate::ids::PlayerId> = Vec::new();
+    if sa.ir.remember_objects_remembered_controller {
+        for cid in ctx.game.card(source_id).remembered_cards.clone() {
+            let controller = ctx.game.card(cid).controller;
+            if !remembered_players.contains(&controller) {
+                remembered_players.push(controller);
+            }
+        }
+    }
 
     // `RememberObjects$ TriggeredAttackerLKICopy` — snapshot the attacker
     // that fired the parent trigger so the delayed trigger's effect can
@@ -78,11 +88,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     // The attacker id is populated into both `remembered_cards` (so
     // `Defined$ DelayTriggerRememberedLKI` resolves via `trigger_remembered`)
     // and `remembered_lki_cards` (for the trigger_objects string lookup).
-    if remember_objects.is_some_and(|value| {
-        value
-            .split(',')
-            .any(|token| token.trim() == "TriggeredAttackerLKICopy")
-    }) {
+    if sa.ir.remember_objects_triggered_attacker_lki_copy {
         // The Attacker triggering object is stored as `AbilityValue::Card`
         // (since the kaalia parity refactor in trigger_attacks.rs); query it
         // through the typed accessor. The string-based `get_triggering_object`
@@ -108,6 +114,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         target_card: None,
         remembered_amount,
         remembered_cards,
+        remembered_players,
         remembered_lki_cards,
         sort_after_active: false,
         trigger_order: None,
