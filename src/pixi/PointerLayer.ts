@@ -12,6 +12,7 @@
  *   - `casting`   — the live cursor-follow pointer shown while the human
  *                   player is picking a target.
  *
+ *
  * Textures for each intent are preloaded from `src/assets/pointers/`.
  */
 
