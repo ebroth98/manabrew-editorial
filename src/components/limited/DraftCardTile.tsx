@@ -2,7 +2,6 @@ import { memo } from "react";
 
 import { CardThumbnail } from "@/components/editor/deckEditor.primitives";
 import { FoilBadge } from "@/components/limited/FoilBadge";
-import { useCardPreview } from "@/hooks/useCardPreview";
 import { draftCardToManaBrew } from "@/lib/limited.utils";
 import { cn } from "@/lib/utils";
 import type { DraftCard } from "@/types/limited";
@@ -12,26 +11,17 @@ interface DraftCardTileProps {
   index: number;
   onClick?: () => void;
   disabled?: boolean;
-  preview: ReturnType<typeof useCardPreview>;
+  preview?: unknown;
   overlay?: React.ReactNode;
 }
 
-function DraftCardTileImpl({
-  card,
-  index,
-  onClick,
-  disabled,
-  preview,
-  overlay,
-}: DraftCardTileProps) {
+function DraftCardTileImpl({ card, index, onClick, disabled, overlay }: DraftCardTileProps) {
   const omc = draftCardToManaBrew(card, index);
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      onMouseEnter={(ev) => preview.handleMouseEnter(omc, ev)}
-      onMouseLeave={preview.handleMouseLeave}
       className={cn(
         "group relative w-full text-left transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60",
         card.foil && "draft-tile-foil",

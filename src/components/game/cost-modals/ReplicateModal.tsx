@@ -1,27 +1,20 @@
 import { useState } from "react";
 import { Modal } from "../modals/Modal";
 import { Button } from "@/components/ui/button";
-import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { MODAL_CARD_IMAGE } from "../game.styles";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
+import type { DeckCard } from "@/types/manabrew";
 
 interface ReplicateModalProps {
   cost: string;
   maxReplicates: number;
-  sourceCardName?: string;
+  sourceCard?: DeckCard;
   onDecide: (replicateCount: number) => void;
 }
 
-export function ReplicateModal({
-  cost,
-  maxReplicates,
-  sourceCardName,
-  onDecide,
-}: ReplicateModalProps) {
-  const cardData = useCard({ name: sourceCardName ?? "" });
-  const imageUrl = cardData?.uris.normal;
+export function ReplicateModal({ cost, maxReplicates, sourceCard, onDecide }: ReplicateModalProps) {
   const [count, setCount] = useState(0);
 
   const [prevInputs, setPrevInputs] = useState({ cost, maxReplicates });
@@ -37,13 +30,7 @@ export function ReplicateModal({
         <h2 className="font-semibold text-base">Replicate</h2>
       </Modal.Header>
       <div className="px-4 py-4 flex gap-3">
-        {imageUrl && (
-          <CardImageThumbnail
-            imageUrl={imageUrl}
-            cardName={sourceCardName ?? "Spell"}
-            className={MODAL_CARD_IMAGE}
-          />
-        )}
+        {sourceCard && <CardImageThumbnail card={sourceCard} className={MODAL_CARD_IMAGE} />}
         <div className="self-center flex-1">
           <p className="text-sm text-muted-foreground mb-3">
             Pay <ManaSymbols cost={cost} size="lg" /> per copy (max {maxReplicates})

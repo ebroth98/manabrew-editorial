@@ -3,20 +3,18 @@ import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
-import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL, MODAL_INPUT } from "../game.styles";
+import type { DeckCard } from "@/types/manabrew";
 
 interface ChooseNumberModalProps {
   min: number;
   max: number;
-  cardName?: string;
+  sourceCard?: DeckCard;
   onConfirm: (chosenNumber: number | null) => void;
 }
 
-export function ChooseNumberModal({ min, max, cardName, onConfirm }: ChooseNumberModalProps) {
-  const cardData = useCard({ name: cardName ?? "" });
-  const imageUrl = cardData?.uris.normal;
+export function ChooseNumberModal({ min, max, sourceCard, onConfirm }: ChooseNumberModalProps) {
   const range = max - min + 1;
   const useButtons = range <= 20;
   const [inputValue, setInputValue] = useState(String(min));
@@ -47,18 +45,12 @@ export function ChooseNumberModal({ min, max, cardName, onConfirm }: ChooseNumbe
       <div role="dialog" aria-modal="true" aria-labelledby="choose-number-title">
         <Modal.Header>
           <div className="flex items-center gap-3">
-            {imageUrl && (
-              <CardImageThumbnail
-                imageUrl={imageUrl}
-                cardName={cardName ?? "Source card"}
-                className={MODAL_CARD_THUMBNAIL}
-              />
-            )}
+            {sourceCard && <CardImageThumbnail card={sourceCard} className={MODAL_CARD_THUMBNAIL} />}
             <div>
               <h2 id="choose-number-title" className="font-semibold text-base">
                 Choose a Number
               </h2>
-              {cardName && <p className="text-xs text-muted-foreground font-medium">{cardName}</p>}
+              <p className="text-xs text-muted-foreground font-medium">{sourceCard?.name}</p>
               <p className="text-xs text-muted-foreground">
                 Between {min} and {max}
               </p>

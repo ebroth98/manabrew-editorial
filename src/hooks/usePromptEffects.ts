@@ -3,7 +3,7 @@ import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { usePhaseStopStore, getNextStopPhase } from "@/stores/usePhaseStopStore";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { LibraryPeekMode } from "@/components/game/modals";
-import type { Card } from "@/types/manabrew";
+import type { GameCard } from "@/types/manabrew";
 import { PromptType } from "@/types/promptType";
 
 interface UsePromptEffectsOptions {
@@ -17,14 +17,14 @@ interface UsePromptEffectsOptions {
 
 interface LibraryPeekState {
   mode: LibraryPeekMode;
-  cards: Card[];
+  cards: GameCard[];
   numToTake?: number;
   optional?: boolean;
 }
 
 interface ZoneTargetState {
   title: string;
-  cards: Card[];
+  cards: GameCard[];
   validCardIds: string[];
 }
 

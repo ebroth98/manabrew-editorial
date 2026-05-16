@@ -424,7 +424,7 @@ pub trait PlayerAgent {
         descriptions: &[String],
         min: usize,
         _max: usize,
-        _card_name: Option<&str>,
+        _source_card_id: Option<CardId>,
     ) -> Vec<usize> {
         (0..min.min(descriptions.len())).collect()
     }
@@ -494,7 +494,7 @@ pub trait PlayerAgent {
 
     /// Choose whether an optional triggered ability fires.
     /// `description` is the trigger text shown to the player.
-    /// `card_name` is the name of the source card (for UI display).
+    /// `source` is the engine card id of the source card (for UI display).
     /// `api` is the spell ability API type.
     /// Returns true to allow the trigger, false to decline.
     /// Default: always allow (non-interactive agents accept all optional triggers).
@@ -502,7 +502,7 @@ pub trait PlayerAgent {
         &mut self,
         _player: PlayerId,
         _description: &str,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
         _api: Option<crate::ability::api_type::ApiType>,
     ) -> bool {
         true
@@ -513,7 +513,7 @@ pub trait PlayerAgent {
         _player: PlayerId,
         _question: &str,
         _effect_description: &str,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> bool {
         true
     }
@@ -528,7 +528,7 @@ pub trait PlayerAgent {
         _mode: Option<&str>,
         _message: &str,
         _options: &[String],
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
         _api: Option<crate::ability::api_type::ApiType>,
     ) -> bool {
         false
@@ -539,10 +539,10 @@ pub trait PlayerAgent {
         player: PlayerId,
         cost_kind: &str,
         message: &str,
-        card_name: Option<&str>,
+        source: Option<CardId>,
         api: Option<crate::ability::api_type::ApiType>,
     ) -> bool {
-        let _ = (player, cost_kind, message, card_name, api);
+        let _ = (player, cost_kind, message, source, api);
         true
     }
 
@@ -551,14 +551,14 @@ pub trait PlayerAgent {
         player: PlayerId,
         cost_kind: &str,
         message: &str,
-        card_name: Option<&str>,
+        source: Option<CardId>,
         api: Option<crate::ability::api_type::ApiType>,
         can_pay: bool,
     ) -> bool {
         if !can_pay {
             return false;
         }
-        self.confirm_payment(player, cost_kind, message, card_name, api)
+        self.confirm_payment(player, cost_kind, message, source, api)
     }
 
     fn choose_binary(
@@ -567,7 +567,7 @@ pub trait PlayerAgent {
         question: &str,
         kind: BinaryChoiceKind,
         _default_choice: Option<bool>,
-        card_name: Option<&str>,
+        source: Option<CardId>,
         api: Option<crate::ability::api_type::ApiType>,
     ) -> bool {
         let (left, right) = kind.labels();
@@ -576,21 +576,21 @@ pub trait PlayerAgent {
             Some(kind.as_str()),
             question,
             &[right.to_string(), left.to_string()],
-            card_name,
+            source,
             api,
         )
     }
 
     /// Choose whether to pay the kicker cost for a spell.
     /// `kicker_cost` is the mana cost string (e.g. "W", "2 R").
-    /// `card_name` is the name of the spell being cast (for UI display).
+    /// `source` is the name of the spell being cast (for UI display).
     /// Returns true to kick, false to cast without kicker.
     /// Default: don't kick (AI default).
     fn choose_kicker(
         &mut self,
         _player: PlayerId,
         _kicker_cost: &str,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> bool {
         false
     }
@@ -608,7 +608,7 @@ pub trait PlayerAgent {
         &mut self,
         _player: PlayerId,
         _buyback_cost: &str,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> bool {
         false
     }
@@ -622,7 +622,7 @@ pub trait PlayerAgent {
         _player: PlayerId,
         _cost: &str,
         _max_kicks: u32,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> u32 {
         0
     }
@@ -636,7 +636,7 @@ pub trait PlayerAgent {
         _player: PlayerId,
         _cost: &str,
         _max_replicates: u32,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> u32 {
         0
     }
@@ -649,7 +649,7 @@ pub trait PlayerAgent {
         &mut self,
         _player: PlayerId,
         _options: &[String],
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> usize {
         0
     }
@@ -783,7 +783,7 @@ pub trait PlayerAgent {
         _player: PlayerId,
         _max: i32,
         _prompt: &str,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> i32 {
         0
     }
@@ -794,7 +794,7 @@ pub trait PlayerAgent {
         _player: PlayerId,
         choices: &[i32],
         _message: &str,
-        _card_name: Option<&str>,
+        _source_card_id: Option<CardId>,
     ) -> Option<i32> {
         choices.first().copied()
     }
@@ -804,7 +804,7 @@ pub trait PlayerAgent {
         &mut self,
         _player: PlayerId,
         rolls: &[i32],
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> Option<i32> {
         rolls.first().copied()
     }
@@ -814,7 +814,7 @@ pub trait PlayerAgent {
         &mut self,
         _player: PlayerId,
         rolls: &[i32],
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> Option<i32> {
         rolls.first().copied()
     }
@@ -824,7 +824,7 @@ pub trait PlayerAgent {
         &mut self,
         _player: PlayerId,
         _rolls: &[i32],
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> Vec<i32> {
         vec![]
     }
@@ -834,7 +834,7 @@ pub trait PlayerAgent {
         &mut self,
         _player: PlayerId,
         rolls: &[i32],
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> Option<i32> {
         rolls.first().copied()
     }
@@ -846,7 +846,7 @@ pub trait PlayerAgent {
         _current_result: i32,
         _power: i32,
         _toughness: i32,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> Option<RollSwapChoice> {
         Some(RollSwapChoice::Power)
     }
@@ -862,7 +862,7 @@ pub trait PlayerAgent {
     /// `max_x` is the maximum affordable value.
     /// Returns the chosen X value (0 to max_x).
     /// Default: spend all available mana (max_x).
-    fn choose_x_value(&mut self, _player: PlayerId, max_x: u32, _card_name: Option<&str>) -> u32 {
+    fn choose_x_value(&mut self, _player: PlayerId, max_x: u32, _source: Option<CardId>) -> u32 {
         max_x
     }
 
@@ -873,7 +873,7 @@ pub trait PlayerAgent {
         &mut self,
         _player: PlayerId,
         _color: &str,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> bool {
         false
     }
@@ -901,7 +901,7 @@ pub trait PlayerAgent {
         _player: PlayerId,
         valid: &[CardId],
         max: usize,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> Vec<CardId> {
         valid.iter().copied().take(max).collect()
     }
@@ -914,7 +914,7 @@ pub trait PlayerAgent {
         _player: PlayerId,
         _untapped_artifacts: &[CardId],
         _remaining_cost: &forge_foundation::ManaCost,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> Vec<CardId> {
         vec![]
     }
@@ -927,7 +927,7 @@ pub trait PlayerAgent {
         _player: PlayerId,
         _untapped_creatures: &[CardId],
         _remaining_cost: &forge_foundation::ManaCost,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> Vec<CardId> {
         vec![]
     }
@@ -1002,7 +1002,7 @@ pub trait PlayerAgent {
         _player: PlayerId,
         available_colors: &[String],
         amount: usize,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> Vec<String> {
         // Default AI: pick first available color for all
         if let Some(first) = available_colors.first() {

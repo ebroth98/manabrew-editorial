@@ -100,7 +100,7 @@ fn clash_move(ctx: &mut EffectContext, player: PlayerId, card: Option<CardId>) {
             ctx.game.card(card_id).card_name
         ),
         &["Top".to_string(), "Bottom".to_string()],
-        Some(&ctx.game.card(card_id).card_name.clone()),
+        Some(card_id),
         None,
     );
 

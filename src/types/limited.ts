@@ -1,3 +1,5 @@
+import type { ScryfallImageUris } from "@/types/scryfall";
+
 export type LimitedPoolType =
   | "Full"
   | "Block"
@@ -22,6 +24,7 @@ export interface DraftCard {
   collectorNumber: string;
   rarity: "common" | "uncommon" | "rare" | "mythic" | "land" | "special" | "token" | "unknown";
   colors?: string[];
+  uris?: ScryfallImageUris;
   isDoubleFaced?: boolean;
   foil?: boolean;
 }

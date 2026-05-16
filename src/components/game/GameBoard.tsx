@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useMemo, useRef, useState } from "react";
-import type { Card, Player } from "@/types/manabrew";
+import type { GameCard, OpponentZones, Player } from "@/types/manabrew";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferencesStore";
 import { PixiGameCanvas } from "@/pixi/PixiGameCanvas";
@@ -36,15 +36,13 @@ interface GameBoardProps {
   // Core game state
   me: Player;
   opponents: Player[];
-  myPermanents: Card[];
-  opponentPermanentsByPlayer: Map<string, Card[]>;
-  myHand: Card[];
-  graveyard: Card[];
-  exile: Card[];
-  myCommandZone?: Card[];
-  opponentGraveyard: Card[];
-  opponentExile: Card[];
-  opponentCommandZone?: Card[];
+  myPermanents: GameCard[];
+  opponentPermanentsByPlayer: Map<string, GameCard[]>;
+  myHand: GameCard[];
+  graveyard: GameCard[];
+  exile: GameCard[];
+  myCommandZone?: GameCard[];
+  opponentZones: Record<string, OpponentZones>;
   activePlayerId: string;
   priorityPlayerId: string;
   step: string;
@@ -80,27 +78,31 @@ interface GameBoardProps {
   castingCardId?: string | null;
 
   // Callbacks
-  onHandCardDragStart: (card: Card, e: React.MouseEvent) => void;
-  onHandCardClick: (card: Card, e?: React.MouseEvent) => void;
+  onHandCardDragStart: (card: GameCard, e: React.MouseEvent) => void;
+  onHandCardClick: (card: GameCard, e?: React.MouseEvent) => void;
   onHoverCard: (
-    card: Card | null,
+    card: GameCard | null,
     e?: React.MouseEvent,
     options?: { useAnchor?: boolean; placement?: "auto" | "top-center"; anchorOverride?: DOMRect },
   ) => void;
   onDismissHoverPreview?: () => void;
-  getHandActions?: (card: Card) => HandActionOption[];
+  getHandActions?: (card: GameCard) => HandActionOption[];
   onSelectHandAction?: (action: HandActionOption) => void;
   onFlipCard: () => void;
-  onBattlefieldClick: (card: Card) => void;
-  onAttackerClick: (card: Card) => void;
+  onBattlefieldClick: (card: GameCard) => void;
+  onAttackerClick: (card: GameCard) => void;
   onTargetPlayer: (playerId: string) => void;
-  onOpenZone: (title: string, cards: Card[], onClickCard?: (cardId: string) => void) => void;
-  onOpenZoneAndCast: (title: string, cards: Card[], onClickCard: (cardId: string) => void) => void;
+  onOpenZone: (title: string, cards: GameCard[], onClickCard?: (cardId: string) => void) => void;
+  onOpenZoneAndCast: (
+    title: string,
+    cards: GameCard[],
+    onClickCard: (cardId: string) => void,
+  ) => void;
   onCastSpell: (cardId: string) => void;
-  onTapLand?: (card: Card) => void;
+  onTapLand?: (card: GameCard) => void;
   onTapLands?: (cardIds: string[]) => void;
   onTapLandAbility?: (cardId: string, abilityIndex: number, color?: string) => void;
-  onUntapLand?: (card: Card) => void;
+  onUntapLand?: (card: GameCard) => void;
   onUntapLands?: (cardIds: string[]) => void;
 
   /** Out-ref populated with the live Pixi scene so Game.tsx can share it
@@ -134,9 +136,7 @@ export function GameBoard({
   graveyard,
   exile,
   myCommandZone,
-  opponentGraveyard,
-  opponentExile,
-  opponentCommandZone,
+  opponentZones,
   activePlayerId,
   priorityPlayerId,
   step,
@@ -411,9 +411,9 @@ export function GameBoard({
             player={opponents[0]!}
             opponentIndex={0}
             permanents={opponentPermanentsByPlayer.get(opponents[0]!.id) ?? []}
-            graveyard={opponentGraveyard}
-            exile={opponentExile}
-            commandZone={opponentCommandZone}
+            graveyard={opponentZones[opponents[0]!.id]?.graveyard ?? []}
+            exile={opponentZones[opponents[0]!.id]?.exile ?? []}
+            commandZone={opponentZones[opponents[0]!.id]?.commandZone}
             isTargetable={playerIsTargetable(opponents[0]!.id)}
             isSelectedTarget={selectedAttackDefenderId === opponents[0]!.id}
             onTarget={() => onTargetPlayer(opponents[0]!.id)}
@@ -446,9 +446,9 @@ export function GameBoard({
                     player={op}
                     opponentIndex={i}
                     permanents={opponentPermanentsByPlayer.get(op.id) ?? []}
-                    graveyard={i === 0 ? opponentGraveyard : []}
-                    exile={i === 0 ? opponentExile : []}
-                    commandZone={i === 0 ? opponentCommandZone : undefined}
+                    graveyard={opponentZones[op.id]?.graveyard ?? []}
+                    exile={opponentZones[op.id]?.exile ?? []}
+                    commandZone={opponentZones[op.id]?.commandZone}
                     isTargetable={playerIsTargetable(op.id)}
                     isSelectedTarget={selectedAttackDefenderId === op.id}
                     onTarget={() => onTargetPlayer(op.id)}

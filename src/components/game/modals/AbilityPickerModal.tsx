@@ -1,44 +1,36 @@
 import { Modal } from "./Modal";
 import { TextWithMana } from "@/components/game/TextWithMana";
-import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { cn } from "@/lib/utils";
 import type { HandActionOption } from "@/stores/useGameUIStore";
 import { MODAL_CARD_THUMBNAIL } from "../game.styles";
+import type { DeckCard } from "@/types/manabrew";
 
 interface AbilityPickerModalProps {
-  cardName: string;
+  sourceCard: DeckCard;
   abilities: HandActionOption[];
   onSelect: (ability: HandActionOption) => void;
   onCancel: () => void;
 }
 
 export function AbilityPickerModal({
-  cardName,
+  sourceCard,
   abilities,
   onSelect,
   onCancel,
 }: AbilityPickerModalProps) {
-  const cardData = useCard({ name: cardName });
-  const imageUrl = cardData?.uris.normal;
   const hasCastOption = abilities.some((ability) => ability.kind === "cast");
 
   return (
     <Modal maxWidth="max-w-md" maxHeight="" onClose={onCancel}>
       <Modal.Header>
         <div className="flex items-center gap-3">
-          {imageUrl && (
-            <CardImageThumbnail
-              imageUrl={imageUrl}
-              cardName={cardName}
-              className={MODAL_CARD_THUMBNAIL}
-            />
-          )}
+          <CardImageThumbnail card={sourceCard} className={MODAL_CARD_THUMBNAIL} />
           <div>
             <h2 className="font-semibold text-base">
               {hasCastOption ? "Choose Action" : "Activate Ability"}
             </h2>
-            <p className="text-xs text-muted-foreground font-medium">{cardName}</p>
+            <p className="text-xs text-muted-foreground font-medium">{sourceCard.name}</p>
           </div>
         </div>
       </Modal.Header>

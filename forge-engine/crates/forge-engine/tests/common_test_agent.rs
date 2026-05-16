@@ -137,7 +137,7 @@ impl PlayerAgent for RecordingAgent {
         _: PlayerId,
         cost_kind: &str,
         _: &str,
-        _: Option<&str>,
+        _: Option<CardId>,
         _: Option<forge_engine_core::ability::api_type::ApiType>,
         _can_pay: bool,
     ) -> bool {

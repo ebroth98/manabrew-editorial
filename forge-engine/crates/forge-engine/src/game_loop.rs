@@ -513,7 +513,7 @@ impl GameLoop {
                     Some("FromOpeningHand"),
                     prompt,
                     &[],
-                    Some(&card_name),
+                    Some(source_id),
                     sa.api,
                 );
                 if !accepted {
@@ -1097,7 +1097,7 @@ mod tests {
             _mode: Option<&str>,
             _message: &str,
             _options: &[String],
-            _card_name: Option<&str>,
+            _source: Option<crate::ids::CardId>,
             _api: Option<crate::ability::api_type::ApiType>,
         ) -> bool {
             self.accept

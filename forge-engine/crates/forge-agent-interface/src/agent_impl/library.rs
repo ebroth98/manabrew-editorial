@@ -25,11 +25,14 @@ pub(super) fn choose_scry<T: AgentTransport>(
 ) -> Vec<CardId> {
     let card_ids = PromptAgent::<T>::card_ids(cards);
     let peeked = std::mem::take(&mut agent.peeked_library_cards);
-    agent.send_prompt(AgentPromptInner::Scry {
-        game_view: agent.view(),
-        card_ids,
-        cards: peeked,
-    });
+    agent.send_prompt(
+        AgentPromptInner::Scry {
+            game_view: agent.view(),
+            card_ids,
+            cards: peeked,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::ScryDecision { bottom_card_ids } => bottom_card_ids
             .iter()
@@ -46,11 +49,14 @@ pub(super) fn choose_surveil<T: AgentTransport>(
 ) -> Vec<CardId> {
     let card_ids = PromptAgent::<T>::card_ids(cards);
     let peeked = std::mem::take(&mut agent.peeked_library_cards);
-    agent.send_prompt(AgentPromptInner::Surveil {
-        game_view: agent.view(),
-        card_ids,
-        cards: peeked,
-    });
+    agent.send_prompt(
+        AgentPromptInner::Surveil {
+            game_view: agent.view(),
+            card_ids,
+            cards: peeked,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::SurveilDecision { graveyard_card_ids } => graveyard_card_ids
             .iter()
@@ -74,13 +80,16 @@ pub(super) fn choose_dig<T: AgentTransport>(
         .into_iter()
         .filter(|dto| card_ids.contains(&dto.id))
         .collect();
-    agent.send_prompt(AgentPromptInner::Dig {
-        game_view: agent.view(),
-        card_ids,
-        cards: valid_peeked,
-        num_to_take: max,
-        optional,
-    });
+    agent.send_prompt(
+        AgentPromptInner::Dig {
+            game_view: agent.view(),
+            card_ids,
+            cards: valid_peeked,
+            num_to_take: max,
+            optional,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::DigDecision { chosen_card_ids } => chosen_card_ids
             .iter()
@@ -101,12 +110,14 @@ pub(super) fn choose_reorder_library<T: AgentTransport>(
         .into_iter()
         .filter(|dto| card_ids.contains(&dto.id))
         .collect();
-    agent.send_prompt(AgentPromptInner::ReorderLibrary {
-        game_view: agent.view(),
-        card_ids,
-        cards: prompt_cards,
-        source_card_name: None,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ReorderLibrary {
+            game_view: agent.view(),
+            card_ids,
+            cards: prompt_cards,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::ReorderLibraryDecision { ordered_card_ids } => {
             let parsed: Vec<CardId> = ordered_card_ids

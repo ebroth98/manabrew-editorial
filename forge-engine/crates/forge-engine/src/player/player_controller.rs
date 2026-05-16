@@ -281,10 +281,10 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         &mut self,
         choices: &[i32],
         message: &str,
-        card_name: Option<&str>,
+        source_card_id: Option<CardId>,
     ) -> Option<i32> {
         self.agent
-            .choose_number_from_list(self.player, choices, message, card_name)
+            .choose_number_from_list(self.player, choices, message, source_card_id)
     }
 
     pub fn choose_binary(
@@ -292,11 +292,11 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         question: &str,
         kind: BinaryChoiceKind,
         default_choice: Option<bool>,
-        card_name: Option<&str>,
+        source: Option<CardId>,
         api: Option<crate::ability::api_type::ApiType>,
     ) -> bool {
         self.agent
-            .choose_binary(self.player, question, kind, default_choice, card_name, api)
+            .choose_binary(self.player, question, kind, default_choice, source, api)
     }
 
     pub fn confirm_action(
@@ -304,40 +304,34 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         mode: Option<&str>,
         message: &str,
         options: &[String],
-        card_name: Option<&str>,
+        source: Option<CardId>,
         api: Option<crate::ability::api_type::ApiType>,
     ) -> bool {
         self.agent
-            .confirm_action(self.player, mode, message, options, card_name, api)
+            .confirm_action(self.player, mode, message, options, source, api)
     }
 
     pub fn confirm_payment(
         &mut self,
         cost_kind: &str,
         message: &str,
-        card_name: Option<&str>,
+        source: Option<CardId>,
         api: Option<crate::ability::api_type::ApiType>,
     ) -> bool {
         self.agent
-            .confirm_payment(self.player, cost_kind, message, card_name, api)
+            .confirm_payment(self.player, cost_kind, message, source, api)
     }
 
     pub fn pay_cost_to_prevent_effect(
         &mut self,
         cost_kind: &str,
         message: &str,
-        card_name: Option<&str>,
+        source: Option<CardId>,
         api: Option<crate::ability::api_type::ApiType>,
         can_pay: bool,
     ) -> bool {
-        self.agent.pay_cost_to_prevent_effect(
-            self.player,
-            cost_kind,
-            message,
-            card_name,
-            api,
-            can_pay,
-        )
+        self.agent
+            .pay_cost_to_prevent_effect(self.player, cost_kind, message, source, api, can_pay)
     }
 
     pub fn confirm_bid_action(
@@ -357,29 +351,29 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
     pub fn confirm_replacement_effect(
         &mut self,
         description: &str,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> bool {
-        self.confirm_action(Some("ReplacementEffect"), description, &[], card_name, None)
+        self.confirm_action(Some("ReplacementEffect"), description, &[], source, None)
     }
 
     pub fn confirm_static_application(
         &mut self,
         message: &str,
         logic: Option<&str>,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> bool {
         let options = logic.into_iter().map(str::to_string).collect::<Vec<_>>();
-        self.confirm_action(Some("StaticAbility"), message, &options, card_name, None)
+        self.confirm_action(Some("StaticAbility"), message, &options, source, None)
     }
 
     pub fn choose_optional_trigger(
         &mut self,
         description: &str,
-        card_name: Option<&str>,
+        source: Option<CardId>,
         api: Option<crate::ability::api_type::ApiType>,
     ) -> bool {
         self.agent
-            .choose_optional_trigger(self.player, description, card_name, api)
+            .choose_optional_trigger(self.player, description, source, api)
     }
 
     pub fn choose_target_spell(
@@ -396,10 +390,10 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         descriptions: &[String],
         min: usize,
         max: usize,
-        card_name: Option<&str>,
+        source_card_id: Option<CardId>,
     ) -> Vec<usize> {
         self.agent
-            .choose_mode(self.player, descriptions, min, max, card_name)
+            .choose_mode(self.player, descriptions, min, max, source_card_id)
     }
 
     pub fn pay_mana_cost(
@@ -499,39 +493,39 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         &mut self,
         valid: &[CardId],
         max: usize,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> Vec<CardId> {
-        self.agent.choose_delve(self.player, valid, max, card_name)
+        self.agent.choose_delve(self.player, valid, max, source)
     }
 
     pub fn choose_improvise(
         &mut self,
         untapped_artifacts: &[CardId],
         remaining_cost: &ManaCost,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> Vec<CardId> {
         self.agent
-            .choose_improvise(self.player, untapped_artifacts, remaining_cost, card_name)
+            .choose_improvise(self.player, untapped_artifacts, remaining_cost, source)
     }
 
     pub fn choose_convoke(
         &mut self,
         untapped_creatures: &[CardId],
         remaining_cost: &ManaCost,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> Vec<CardId> {
         self.agent
-            .choose_convoke(self.player, untapped_creatures, remaining_cost, card_name)
+            .choose_convoke(self.player, untapped_creatures, remaining_cost, source)
     }
 
     pub fn specify_mana_combo(
         &mut self,
         available_colors: &[String],
         amount: usize,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> Vec<String> {
         self.agent
-            .specify_mana_combo(self.player, available_colors, amount, card_name)
+            .specify_mana_combo(self.player, available_colors, amount, source)
     }
 
     pub fn choose_roll_swap_value(
@@ -539,10 +533,10 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         current_result: i32,
         power: i32,
         toughness: i32,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> Option<RollSwapChoice> {
         self.agent
-            .choose_roll_swap_value(self.player, current_result, power, toughness, card_name)
+            .choose_roll_swap_value(self.player, current_result, power, toughness, source)
     }
 
     pub fn reveal(

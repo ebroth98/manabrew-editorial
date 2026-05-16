@@ -1,8 +1,10 @@
 import { create } from "zustand";
 import { persist, devtools } from "zustand/middleware";
-import type { Deck, Card, DeckFormatId } from "@/types/manabrew";
+import type { Deck, DeckCard, DeckFormatId } from "@/types/manabrew";
+import type { ScryfallCard } from "@/types/scryfall";
 import { STORAGE_KEYS, DEFAULT_DECK_NAME } from "@/lib/constants";
 import { getFormat, BASIC_LAND_NAMES, canBePartners, allowsAnyNumberOfCopies } from "@/lib/formats";
+import { chooseImageUrisForCard } from "@/stores/useScryfallStore";
 
 /** Migrate legacy "constructed" format id to "standard". */
 function migrateFormatId(id: string): DeckFormatId {
@@ -15,7 +17,7 @@ function getCardUpdateKey(name: string, setCode?: string): string {
 }
 
 /** Apply a map of name→patch to an array of cards. */
-function patchCardsByName(cards: Card[], updates: Map<string, Partial<Card>>): Card[] {
+function patchCardsByName(cards: DeckCard[], updates: Map<string, Partial<DeckCard>>): DeckCard[] {
   return cards.map((c) => {
     const patch =
       updates.get(getCardUpdateKey(c.name, c.setCode)) ?? updates.get(getCardUpdateKey(c.name));
@@ -23,19 +25,19 @@ function patchCardsByName(cards: Card[], updates: Map<string, Partial<Card>>): C
   });
 }
 
-function isAttractionCard(card: Card): boolean {
+function isAttractionCard(card: DeckCard): boolean {
   return card.subtypes?.some((subtype) => subtype.toLowerCase() === "attraction") ?? false;
 }
 
-function isContraptionCard(card: Card): boolean {
+function isContraptionCard(card: DeckCard): boolean {
   return card.subtypes?.some((subtype) => subtype.toLowerCase() === "contraption") ?? false;
 }
 
-function isSchemeCard(card: Card): boolean {
+function isSchemeCard(card: DeckCard): boolean {
   return card.types?.some((type) => type.toLowerCase() === "scheme") ?? false;
 }
 
-function isPlaneCard(card: Card): boolean {
+function isPlaneCard(card: DeckCard): boolean {
   return card.types?.some((type) => type.toLowerCase() === "plane") ?? false;
 }
 
@@ -48,7 +50,7 @@ function normalizeDeck(deck: Deck): Deck {
   const planes = [...(deck.planes ?? [])];
   // Migrate legacy single-commander to commanders array
   const commanders = [...(deck.commanders ?? [])];
-  const legacy = (deck as { commander?: Card }).commander;
+  const legacy = (deck as { commander?: DeckCard }).commander;
   if (legacy && !commanders.some((c) => c.name === legacy.name)) {
     commanders.push(legacy);
   }
@@ -58,7 +60,7 @@ function normalizeDeck(deck: Deck): Deck {
     if (idx !== -1) main.splice(idx, 1);
   }
 
-  const remainingSideboard: Card[] = [];
+  const remainingSideboard: DeckCard[] = [];
   for (const card of sideboard) {
     if (isAttractionCard(card)) {
       attractions.push(card);
@@ -85,11 +87,11 @@ function normalizeDeck(deck: Deck): Deck {
     commanders: commanders.length > 0 ? commanders : undefined,
   };
   // Remove legacy field
-  delete (normalized as { commander?: Card }).commander;
+  delete (normalized as { commander?: DeckCard }).commander;
   return normalized;
 }
 
-function patchDeckCards(deck: Deck, updates: Map<string, Partial<Card>>): Deck {
+function patchDeckCards(deck: Deck, updates: Map<string, Partial<DeckCard>>): Deck {
   const normalized = normalizeDeck(deck);
   return {
     ...normalized,
@@ -115,6 +117,7 @@ function patchDeckCards(deck: Deck, updates: Map<string, Partial<Card>>): Deck {
     maybeboard: normalized.maybeboard
       ? patchCardsByName(normalized.maybeboard, updates)
       : undefined,
+    tokens: normalized.tokens ? patchCardsByName(normalized.tokens, updates) : undefined,
   };
 }
 
@@ -129,13 +132,13 @@ interface DeckState {
   currentDeckId: string | null;
   /** True when browsing a preset — gates editing controls in DeckBuilder. */
   isReadOnly: boolean;
-  pool: Card[];
+  pool: DeckCard[];
   savedDecks: SavedDeck[];
-  addToMain: (card: Card) => void;
-  addToSide: (card: Card) => void;
-  addToMaybe: (card: Card) => void;
+  addToMain: (card: DeckCard) => void;
+  addToSide: (card: DeckCard) => void;
+  addToMaybe: (card: DeckCard) => void;
   removeFromMaybe: (cardId: string) => void;
-  addToPool: (card: Card) => void;
+  addToPool: (card: DeckCard) => void;
   removeFromMain: (cardId: string) => void;
   removeFromSide: (cardId: string) => void;
   setDeckName: (name: string) => void;
@@ -148,15 +151,17 @@ interface DeckState {
   saveDraft: () => void;
   loadSavedDeck: (id: string) => void;
   deleteSavedDeck: (id: string) => void;
-  setCommander: (card: Card) => void;
-  removeCommander: (card?: Card) => void;
-  setCompanion: (card: Card) => void;
+  setCommander: (card: DeckCard) => void;
+  removeCommander: (card?: DeckCard) => void;
+  setCompanion: (card: DeckCard) => void;
   removeCompanion: () => void;
-  updatePrint: (cardName: string, scryfallCard: import("@/types/scryfall").ScryfallCard) => void;
+  updatePrint: (cardName: string, scryfallCard: ScryfallCard) => void;
   toggleFoil: (cardName: string) => void;
-  enrichDeckCards: (updates: Map<string, Partial<Card>>) => void;
-  addCardToSavedDeck: (id: string, card: Card) => void;
-  enrichSavedDeck: (id: string, updates: Map<string, Partial<Card>>) => void;
+  addToken: (token: DeckCard) => void;
+  removeToken: (name: string) => void;
+  enrichDeckCards: (updates: Map<string, Partial<DeckCard>>) => void;
+  addCardToSavedDeck: (id: string, card: DeckCard) => void;
+  enrichSavedDeck: (id: string, updates: Map<string, Partial<DeckCard>>) => void;
   addCustomTag: (tag: string) => void;
   removeCustomTag: (tag: string) => void;
   tagCard: (cardName: string, tag: string) => void;
@@ -166,11 +171,6 @@ interface DeckState {
   updateDeckLabelColor: (label: string, color?: string) => void;
   setCoverCard: (name: string | undefined, face?: 0 | 1) => void;
   setStackPositions: (positions: Record<string, { x: number; y: number }>) => void;
-  setTokens: (tokens: import("@/types/manabrew").DeckToken[]) => void;
-  updateTokenPrint: (
-    tokenName: string,
-    scryfallCard: import("@/types/scryfall").ScryfallCard,
-  ) => void;
 }
 
 const initialDeck: Deck = {
@@ -394,7 +394,7 @@ export const useDeckStore = create<DeckState>()(
               },
             };
           }),
-        removeCommander: (card?: Card) =>
+        removeCommander: (card?: DeckCard) =>
           set((state) => {
             const deck = normalizeDeck(state.currentDeck);
             const commanders = deck.commanders ?? [];
@@ -441,13 +441,31 @@ export const useDeckStore = create<DeckState>()(
               },
             };
           }),
+        addToken: (token) =>
+          set((state) => {
+            const existing = state.currentDeck.tokens ?? [];
+            if (existing.some((t) => t.name === token.name)) {
+              return state;
+            }
+            return {
+              currentDeck: { ...state.currentDeck, tokens: [...existing, token] },
+            };
+          }),
+        removeToken: (name) =>
+          set((state) => ({
+            currentDeck: {
+              ...state.currentDeck,
+              tokens: (state.currentDeck.tokens ?? []).filter((t) => t.name !== name),
+            },
+          })),
         updatePrint: (cardName, scryfallCard) =>
           set((state) => {
-            const updates = new Map<string, Partial<Card>>();
+            const uris = chooseImageUrisForCard(scryfallCard, { frontOnly: true });
+            if (!uris) throw new Error(`Scryfall card has no image uris: ${scryfallCard.name}`);
+            const updates = new Map<string, Partial<DeckCard>>();
             updates.set(cardName.toLowerCase(), {
               setCode: scryfallCard.set,
-              imageUrl:
-                scryfallCard.image_uris?.normal ?? scryfallCard.image_uris?.large ?? undefined,
+              uris,
               cardNumber: scryfallCard.collector_number,
             });
             return {
@@ -457,7 +475,7 @@ export const useDeckStore = create<DeckState>()(
         toggleFoil: (cardName) =>
           set((state) => {
             const deck = normalizeDeck(state.currentDeck);
-            const allCopies: Card[] = [
+            const allCopies: DeckCard[] = [
               ...deck.cards,
               ...deck.sideboard,
               ...(deck.maybeboard ?? []),
@@ -469,7 +487,7 @@ export const useDeckStore = create<DeckState>()(
             ];
             const matches = allCopies.filter((c) => c.name === cardName);
             const targetFoil = !matches.every((c) => c.foil);
-            const flip = (cards: Card[]): Card[] =>
+            const flip = (cards: DeckCard[]): DeckCard[] =>
               cards.map((c) => (c.name === cardName ? { ...c, foil: targetFoil } : c));
             return {
               currentDeck: {
@@ -660,27 +678,6 @@ export const useDeckStore = create<DeckState>()(
           set((state) => ({
             currentDeck: { ...state.currentDeck, stackPositions: positions },
           })),
-        setTokens: (tokens) =>
-          set((state) => ({
-            currentDeck: { ...state.currentDeck, tokens },
-          })),
-        updateTokenPrint: (tokenName, scryfallCard) =>
-          set((state) => {
-            const tokens = (state.currentDeck.tokens ?? []).map((t) =>
-              t.name === tokenName
-                ? {
-                    ...t,
-                    setCode: scryfallCard.set,
-                    cardNumber: scryfallCard.collector_number,
-                    imageUrl:
-                      scryfallCard.image_uris?.normal ??
-                      scryfallCard.image_uris?.large ??
-                      t.imageUrl,
-                  }
-                : t,
-            );
-            return { currentDeck: { ...state.currentDeck, tokens } };
-          }),
       }),
       {
         name: STORAGE_KEYS.DECK,

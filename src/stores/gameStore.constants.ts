@@ -79,18 +79,13 @@ function normalizeGameView(nextView: GameView, currentView: GameView | null): Ga
     stack: Array.isArray(incoming.stack) ? incoming.stack : (current?.stack ?? []),
     exile: Array.isArray(incoming.exile) ? incoming.exile : (current?.exile ?? []),
     graveyard: Array.isArray(incoming.graveyard) ? incoming.graveyard : (current?.graveyard ?? []),
-    opponentGraveyard: Array.isArray(incoming.opponentGraveyard)
-      ? incoming.opponentGraveyard
-      : (current?.opponentGraveyard ?? []),
-    opponentExile: Array.isArray(incoming.opponentExile)
-      ? incoming.opponentExile
-      : (current?.opponentExile ?? []),
     myCommandZone: Array.isArray(incoming.myCommandZone)
       ? incoming.myCommandZone
       : (current?.myCommandZone ?? []),
-    opponentCommandZone: Array.isArray(incoming.opponentCommandZone)
-      ? incoming.opponentCommandZone
-      : (current?.opponentCommandZone ?? []),
+    opponentZones:
+      incoming.opponentZones && typeof incoming.opponentZones === "object"
+        ? incoming.opponentZones
+        : (current?.opponentZones ?? {}),
     gameOver: incoming.gameOver ?? current?.gameOver,
     winnerId: incoming.winnerId ?? current?.winnerId ?? null,
     monarchId: incoming.monarchId ?? current?.monarchId ?? null,

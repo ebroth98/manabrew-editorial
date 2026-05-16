@@ -1,5 +1,5 @@
 import type { IGameApi } from "@/platform";
-import type { Card, GameView } from "@/types/manabrew";
+import type { GameCard, GameView } from "@/types/manabrew";
 
 export type GameRuntimeKind = "rust-engine" | "forge-java" | "manual-tabletop";
 
@@ -89,12 +89,12 @@ export type ManualTabletopAction =
   | { type: "adjustLife"; playerId: string; delta: number }
   | { type: "setLife"; playerId: string; life: number }
   | { type: "setPoison"; playerId: string; poison: number }
-  | { type: "createCard"; controllerId: string; card: Card; zoneId?: string }
-  | { type: "createToken"; controllerId: string; card: Card }
+  | { type: "createCard"; controllerId: string; card: GameCard; zoneId?: string }
+  | { type: "createToken"; controllerId: string; card: GameCard }
   | { type: "removeToken"; cardId: string }
   | { type: "drawLibraryCard"; playerId: string; count?: number }
   | { type: "putLibraryCardOntoBattlefield"; playerId: string }
   | { type: "shuffleLibrary"; playerId: string }
   | { type: "revealCards"; playerId: string; cardIds: string[] }
   | { type: "hideCards"; playerId: string; cardIds: string[] }
-  | { type: "replaceState"; gameView: GameView; libraries?: Record<string, Card[]> };
+  | { type: "replaceState"; gameView: GameView; libraries?: Record<string, GameCard[]> };

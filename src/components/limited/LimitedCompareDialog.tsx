@@ -10,8 +10,8 @@ import {
 } from "@/components/ui/dialog";
 import { LimitedDeckStats } from "@/components/limited/LimitedDeckStats";
 import { useDeckStore, type SavedDeck } from "@/stores/useDeckStore";
-import type { Card, Deck } from "@/types/manabrew";
 import type { DraftCard } from "@/types/limited";
+import { deckMainAsDraftCards } from "@/lib/limited.utils";
 
 interface Props {
   current: DraftCard[];
@@ -116,18 +116,3 @@ function CompareColumn({
   );
 }
 
-function deckMainAsDraftCards(deck: Deck): DraftCard[] {
-  return deck.cards.map(toDraftCard);
-}
-
-function toDraftCard(card: Card): DraftCard {
-  return {
-    name: card.name,
-    setCode: card.setCode ?? "",
-    collectorNumber: card.cardNumber ?? "",
-    rarity: "unknown",
-    colors: card.colorIdentity ?? [],
-    isDoubleFaced: card.isDoubleFaced,
-    foil: card.foil,
-  };
-}

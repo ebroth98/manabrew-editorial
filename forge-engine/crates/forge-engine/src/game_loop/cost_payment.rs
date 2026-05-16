@@ -301,7 +301,7 @@ impl GameLoop {
         let card_name = game.card(source).card_name.clone();
         let kind = Self::cost_part_kind(part);
         let message = format!("Pay {} cost for {}?", kind, card_name);
-        agents[player.index()].confirm_payment(player, kind, &message, Some(&card_name), api)
+        agents[player.index()].confirm_payment(player, kind, &message, Some(source), api)
     }
 
     /// Pay the cost parts of an activated ability (tap, mana, life, sacrifice, etc.).
@@ -1028,7 +1028,7 @@ impl GameLoop {
                             "Call the coin flip",
                             crate::agent::BinaryChoiceKind::HeadsOrTails,
                             None,
-                            Some(&source_name),
+                            Some(card_id),
                             None,
                         );
                         let is_heads = self.game_rng.next_int(2) == 0;
@@ -1718,7 +1718,7 @@ impl GameLoop {
                             "Call the coin flip",
                             crate::agent::BinaryChoiceKind::HeadsOrTails,
                             None,
-                            Some(&source_name),
+                            Some(card_id),
                             None,
                         );
                         let is_heads = self.game_rng.next_int(2) == 0;
@@ -1936,13 +1936,11 @@ impl GameLoop {
                     // Permanent.nonLand from Rottenmouth Viper's UnlessCost), Java
                     // skips the confirm prompt and goes straight to the picker.
                     if type_filter == "OriginalHost" {
-                        let card_name =
-                            sa.and_then(|s| s.source.map(|cid| game.card(cid).card_name.as_str()));
                         let confirmed = agents[player.index()].confirm_payment(
                             player,
                             "Sacrifice",
                             "Confirm sacrifice cost",
-                            card_name,
+                            sa.and_then(|s| s.source),
                             sa.and_then(|s| s.api),
                         );
                         if !confirmed {
@@ -2077,7 +2075,7 @@ impl GameLoop {
                 player,
                 &untapped,
                 &generic_cost,
-                Some(&card_name),
+                Some(card_id),
             );
             let max_tap = remaining as usize;
             let mut count = 0usize;

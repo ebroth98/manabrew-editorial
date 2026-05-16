@@ -1191,7 +1191,7 @@ fn execute_effect(
                 decider,
                 &question,
                 &effect.description(host, game),
-                Some(&host.card_name),
+                Some(card_id),
             )
         } else {
             true
@@ -1424,7 +1424,7 @@ mod tests {
             _player: PlayerId,
             _question: &str,
             _effect_description: &str,
-            _card_name: Option<&str>,
+            _source: Option<crate::ids::CardId>,
         ) -> bool {
             self.confirm
         }

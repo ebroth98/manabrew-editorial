@@ -124,6 +124,7 @@ pub fn run_game(
     let _ = prompt_tx.send(AgentPrompt {
         deciding_player_id: "player-0".to_string(),
         display_events: vec![],
+        source_card_id: None,
         inner: AgentPromptInner::GameOver {
             game_view: final_view,
         },
@@ -235,6 +236,7 @@ pub fn run_multiplayer_game(
     let _ = engine_prompt_tx.send(AgentPrompt {
         deciding_player_id: format!("player-{}", engine_player_index),
         display_events: vec![],
+        source_card_id: None,
         inner: AgentPromptInner::GameOver {
             game_view: engine_final_view,
         },
@@ -252,6 +254,7 @@ pub fn run_multiplayer_game(
             AgentPrompt {
                 deciding_player_id: format!("player-{i}"),
                 display_events: vec![],
+                source_card_id: None,
                 inner: AgentPromptInner::GameOver {
                     game_view: remote_view,
                 },

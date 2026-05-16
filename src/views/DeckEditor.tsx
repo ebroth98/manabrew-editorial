@@ -16,8 +16,8 @@ import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { DROP_ZONE, DEFAULT_DECK_NAME } from "@/lib/constants";
 import { useEffect, useState } from "react";
-import type { Card as ManaBrewCard } from "@/types/manabrew";
-import { Card } from "@/components/game/Card";
+import type { DeckCard } from "@/types/manabrew";
+import { CardThumbnail } from "@/components/editor/deckEditor.primitives";
 import { useBlocker, useLocation } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,7 +75,7 @@ export default function DeckEditor() {
     deck,
     savedAt: 0,
   }));
-  const [draggedCard, setDraggedCard] = useState<ManaBrewCard | null>(null);
+  const [draggedCard, setDraggedCard] = useState<DeckCard | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [previewSlot, setPreviewSlot] = useState<HTMLDivElement | null>(null);
   const [previewCollapsed, setPreviewCollapsed] = useState<boolean>(
@@ -83,11 +83,12 @@ export default function DeckEditor() {
       typeof window !== "undefined" &&
       window.localStorage.getItem("deckEditor.previewRailCollapsed") === "true",
   );
-
   function togglePreview() {
     setPreviewCollapsed((v) => {
       const next = !v;
-      window.localStorage.setItem("deckEditor.previewRailCollapsed", String(next));
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("deckEditor.previewRailCollapsed", String(next));
+      }
       return next;
     });
   }
@@ -196,7 +197,7 @@ export default function DeckEditor() {
 
   function handleDragStart(event: DragStartEvent) {
     const data = event.active.data.current;
-    if (data?.card) setDraggedCard(data.card as ManaBrewCard);
+    if (data?.card) setDraggedCard(data.card as DeckCard);
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -208,7 +209,7 @@ export default function DeckEditor() {
     const dragData = active.data.current;
     if (!dragData?.card) return;
 
-    const card = dragData.card as ManaBrewCard;
+    const card = dragData.card as DeckCard;
     const overId = String(over.id);
     const activeId = String(active.id);
     const cardName = (dragData.name as string) ?? card.name;
@@ -248,7 +249,7 @@ export default function DeckEditor() {
 
       if (sourceTag) untagCard(cardName, sourceTag);
 
-      const sourceList: ManaBrewCard[] =
+      const sourceList: DeckCard[] =
         source === "main"
           ? currentDeck.cards
           : source === "side"
@@ -460,7 +461,7 @@ export default function DeckEditor() {
         <DragOverlay dropAnimation={null}>
           {draggedCard && (
             <div className="w-24 opacity-90 rotate-3 shadow-2xl pointer-events-none">
-              <Card card={draggedCard} className="w-full" />
+              <CardThumbnail card={draggedCard} />
             </div>
           )}
         </DragOverlay>

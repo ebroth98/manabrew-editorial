@@ -1,21 +1,23 @@
 import { useState, useRef, useEffect } from "react";
 import { useCardSearch } from "@/hooks/useCards";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/game/Card";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, LayoutGrid, List, Info, SlidersHorizontal, PanelRightClose } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ScryfallCard } from "@/types/scryfall";
-import type { Card as ManaBrewCard } from "@/types/manabrew";
+import type { DeckCard } from "@/types/manabrew";
 import { useDraggable } from "@dnd-kit/core";
 import { CardDetailModal } from "@/components/editor/CardDetailModal";
-import { useCardPreview } from "@/hooks/useCardPreview";
-import { HoverCardPreview } from "@/components/game/HoverCardPreview";
+import { CardThumbnail } from "@/components/editor/deckEditor.primitives";
 import { SetSelect } from "@/components/editor/SetSelect";
-import { scryfallToManaBrew } from "@/lib/scryfall.utils";
+import { scryfallToDeckCard } from "@/lib/scryfall.utils";
 import { manaSymbolUrl } from "@/api/scryfall";
+import { ScryfallImg } from "@/components/ScryfallImg";
+import { HoverCardPreview } from "@/components/game/HoverCardPreview";
+import { useCardPreview } from "@/hooks/useCardPreview";
+import type { GameCard } from "@/types/manabrew";
 import type { ManaCode } from "@/types/scryfall";
 
 // ─── Filter definitions ────────────────────────────────────────────────────────
@@ -290,10 +292,6 @@ function countAdvancedFilters(adv: AdvancedFilters): number {
   return count;
 }
 
-function mapScryfallToManaBrew(sfCard: ScryfallCard): ManaBrewCard {
-  return scryfallToManaBrew(sfCard, sfCard.id);
-}
-
 // ─── Filter UI helpers ───────────────────────────────────────────────────────
 
 function FilterBtn({
@@ -350,7 +348,7 @@ function ManaFilterBtn({
           : "border-transparent opacity-70 hover:opacity-100 hover:scale-105",
       )}
     >
-      <img src={manaSymbolUrl(symbol)} alt={symbol} className="w-5 h-5" draggable={false} />
+      <ScryfallImg src={manaSymbolUrl(symbol)} alt={symbol} className="w-5 h-5" draggable={false} />
     </button>
   );
 }
@@ -384,16 +382,12 @@ function DraggableCardGrid({
   standalone,
   onHover,
   onLeave,
-  onFlip,
-  showBackFace,
 }: {
-  card: ManaBrewCard;
+  card: DeckCard;
   onMoreInfo: () => void;
   standalone?: boolean;
-  onHover: (card: ManaBrewCard, e: React.MouseEvent) => void;
-  onLeave: () => void;
-  onFlip?: () => void;
-  showBackFace?: boolean;
+  onHover?: (card: DeckCard, e: React.MouseEvent) => void;
+  onLeave?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `search-${card.id}`,
@@ -405,15 +399,16 @@ function DraggableCardGrid({
     <div
       ref={standalone ? undefined : setNodeRef}
       {...(standalone ? {} : { ...listeners, ...attributes })}
+      onMouseEnter={onHover ? (e) => onHover(card, e) : undefined}
+      onMouseMove={onHover ? (e) => onHover(card, e) : undefined}
+      onMouseLeave={onLeave}
       className={cn(
         "relative group",
         !standalone && "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-30",
       )}
-      onMouseEnter={(e) => onHover(card, e)}
-      onMouseLeave={onLeave}
     >
-      <Card card={card} className="w-full" onFlip={onFlip} showBackFace={showBackFace} />
+      <CardThumbnail card={card} />
       <div className="absolute inset-0 bg-overlay/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 rounded-lg pointer-events-none group-hover:pointer-events-auto">
         <Button
           size="sm"
@@ -441,11 +436,11 @@ function DraggableCardRow({
   onHover,
   onLeave,
 }: {
-  card: ManaBrewCard;
+  card: DeckCard;
   onMoreInfo: () => void;
   standalone?: boolean;
-  onHover: (card: ManaBrewCard, e: React.MouseEvent) => void;
-  onLeave: () => void;
+  onHover?: (card: DeckCard, e: React.MouseEvent) => void;
+  onLeave?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `search-${card.id}`,
@@ -459,29 +454,23 @@ function DraggableCardRow({
     <div
       ref={standalone ? undefined : setNodeRef}
       {...(standalone ? {} : { ...listeners, ...attributes })}
+      onMouseEnter={onHover ? (e) => onHover(card, e) : undefined}
+      onMouseMove={onHover ? (e) => onHover(card, e) : undefined}
+      onMouseLeave={onLeave}
       className={cn(
         "flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 group border-b border-border/30 last:border-0",
         !standalone && "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-30",
       )}
-      onMouseEnter={(e) => onHover(card, e)}
-      onMouseLeave={onLeave}
     >
-      {card.imageUrl && (
-        <div className="w-8 h-8 shrink-0 rounded overflow-hidden bg-muted">
-          <img
-            src={card.imageUrl}
-            alt=""
-            className="w-full h-full object-cover object-top"
-            draggable={false}
-          />
-        </div>
-      )}
-      {!card.imageUrl && (
-        <div className="w-8 h-8 shrink-0 rounded bg-muted flex items-center justify-center text-[9px] text-muted-foreground font-mono">
-          {card.setCode?.toUpperCase() || "?"}
-        </div>
-      )}
+      <div className="w-8 h-8 shrink-0 rounded overflow-hidden bg-muted">
+        <ScryfallImg
+          src={card.uris.small}
+          alt=""
+          className="w-full h-full object-cover object-top"
+          draggable={false}
+        />
+      </div>
 
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium truncate leading-tight">{card.name}</div>
@@ -511,10 +500,13 @@ function DraggableCardRow({
 interface CardSearchProps {
   standalone?: boolean;
   onClose?: () => void;
+  /** Shared rail slot — when provided, the hover preview portals into it
+   *  (pinned). When absent, the search panel renders no preview of its own. */
   previewSlot?: HTMLElement | null;
 }
 
 export function CardSearch({ standalone, onClose, previewSlot }: CardSearchProps) {
+  const preview = useCardPreview();
   const [text, setText] = useState("");
   const [debouncedText, setDebouncedText] = useState("");
   const [activeColors, setActiveColors] = useState<Set<string>>(new Set());
@@ -524,7 +516,6 @@ export function CardSearch({ standalone, onClose, previewSlot }: CardSearchProps
   const [detailCard, setDetailCard] = useState<ScryfallCard | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [advanced, setAdvanced] = useState<AdvancedFilters>(INITIAL_ADVANCED);
-  const preview = useCardPreview();
 
   const advCount = countAdvancedFilters(advanced);
   const basicCount = activeColors.size + activeTypes.size + (activeCmc !== "any" ? 1 : 0);
@@ -592,9 +583,9 @@ export function CardSearch({ standalone, onClose, previewSlot }: CardSearchProps
     setAdvanced((prev) => ({ ...prev, [key]: prev[key] === value ? "" : value }));
   }
 
-  // Keep both ManaBrewCard and raw ScryfallCard arrays in sync
+  // Keep both DeckCard and raw ScryfallCard arrays in sync
   const rawCards: ScryfallCard[] = data?.pages.flatMap((p) => p.data) ?? [];
-  const allCards: ManaBrewCard[] = rawCards.map(mapScryfallToManaBrew);
+  const allCards: DeckCard[] = rawCards.map(scryfallToDeckCard);
 
   return (
     <div className="flex flex-col h-full w-full">
@@ -1037,22 +1028,19 @@ export function CardSearch({ standalone, onClose, previewSlot }: CardSearchProps
 
           {viewMode === "grid" ? (
             <div className="flex flex-wrap gap-3 pb-4">
-              {allCards.map((card, i) => {
-                const isHovered = preview.hoveredCard?.id === card.id;
-                return (
-                  <div key={card.id} className="shrink-0" style={{ width: standalone ? 130 : 110 }}>
-                    <DraggableCardGrid
-                      card={card}
-                      onMoreInfo={() => setDetailCard(rawCards[i])}
-                      standalone={standalone}
-                      onHover={preview.handleMouseEnter}
-                      onLeave={preview.handleMouseLeave}
-                      onFlip={preview.flipCard}
-                      showBackFace={isHovered ? preview.showBackFace : false}
-                    />
-                  </div>
-                );
-              })}
+              {allCards.map((card, i) => (
+                <div key={card.id} className="shrink-0" style={{ width: standalone ? 130 : 110 }}>
+                  <DraggableCardGrid
+                    card={card}
+                    onMoreInfo={() => setDetailCard(rawCards[i])}
+                    standalone={standalone}
+                    onHover={(c, e) =>
+                      preview.handleMouseEnter(c as unknown as GameCard, e, { useDelay: true })
+                    }
+                    onLeave={preview.handleMouseLeave}
+                  />
+                </div>
+              ))}
             </div>
           ) : (
             <div className="pb-4">
@@ -1062,7 +1050,9 @@ export function CardSearch({ standalone, onClose, previewSlot }: CardSearchProps
                   card={card}
                   onMoreInfo={() => setDetailCard(rawCards[i])}
                   standalone={standalone}
-                  onHover={preview.handleMouseEnter}
+                  onHover={(c, e) =>
+                    preview.handleMouseEnter(c as unknown as GameCard, e, { useDelay: true })
+                  }
                   onLeave={preview.handleMouseLeave}
                 />
               ))}
@@ -1078,8 +1068,7 @@ export function CardSearch({ standalone, onClose, previewSlot }: CardSearchProps
       </ScrollArea>
 
       {detailCard && <CardDetailModal card={detailCard} onClose={() => setDetailCard(null)} />}
-
-      <HoverCardPreview preview={preview} slot={previewSlot} pinned={!standalone} />
+      <HoverCardPreview preview={preview} slot={previewSlot} pinned />
     </div>
   );
 }

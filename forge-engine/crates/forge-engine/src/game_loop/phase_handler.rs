@@ -365,7 +365,7 @@ impl GameLoop {
                         &question,
                         crate::agent::BinaryChoiceKind::UntapOrLeaveTapped,
                         Some(true),
-                        Some(&source_name),
+                        Some(cid),
                         None,
                     )
                 } else {

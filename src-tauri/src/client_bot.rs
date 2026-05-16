@@ -1,5 +1,6 @@
 use std::sync::Mutex;
 
+use forge_agent_interface::deck_dto::Deck;
 use forge_agent_interface::ids_codec::player_slot;
 use forge_agent_interface::prompt::AgentPrompt;
 use forge_agent_interface::simple_ai::choose_simple_ai_action;
@@ -7,7 +8,6 @@ use futures_util::{SinkExt, StreamExt};
 use tauri::async_runtime::JoinHandle;
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::preset_decks::CardIdentity;
 use crate::server_client::ServerConnectionConfig;
 use forge_server::protocol::{ClientMessage, ServerMessage};
 
@@ -26,7 +26,7 @@ pub struct ClientBotConfig {
     pub room_id: String,
     pub username: String,
     pub deck_name: String,
-    pub deck_list: Vec<CardIdentity>,
+    pub deck: Deck,
     pub commander_name: Option<String>,
 }
 
@@ -127,14 +127,7 @@ async fn run_client_bot(config: ClientBotConfig) -> Result<(), String> {
         &mut sink,
         &ClientMessage::SetDeckSelection {
             deck_name: config.deck_name.clone(),
-            deck_list: config
-                .deck_list
-                .iter()
-                .map(|card| forge_server::protocol::CardIdentity {
-                    name: card.name.clone(),
-                    set_code: card.set_code.clone(),
-                })
-                .collect(),
+            deck: config.deck.clone(),
             commander_name: config.commander_name.clone(),
         },
     )

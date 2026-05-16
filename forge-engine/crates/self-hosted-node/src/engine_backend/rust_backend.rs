@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::{mpsc as std_mpsc, Once, OnceLock};
 
 use forge_agent_interface::agent_impl::PromptAgent;
+use forge_agent_interface::deck_dto::Deck;
 use forge_agent_interface::game_view_dto::GameViewDto;
 use forge_agent_interface::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
 use forge_agent_interface::simple_ai::spawn_simple_ai_prompt_responder;
@@ -13,11 +14,10 @@ use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::PlayerId;
 use forge_game_runtime::deck::{
-    card_rules_to_instance, force_commander_by_name, instantiate_registered_players,
-    prepare_registered_player, DeckCardIdentity,
+    card_rules_to_instance, deck_to_identities, force_commander_by_name,
+    instantiate_registered_players, prepare_registered_player,
 };
 use forge_game_runtime::mpsc_transport::MpscTransport as NodeTransport;
-use forge_server::protocol::CardIdentity;
 use memmap2::Mmap;
 use rand::SeedableRng;
 use tracing::{info, warn};
@@ -27,7 +27,7 @@ use crate::config::workspace_root;
 pub fn run_hosted_engine_game(
     game_id: String,
     player_names: Vec<String>,
-    deck_lists: Vec<Vec<CardIdentity>>,
+    decks: Vec<Deck>,
     commander_names: Vec<Option<String>>,
     local_player_index: Option<usize>,
     starting_life: i32,
@@ -37,14 +37,7 @@ pub fn run_hosted_engine_game(
     let num_players = player_names.len();
     let mut prepared_players = Vec::with_capacity(num_players);
     for i in 0..num_players {
-        let identities = deck_lists[i]
-            .iter()
-            .map(|identity| DeckCardIdentity {
-                name: identity.name.clone(),
-                set_code: identity.set_code.clone(),
-                section: None,
-            })
-            .collect::<Vec<_>>();
+        let identities = deck_to_identities(&decks[i]);
         let mut prepared =
             prepare_registered_player(player_names[i].clone(), get_card_db(), &identities);
         prepared.registered.starting_life = starting_life;
@@ -125,6 +118,7 @@ pub fn run_hosted_engine_game(
             AgentPrompt {
                 deciding_player_id: format!("player-{i}"),
                 display_events: vec![],
+                source_card_id: None,
                 inner: AgentPromptInner::GameOver { game_view },
             },
         ));

@@ -150,7 +150,7 @@ fn check_repeat_conditions(ctx: &mut EffectContext, sa: &SpellAbility) -> bool {
             Some("Repeat"),
             "Do you want to repeat this process again?",
             &[],
-            sa.source.map(|cid| ctx.game.card(cid).card_name.as_str()),
+            sa.source,
             sa.api,
         );
     }
@@ -276,7 +276,7 @@ mod tests {
             _: Option<&str>,
             _: &str,
             _: &[String],
-            _: Option<&str>,
+            _: Option<crate::ids::CardId>,
             _: Option<crate::ability::api_type::ApiType>,
         ) -> bool {
             if self.confirmations.is_empty() {

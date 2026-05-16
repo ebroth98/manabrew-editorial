@@ -1,4 +1,4 @@
-import type { Card } from "@/types/manabrew";
+import type { CardRulesSummary } from "@/types/manabrew";
 import { MANA_LETTERS } from "@/themes/gameTheme";
 
 const MONO_COLOR_CLASSES: Record<string, string> = {
@@ -41,7 +41,7 @@ const MULTI_COLOR_CLASSES: Record<string, string> = {
 
 export const DECK_NAME_SHADOW_CLASS = "drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]" as const;
 
-export function getDeckColors(cards: Pick<Card, "color" | "manaCost">[]): string[] {
+export function getDeckColors(cards: Pick<CardRulesSummary, "color" | "manaCost">[]): string[] {
   const seen = new Set<string>();
   for (const card of cards) {
     for (const ch of card.color ?? "") {
@@ -54,14 +54,14 @@ export function getDeckColors(cards: Pick<Card, "color" | "manaCost">[]): string
   return MANA_LETTERS.filter((color) => seen.has(color));
 }
 
-export function getDeckColorCost(cards: Pick<Card, "color" | "manaCost">[]): string {
+export function getDeckColorCost(cards: Pick<CardRulesSummary, "color" | "manaCost">[]): string {
   return getDeckColors(cards)
     .map((color) => `{${color}}`)
     .join("");
 }
 
 export function getDeckNameColorClass(
-  cards: Pick<Card, "color" | "manaCost">[],
+  cards: Pick<CardRulesSummary, "color" | "manaCost">[],
   presetColor?: string,
 ): string {
   if (presetColor) return presetColor;

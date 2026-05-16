@@ -64,8 +64,8 @@ export default function Tabletop() {
         onStart={(playerDeck, opponentDeck, formatId, commanderName) => {
           startGame(playerDeck, formatId, commanderName, opponentDeck);
         }}
-        onStartTabletop={(deckList, formatId, commanderName, sourceDeck) => {
-          void startManualTabletopGame(sourceDeck, deckList, formatId, commanderName);
+        onStartTabletop={(deck, formatId, commanderName) => {
+          void startManualTabletopGame(deck, formatId, commanderName);
         }}
       />
     </div>

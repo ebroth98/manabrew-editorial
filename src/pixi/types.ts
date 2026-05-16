@@ -1,4 +1,4 @@
-import type { Card, ActivatableAbilityInfo } from "@/types/manabrew";
+import type { GameCard, ActivatableAbilityInfo } from "@/types/manabrew";
 import type { HAND_CARD_BASES } from "@/components/game/game.styles";
 
 export type HandSize = keyof typeof HAND_CARD_BASES;
@@ -76,24 +76,24 @@ export interface CastingArrowSpec {
 }
 
 export interface GameCanvasCallbacks {
-  onClickCard?: (card: Card) => void;
-  onClickAnyCard?: (card: Card) => void;
+  onClickCard?: (card: GameCard) => void;
+  onClickAnyCard?: (card: GameCard) => void;
   onHoverCard?: (
-    card: Card | null,
+    card: GameCard | null,
     screenBounds?: ScreenBounds,
     options?: { useAnchor?: boolean; placement?: HoverPlacement },
   ) => void;
   onFlipCard?: () => void;
-  onStartDrag?: (card: Card, screenPos: ScreenPos) => void;
-  onClickCard_Hand?: (card: Card) => void;
-  onHoverHandCard?: (card: Card | null, screenBounds?: ScreenBounds) => void;
+  onStartDrag?: (card: GameCard, screenPos: ScreenPos) => void;
+  onClickCard_Hand?: (card: GameCard) => void;
+  onHoverHandCard?: (card: GameCard | null, screenBounds?: ScreenBounds) => void;
   onTargetPlayer?: (playerId: string) => void;
-  onTapLand?: (card: Card) => void;
+  onTapLand?: (card: GameCard) => void;
   onTapLands?: (cardIds: string[]) => void;
   onTapLandAbility?: (cardId: string, abilityIndex: number, color?: string) => void;
-  onUntapLand?: (card: Card) => void;
+  onUntapLand?: (card: GameCard) => void;
   onUntapLands?: (cardIds: string[]) => void;
-  onAttackerClick?: (card: Card) => void;
+  onAttackerClick?: (card: GameCard) => void;
   onCastSpell?: (cardId: string) => void;
   /**
    * Dismiss the hover preview immediately (no 250ms grace). Used when
@@ -103,7 +103,7 @@ export interface GameCanvasCallbacks {
 }
 
 export interface BattlefieldState {
-  cards: Card[];
+  cards: GameCard[];
   pendingCardIds?: string[];
   attackingCardIds?: string[];
   tappableLandIds?: string[];
@@ -113,7 +113,7 @@ export interface BattlefieldState {
 }
 
 export interface HandState {
-  cards: Card[];
+  cards: GameCard[];
   draggingCardId?: string;
   castingCardId?: string | null;
   selectionMode?: boolean;
@@ -121,7 +121,7 @@ export interface HandState {
 }
 
 export interface CardSpriteData {
-  card: Card;
+  card: GameCard;
   x: number;
   y: number;
   tapped: boolean;

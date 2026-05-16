@@ -1,14 +1,14 @@
 import { Modal } from "@/components/game/modals/Modal";
 import { Button } from "@/components/ui/button";
-import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL } from "@/components/game/game.styles";
+import type { DeckCard } from "@/types/manabrew";
 
 interface ChooseRollSwapValueModalProps {
   currentResult: number;
   power: number;
   toughness: number;
-  sourceCardName?: string;
+  sourceCard?: DeckCard;
   onConfirm: (choice: "power" | "toughness" | null) => void;
 }
 
@@ -20,31 +20,20 @@ export function ChooseRollSwapValueModal({
   currentResult,
   power,
   toughness,
-  sourceCardName,
+  sourceCard,
   onConfirm,
 }: ChooseRollSwapValueModalProps) {
-  const cardData = useCard({ name: sourceCardName ?? "" });
-  const imageUrl = cardData?.uris.normal;
-
   return (
     <Modal maxWidth="max-w-sm" maxHeight="">
       <div role="dialog" aria-modal="true" aria-labelledby="choose-roll-swap-value-title">
         <Modal.Header>
           <div className="flex items-center gap-3">
-            {imageUrl && (
-              <CardImageThumbnail
-                imageUrl={imageUrl}
-                cardName={sourceCardName ?? "Source card"}
-                className={MODAL_CARD_THUMBNAIL}
-              />
-            )}
+            {sourceCard && <CardImageThumbnail card={sourceCard} className={MODAL_CARD_THUMBNAIL} />}
             <div>
               <h2 id="choose-roll-swap-value-title" className="font-semibold text-base">
                 Exchange roll {currentResult}
               </h2>
-              {sourceCardName && (
-                <p className="text-xs text-muted-foreground font-medium">{sourceCardName}</p>
-              )}
+              <p className="text-xs text-muted-foreground font-medium">{sourceCard?.name}</p>
             </div>
           </div>
         </Modal.Header>

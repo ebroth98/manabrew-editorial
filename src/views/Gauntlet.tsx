@@ -17,15 +17,22 @@ import { useLimitedStore } from "@/stores/useLimitedStore";
 import { ROUTES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { arm as armGauntletReturn } from "@/lib/gauntletReturn";
-import type { CardIdentity, DeckSection } from "@/types/server";
 import type { DraftCard, GauntletMatchDecks } from "@/types/limited";
+import { draftCardToManaBrew } from "@/lib/limited.utils";
+import type { Deck, DeckFormatId } from "@/types/manabrew";
 
-function toCardIdentities(cards: DraftCard[], section: DeckSection): CardIdentity[] {
-  return cards.map((c) => ({
-    name: c.name,
-    setCode: c.setCode || "",
-    section,
-  }));
+function draftCardsToDeck(
+  name: string,
+  main: DraftCard[],
+  sideboard: DraftCard[],
+  format: DeckFormatId,
+): Deck {
+  return {
+    name,
+    format,
+    cards: main.map((card, index) => draftCardToManaBrew(card, index)),
+    sideboard: sideboard.map((card, index) => draftCardToManaBrew(card, main.length + index)),
+  };
 }
 
 export default function Gauntlet() {
@@ -91,14 +98,18 @@ export default function Gauntlet() {
       const decks = await fetchMatchDecks(gauntletId);
       setMatchDecks(decks);
       const formatId = activeGauntlet.kind === "sealed" ? "sealed" : "draft";
-      const human = [
-        ...toCardIdentities(decks.humanMain, "main"),
-        ...toCardIdentities(decks.humanSideboard, "sideboard"),
-      ];
-      const opponent = [
-        ...toCardIdentities(decks.opponentMain, "main"),
-        ...toCardIdentities(decks.opponentSideboard, "sideboard"),
-      ];
+      const human = draftCardsToDeck(
+        "Gauntlet Deck",
+        decks.humanMain,
+        decks.humanSideboard,
+        formatId,
+      );
+      const opponent = draftCardsToDeck(
+        activeGauntlet.currentOpponent?.deckName ?? "Gauntlet Opponent",
+        decks.opponentMain,
+        decks.opponentSideboard,
+        formatId,
+      );
       armGauntletReturn(gauntletId, activeGauntlet.currentRound);
       await startGame(human, formatId, undefined, opponent);
       navigate(ROUTES.PLAY);

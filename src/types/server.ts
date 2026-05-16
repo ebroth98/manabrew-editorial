@@ -1,3 +1,5 @@
+import type { Deck } from "@/types/manabrew";
+
 export type GameFormat =
   | "Standard"
   | "Pioneer"
@@ -10,6 +12,10 @@ export type GameFormat =
   | "Oathbreaker"
   | "Draft"
   | "Sealed";
+
+/** Which pile a card lives in inside a `Deck`. Used by the deck
+ *  builder's section validators (`lib/formats.ts`) — NOT a wire field.
+ *  On the wire, each section is its own array on `Deck`. */
 export type DeckSection =
   | "main"
   | "sideboard"
@@ -18,13 +24,6 @@ export type DeckSection =
   | "contraptions"
   | "schemes"
   | "planes";
-
-export interface CardIdentity {
-  name: string;
-  setCode: string;
-  section?: DeckSection;
-  foil?: boolean;
-}
 
 export interface RoomInfo {
   room_id: string;
@@ -47,7 +46,7 @@ export interface RoomPlayerInfo {
 export interface PlayerDeckInfo {
   username: string;
   deck_name: string;
-  deck_list: CardIdentity[];
+  deck: Deck;
   commander_name?: string;
 }
 

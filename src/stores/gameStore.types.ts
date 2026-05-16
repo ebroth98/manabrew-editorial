@@ -1,8 +1,7 @@
-import type { GameView, Card, ActivatableAbilityInfo, Deck } from "@/types/manabrew";
+import type { GameView, GameCard, ActivatableAbilityInfo, Deck } from "@/types/manabrew";
 import type { GameLogEntry } from "@/types/gameLog";
 import type { GameSnapshotEntry } from "@/types/gameSnapshot";
 import type { PromptType, TargetingIntent } from "@/types/promptType";
-import type { CardIdentity } from "@/types/server";
 
 export interface DisplayEvent {
   kind: string;
@@ -36,11 +35,11 @@ export interface AgentPrompt {
   /** Source IDs whose most recent mana action can currently be undone. */
   untappableLandIds?: string[];
   zone?: string;
-  zoneCards?: Card[];
+  zoneCards?: GameCard[];
   /** IDs of library cards revealed for scry / surveil / dig */
   cardIds?: string[];
   /** Card DTOs for the revealed library cards */
-  cards?: Card[];
+  cards?: GameCard[];
   /** revealCards: owner of the hidden zone being shown */
   ownerPlayerId?: string;
   /** dig: maximum number of cards the player may take */
@@ -116,8 +115,8 @@ export interface AgentPrompt {
   attackerId?: string;
   /** chooseDamageAssignmentOrder: blocker IDs to order */
   blockerIds?: string[];
-  /** chooseDamageAssignmentOrder: blocker CardDto info */
-  blockerCards?: Card[];
+  /** chooseDamageAssignmentOrder: blocker GameCard info */
+  blockerCards?: GameCard[];
   /** chooseCombatDamageAssignment: defender id ("player-{i}" or "card-{i}") */
   defenderId?: string | null;
   /** chooseCombatDamageAssignment: total damage to assign */
@@ -151,11 +150,11 @@ export interface AgentPrompt {
   /** exploreDecision: name of the revealed card */
   revealedCardName?: string;
   /** exploreDecision: card DTO for the revealed card */
-  revealedCard?: Card;
+  revealedCard?: GameCard;
   /** chooseExertAttackers / chooseEnlistAttackers: attacker card IDs */
   attackerCardIds?: string[];
   /** chooseExertAttackers / chooseEnlistAttackers: attacker card DTOs */
-  attackerCards?: Card[];
+  attackerCards?: GameCard[];
   /** helpPayAssist: max generic mana the assisting player can pay */
   maxGeneric?: number;
 
@@ -207,7 +206,7 @@ export interface GameState {
   /** Card-image prefetch progress shown on the loading screen. Reset to
    *  null between games. Populated while the start-game flow is fetching
    *  Scryfall textures, before the engine is allowed to emit prompts. */
-  prefetchProgress: { loaded: number; failed: number; total: number } | null;
+  isPrefetchingCards: boolean;
   /** Queue of deferred snapshots waiting for flash animation. */
   deferredQueue: DeferredSnapshot[];
   /** True while Game.tsx is processing flash animations. */
@@ -221,30 +220,26 @@ export interface GameState {
   isHost: boolean;
   /** This player's slot identifier, e.g. "player-0", "player-1". */
   myPlayerSlot: string | null;
+  /** Active game's decks keyed by player slot id ("player-0", "player-1", ...).
+   *  Used by `asDeckCard(deck, gameCard)` callers to resolve the deck side of
+   *  a game card without scanning unrelated decks. */
+  gameDecks: Record<string, Deck>;
   updateGameView: (view: GameView) => void;
   setGameConfig: (config: GameConfig) => void;
   // Actions
   startGame: (
-    deckList: CardIdentity[],
+    deck: Deck,
     formatId?: string,
     commanderName?: string,
-    opponentDeckList?: CardIdentity[],
+    opponentDeck?: Deck,
   ) => Promise<void>;
-  startManualTabletopGame: (
-    deck?: Deck,
-    deckList?: CardIdentity[],
-    formatId?: string,
-    commanderName?: string,
-  ) => Promise<void>;
+  startManualTabletopGame: (deck: Deck, formatId?: string, commanderName?: string) => Promise<void>;
   startManualRoomHost: (localPlayerSlot: string) => Promise<void>;
-  startManualRoomClient: (
-    localPlayerSlot: string,
-    initialGameView?: import("@/types/manabrew").GameView,
-  ) => Promise<void>;
+  startManualRoomClient: (localPlayerSlot: string, initialGameView?: GameView) => Promise<void>;
   stopManualRoomSync: () => void;
   startMultiplayerGame: (
     playerNames: string[],
-    deckLists: CardIdentity[][],
+    decks: Deck[],
     commanderNames: Array<string | null>,
     enginePlayerIndex: number,
     localIsHost: boolean,

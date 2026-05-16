@@ -1,21 +1,21 @@
 import type { CSSProperties } from "react";
-import type { Card as CardType } from "@/types/manabrew";
+import type { GameCard } from "@/types/manabrew";
 import { Card } from "@/components/game/Card";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/useTheme";
 
 interface CommandZoneTileProps {
-  commanders: CardType[];
+  commanders: GameCard[];
   /** Invoked when the first commander is playable and the user clicks it
    *  (no drag movement). Same semantic as a hand-card tap-to-cast. */
   onCastCommander?: (cardId: string) => void;
   /** Begin a drag-to-cast gesture on mousedown. Mirrors the hand-card
    *  drag: the handler decides whether the motion becomes a drag or
    *  collapses to a click, so the tile just forwards the event. */
-  onStartDrag?: (card: CardType, e: React.MouseEvent) => void;
+  onStartDrag?: (card: GameCard, e: React.MouseEvent) => void;
   /** Fallback click (e.g. open zone modal) when no cast is available. */
   onOpenZone?: () => void;
-  onHoverCard?: (card: CardType | null, e?: React.MouseEvent) => void;
+  onHoverCard?: (card: GameCard | null, e?: React.MouseEvent) => void;
   /** Id of the card currently being drag-cast. When it matches the
    *  shown commander, the tile renders an empty placeholder — mirrors
    *  the hand's "lift" behaviour so the zone reads as emptied while the

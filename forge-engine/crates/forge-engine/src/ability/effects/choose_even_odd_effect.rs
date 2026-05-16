@@ -30,7 +30,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             "Odd or even?",
             BinaryChoiceKind::OddsOrEvens,
             None,
-            Some(&source_name),
+            Some(source_id),
             sa.api,
         );
         ctx.game

@@ -1,10 +1,10 @@
-import type { Card } from "@/types/manabrew";
-export { scryfallToManaBrew } from "@/lib/scryfall.utils";
+import type { DeckCard } from "@/types/manabrew";
+export { scryfallToDeckCard } from "@/lib/scryfall.utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CardGroup {
-  card: Card;
+  card: DeckCard;
   count: number;
 }
 
@@ -78,7 +78,7 @@ export const CARD_WIDTH_MAP: Record<number, number> = { 1: 75, 2: 95, 3: 115, 4:
 /**
  * Groups cards by name, counting duplicates and sorting by CMC then name.
  */
-export function groupCards(cards: Card[]): CardGroup[] {
+export function groupCards(cards: DeckCard[]): CardGroup[] {
   const map = new Map<string, CardGroup>();
   for (const card of cards) {
     const existing = map.get(card.name);
@@ -98,12 +98,12 @@ export function groupCards(cards: Card[]): CardGroup[] {
  */
 export function exportToArena(deck: {
   name: string;
-  cards: Card[];
-  sideboard: Card[];
-  attractions?: Card[];
-  contraptions?: Card[];
-  schemes?: Card[];
-  planes?: Card[];
+  cards: DeckCard[];
+  sideboard: DeckCard[];
+  attractions?: DeckCard[];
+  contraptions?: DeckCard[];
+  schemes?: DeckCard[];
+  planes?: DeckCard[];
 }): string {
   const mainGroups = groupCards(deck.cards);
   const sideGroups = groupCards(deck.sideboard);
@@ -145,7 +145,7 @@ export function exportToArena(deck: {
  * Computes section groups for the main deck by filtering cards into type sections.
  */
 export function computeSectionGroups(
-  cards: Card[],
+  cards: DeckCard[],
   sections: SectionDefinition[],
 ): Array<SectionDefinition & { groups: CardGroup[] }> {
   return sections.map((s) => ({
@@ -158,7 +158,7 @@ export function computeSectionGroups(
  * Computes "Other" group — cards that don't match any main section.
  */
 export function computeOtherGroups(
-  cards: Card[],
+  cards: DeckCard[],
   sectionGroups: Array<{ groups: CardGroup[] }>,
 ): CardGroup[] {
   const matchedNames = new Set(sectionGroups.flatMap((s) => s.groups.map((g) => g.card.name)));
@@ -169,7 +169,7 @@ export function computeOtherGroups(
  * Computes stack-mode columns by grouping cards into type columns (no overlap).
  */
 export function computeStackColumns(
-  cards: Card[],
+  cards: DeckCard[],
   columns: SectionDefinition[],
 ): Array<SectionDefinition & { groups: CardGroup[] }> {
   const allGroups = groupCards(cards);
@@ -213,7 +213,7 @@ const COLOR_NAMES: Record<string, string> = {
   G: "Green",
 };
 
-function getCardColorKey(card: Card): string {
+function getCardColorKey(card: DeckCard): string {
   const colors = (card.color ?? "")
     .split("")
     .filter((c) => COLOR_ORDER.includes(c as (typeof COLOR_ORDER)[number]));
@@ -222,8 +222,8 @@ function getCardColorKey(card: Card): string {
   return COLOR_NAMES[colors[0]] ?? "Colorless";
 }
 
-function groupByCmc(cards: Card[]): Array<SectionDefinition & { groups: CardGroup[] }> {
-  const buckets = new Map<string, Card[]>();
+function groupByCmc(cards: DeckCard[]): Array<SectionDefinition & { groups: CardGroup[] }> {
+  const buckets = new Map<string, DeckCard[]>();
   for (const c of cards) {
     const cmc = c.cmc ?? 0;
     const key = cmc >= 7 ? "cmc-7+" : `cmc-${cmc}`;
@@ -236,9 +236,9 @@ function groupByCmc(cards: Card[]): Array<SectionDefinition & { groups: CardGrou
   );
 }
 
-function groupByColor(cards: Card[]): Array<SectionDefinition & { groups: CardGroup[] }> {
+function groupByColor(cards: DeckCard[]): Array<SectionDefinition & { groups: CardGroup[] }> {
   const colorKeys = ["White", "Blue", "Black", "Red", "Green", "Multicolor", "Colorless"];
-  const buckets = new Map<string, Card[]>();
+  const buckets = new Map<string, DeckCard[]>();
   for (const c of cards) {
     const key = getCardColorKey(c);
     const arr = buckets.get(key) ?? [];
@@ -256,7 +256,7 @@ function groupByColor(cards: Card[]): Array<SectionDefinition & { groups: CardGr
 }
 
 function groupByCustomTags(
-  cards: Card[],
+  cards: DeckCard[],
   customTags: string[] | undefined,
   cardTags: Record<string, string[]> | undefined,
 ): Array<SectionDefinition & { groups: CardGroup[] }> {
@@ -290,7 +290,7 @@ function groupByCustomTags(
  * Compute sections based on group-by mode. Returns the same shape as computeSectionGroups.
  */
 export function computeGroupedSections(
-  cards: Card[],
+  cards: DeckCard[],
   mode: GroupByMode,
   customTags?: string[],
   cardTags?: Record<string, string[]>,
@@ -314,7 +314,7 @@ export function computeGroupedSections(
  * Compute stack columns based on group-by mode.
  */
 export function computeGroupedStackColumns(
-  cards: Card[],
+  cards: DeckCard[],
   mode: GroupByMode,
   customTags?: string[],
   cardTags?: Record<string, string[]>,
@@ -336,7 +336,7 @@ export function computeGroupedStackColumns(
  */
 export function getTaggedGroups(
   tag: string,
-  allCards: Card[],
+  allCards: DeckCard[],
   cardTags: Record<string, string[]> | undefined,
 ): CardGroup[] {
   const taggedNames = new Set(

@@ -4,6 +4,7 @@ import { extractManaLetters } from "@/components/game/manaUtils";
 import { withAlpha, type ManaLetter } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
 import { manaSymbolUrl } from "@/api/scryfall";
+import { ScryfallImg } from "@/components/ScryfallImg";
 
 /** Alpha applied to the mana-letter tint when used as the tap-button fill. */
 const MANA_BUTTON_ALPHA = 0.45;
@@ -50,7 +51,7 @@ export const ManaAbilityTapButton = memo(function ManaAbilityTapButton({
         )}
       >
         {letter ? (
-          <img
+          <ScryfallImg
             src={manaSymbolUrl(letter)}
             alt={`{${letter}}`}
             className="h-full w-full drop-shadow-md"

@@ -2,6 +2,7 @@ import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { manaSymbolUrl, normalizeManaCode } from "@/api/scryfall";
+import { ScryfallImg } from "@/components/ScryfallImg";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 
 interface SpecifyManaComboModalProps {
@@ -86,7 +87,7 @@ export function SpecifyManaComboModal({
           const count = counts[color] ?? 0;
           return (
             <div key={color} className="flex items-center gap-3">
-              <img src={manaSymbolUrl(symbol)} alt={`{${symbol}}`} className="w-8 h-8" />
+              <ScryfallImg src={manaSymbolUrl(symbol)} alt={`{${symbol}}`} className="w-8 h-8" />
               <span
                 className={cn(
                   "text-sm font-medium w-16 px-2 py-0.5 rounded text-foreground",

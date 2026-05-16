@@ -56,7 +56,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 &prompt,
                 BinaryChoiceKind::AddOrRemove,
                 None,
-                Some(&source_name),
+                Some(source_id),
                 sa.api,
             );
             if add {

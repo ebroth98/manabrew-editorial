@@ -6,7 +6,7 @@
  * work with both desktop (Tauri) and web (WASM) deployments.
  */
 
-import type { CardIdentity, GameFormat, RoomRelayEnvelope } from "@/types/server";
+import type { GameFormat, RoomRelayEnvelope } from "@/types/server";
 import type { Deck } from "@/types/manabrew";
 
 // ============================================================================
@@ -14,15 +14,15 @@ import type { Deck } from "@/types/manabrew";
 // ============================================================================
 
 export interface StartGameParams {
-  deckList: CardIdentity[];
+  deck: Deck;
   startingLife: number;
   commanderName: string | null;
-  opponentDeckList: CardIdentity[] | null;
+  opponentDeck: Deck | null;
 }
 
 export interface StartMultiplayerGameParams {
   playerNames: string[];
-  deckLists: CardIdentity[][];
+  decks: Deck[];
   commanderNames: Array<string | null>;
   enginePlayerIndex: number;
   localIsHost: boolean;
@@ -67,7 +67,7 @@ export interface SetReadyParams {
 
 export interface SetDeckSelectionParams {
   deckName: string;
-  deckList: CardIdentity[];
+  deck: Deck;
   commanderName: string | null;
 }
 

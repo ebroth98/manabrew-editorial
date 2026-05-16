@@ -17,7 +17,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         "Choose direction",
         BinaryChoiceKind::LeftOrRight,
         None,
-        Some(&source_name),
+        Some(source_id),
         sa.api,
     );
     ctx.game.card_mut(source_id).set_s_var(

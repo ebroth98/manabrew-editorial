@@ -36,6 +36,7 @@ import init, {
   limited_cubecobra_url,
   limited_import_cube,
 } from "../wasm/forge_wasm";
+import type { Deck } from "@/types/manabrew";
 
 // ============================================================================
 // Types
@@ -69,7 +70,7 @@ interface PresetDeck {
   format?: string;
   commander?: string;
   coverCardName?: string;
-  cards: Array<{ name: string; count: number; set?: string }>;
+  cards: Array<{ name: string; count: number; set: string; cardNumber: string }>;
 }
 
 // ============================================================================
@@ -292,25 +293,6 @@ async function fetchCardArchive(silent: boolean): Promise<ArrayBuffer> {
   return bytes.buffer;
 }
 
-// ============================================================================
-// Preset Deck Expansion
-// ============================================================================
-
-function expandDeckList(
-  rawList: Array<{ name: string; count?: number }>,
-): Array<{ name: string; count: number }> {
-  if (rawList.length === 1 && rawList[0]) {
-    const preset = presetDecks.find((p) => p.id === rawList[0]!.name);
-    if (preset) {
-      console.log(
-        `[GameWorker] Expanding preset deck "${preset.id}" (${preset.cards.length} cards)`,
-      );
-      return preset.cards.map((c) => ({ name: c.name, count: c.count }));
-    }
-  }
-  return rawList.map((c) => ({ name: c.name, count: c.count ?? 1 }));
-}
-
 function choosePresetCoverCardName(
   cards: Array<{ name: string; count: number; set?: string }>,
 ): string | undefined {
@@ -336,12 +318,12 @@ function runInteractiveGame(requestId: string, args?: Record<string, unknown>): 
     return;
   }
 
-  const rawHumanDeck = (args?.deckList as Array<{ name: string; count?: number }>) || [];
-  const rawAiDeck =
-    (args?.opponentDeckList as Array<{ name: string; count?: number }>) || rawHumanDeck;
-
-  const humanDeck = { cards: expandDeckList(rawHumanDeck) };
-  const aiDeck = { cards: expandDeckList(rawAiDeck) };
+  const humanDeck = args?.deck as Deck | undefined;
+  const aiDeck = (args?.opponentDeck as Deck | undefined) ?? humanDeck;
+  if (!humanDeck || !aiDeck) {
+    postError(requestId, "start_game requires a deck and opponent deck");
+    return;
+  }
   const config = {
     starting_life: (args?.startingLife as number) || 20,
     commander_name: args?.commanderName as string | undefined,
@@ -391,12 +373,16 @@ function runMultiplayerHostGame(requestId: string, args?: Record<string, unknown
     return;
   }
 
-  const deckLists = (args?.deckLists as Array<Array<{ name: string; count?: number }>>) || [];
+  const decks = (args?.decks as Deck[]) || [];
   const localPlayerIndex = (args?.enginePlayerIndex as number) ?? 0;
   const startingLife = (args?.startingLife as number) || 20;
 
-  const deck0 = { cards: expandDeckList(deckLists[0] || []) };
-  const deck1 = { cards: expandDeckList(deckLists[1] || []) };
+  const deck0 = decks[0];
+  const deck1 = decks[1];
+  if (!deck0 || !deck1) {
+    postError(requestId, "start_multiplayer_game requires two decks");
+    return;
+  }
   const config = { starting_life: startingLife };
 
   console.log(

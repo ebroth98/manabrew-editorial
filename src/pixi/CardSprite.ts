@@ -1,11 +1,13 @@
 import { Container, Sprite, Texture, Graphics, Text, TextStyle } from "pixi.js";
-import type { Card } from "@/types/manabrew";
+import type { GameCard } from "@/types/manabrew";
 import { CARD_W, CARD_H } from "@/components/game/game.constants";
 import { isHorizontalCard } from "@/lib/cardLayout";
 import type { Theme } from "@/hooks/useTheme";
 import { getTheme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
 import { useScryfallStore } from "@/stores/useScryfallStore";
+import { useGameStore } from "@/stores/useGameStore";
+import { asDeckCard } from "@/lib/decks";
 import { DEBUG_KEYWORD_CARD_ID } from "@/stores/useGameDevStore";
 import { applyIcon } from "./panelIcons";
 
@@ -141,7 +143,7 @@ type CardStatusKey = keyof Theme["gameTheme"]["cardStatus"];
 
 interface BadgeRule {
   label: string;
-  test: (card: Card) => boolean;
+  test: (card: GameCard) => boolean;
   colorKey: CardStatusKey;
 }
 
@@ -217,7 +219,7 @@ const parseStat = (value: string | undefined): number => {
   return Number.isNaN(n) ? 0 : n;
 };
 
-const resolvePTBgColor = (card: Card): number => {
+const resolvePTBgColor = (card: GameCard): number => {
   const pt = activeTheme.gameTheme.pt;
   const toughness = parseStat(card.toughness);
   if (card.damage != null && card.damage >= toughness) return hexToNum(pt.lethal);
@@ -233,7 +235,7 @@ const resolvePTBgColor = (card: Card): number => {
 };
 
 export class CardSprite extends Container {
-  card: Card;
+  card: GameCard;
 
   private imageSpr: Sprite;
   private imageMask: Graphics;
@@ -259,7 +261,7 @@ export class CardSprite extends Container {
   private etbGlow: Graphics;
   private _imageLoaded = false;
 
-  constructor(card: Card) {
+  constructor(card: GameCard) {
     super();
     this.card = card;
     this.eventMode = "static";
@@ -395,12 +397,9 @@ export class CardSprite extends Container {
   }
 
   private async loadImage(): Promise<void> {
-    const card = await useScryfallStore.getState().getCardTexture({
-      name: this.card.name,
-      setCode: this.card.setCode,
-      collectorNumber: this.card.cardNumber,
-    });
-    const tex = card.texture;
+    const deck = useGameStore.getState().gameDecks[this.card.ownerId];
+    const deckCard = asDeckCard(deck, this.card);
+    const tex = await useScryfallStore.getState().getCardTexture(deckCard);
     if (this.destroyed) return;
     if (tex !== Texture.EMPTY) {
       this.imageSpr.texture = tex;
@@ -419,7 +418,7 @@ export class CardSprite extends Container {
    * Full update including tapped rotation + phased-out alpha. Use this on the
    * battlefield, where `tapped` is what drives the 90° rotation.
    */
-  updateCard(card: Card): void {
+  updateCard(card: GameCard): void {
     this.updateCardContent(card);
     this.alpha = card.phasedOut ? 0.3 : 1;
   }
@@ -432,10 +431,11 @@ export class CardSprite extends Container {
    * Calling the full `updateCard` there would reset the rotation to 0 on
    * every state update, causing a bumpy re-lerp back to the fan angle.
    */
-  updateCardContent(card: Card): void {
+  updateCardContent(card: GameCard): void {
     const nameChanged =
       card.name !== this.card.name ||
-      card.imageUrl !== this.card.imageUrl ||
+      card.setCode !== this.card.setCode ||
+      card.cardNumber !== this.card.cardNumber ||
       card.isFaceDown !== this.card.isFaceDown;
     this.card = card;
 

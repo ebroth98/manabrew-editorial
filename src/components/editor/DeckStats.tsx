@@ -2,7 +2,7 @@ import { useDeckStore } from "@/stores/useDeckStore";
 import { cn } from "@/lib/utils";
 import { computeCmc, isLand, countColorPips, countGenericMana } from "@/lib/mana";
 import type { ManaColor } from "@/lib/mana";
-import type { Card } from "@/types/manabrew";
+import type { DeckCard } from "@/types/manabrew";
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
@@ -32,14 +32,14 @@ const COLOR_ROWS: { color: ManaColor; label: string; bar: string }[] = [
 ];
 
 /** Resolve CMC for a card. Returns undefined when genuinely unknown. */
-function resolveCmc(card: Card): number | undefined {
+function resolveCmc(card: DeckCard): number | undefined {
   if (card.cmc !== undefined && card.cmc !== null) return card.cmc;
   if (card.manaCost) return computeCmc(card.manaCost);
   return undefined;
 }
 
 interface DeckStatsProps {
-  cards?: Card[];
+  cards?: DeckCard[];
 }
 
 export function DeckStats({ cards: propCards }: DeckStatsProps) {
@@ -47,9 +47,9 @@ export function DeckStats({ cards: propCards }: DeckStatsProps) {
   const cards = propCards ?? currentDeck.cards;
   const [collapsed, setCollapsed] = useState(true);
 
-  const lands: Card[] = [];
-  const unknown: Card[] = [];
-  const spells: { card: Card; cmc: number }[] = [];
+  const lands: DeckCard[] = [];
+  const unknown: DeckCard[] = [];
+  const spells: { card: DeckCard; cmc: number }[] = [];
 
   for (const card of cards) {
     if (isLand(card.types)) {

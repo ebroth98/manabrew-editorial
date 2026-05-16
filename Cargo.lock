@@ -2127,6 +2127,7 @@ name = "forge-server"
 version = "0.1.0"
 dependencies = [
  "dashmap 6.1.0",
+ "forge-agent-interface",
  "futures-util",
  "serde",
  "serde_json",

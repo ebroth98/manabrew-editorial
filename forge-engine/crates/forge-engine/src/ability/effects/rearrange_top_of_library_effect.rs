@@ -78,7 +78,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             None,
             "Do you want to shuffle the library?",
             &[],
-            source_name,
+            sa.source,
             Some(crate::ability::api_type::ApiType::RearrangeTopOfLibrary),
         );
         if wants_shuffle {

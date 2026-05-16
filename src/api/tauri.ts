@@ -6,9 +6,9 @@
  * They provide type-safe wrappers around Tauri invoke() calls.
  */
 import { invoke } from "@tauri-apps/api/core";
-import type { CardIdentity, GameFormat } from "@/types/server";
+import type { GameFormat } from "@/types/server";
 import type { Deck } from "@/types/manabrew";
-import { presetDeckPayloadsToDecks, type PresetDeckPayload } from "@/lib/presetDecks";
+import { expandPresetDeckDefinitions, type PresetDeckDefinition } from "@/lib/presetDecks";
 
 /**
  * Typed wrapper around Tauri's invoke that handles parameter conversion.
@@ -23,15 +23,15 @@ function tauriInvoke<T>(cmd: string, args?: object): Promise<T> {
 // ============================================================================
 
 export interface StartGameParams {
-  deckList: CardIdentity[];
+  deck: Deck;
   startingLife: number;
   commanderName: string | null;
-  opponentDeckList: CardIdentity[] | null;
+  opponentDeck: Deck | null;
 }
 
 export interface StartMultiplayerGameParams {
   playerNames: string[];
-  deckLists: CardIdentity[][];
+  decks: Deck[];
   commanderNames: Array<string | null>;
   enginePlayerIndex: number;
   localIsHost: boolean;
@@ -105,7 +105,7 @@ export interface SetReadyParams {
 
 export interface SetDeckSelectionParams {
   deckName: string;
-  deckList: CardIdentity[];
+  deck: Deck;
   commanderName: string | null;
 }
 
@@ -178,7 +178,7 @@ export const deckCommands = {
    * Get list of available preset decks.
    */
   getPresetDecks: async (): Promise<Deck[]> =>
-    presetDeckPayloadsToDecks(await invoke<PresetDeckPayload[]>("get_preset_decks")),
+    expandPresetDeckDefinitions(await invoke<PresetDeckDefinition[]>("get_preset_decks")),
 };
 
 export const debugCommands = {

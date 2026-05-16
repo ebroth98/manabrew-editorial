@@ -2,20 +2,46 @@
 //!
 //! This module provides the JavaScript-facing API for the forge-engine.
 
+use forge_agent_interface::deck_dto::Deck as WireDeck;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 use crate::card_loader::{get_card_db, DeckCard};
 use crate::game_runner::{GameConfig as RustGameConfig, WasmGame};
 
-/// Card identity for deck building (matches frontend type).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CardIdentity {
-    pub name: String,
-    #[serde(default)]
-    pub set_code: Option<String>,
-    #[serde(default)]
-    pub collector_number: Option<String>,
+/// Flatten every playable pile of a wire `Deck` (main + sideboard +
+/// commanders + supplementary decks) into the internal `DeckCard`
+/// shape the engine consumes.
+fn deck_cards_for_engine(deck: &WireDeck) -> Vec<DeckCard> {
+    let mut out: Vec<DeckCard> = Vec::with_capacity(deck.cards.len());
+    let push = |out: &mut Vec<DeckCard>, list: &[forge_agent_interface::deck_dto::DeckCard]| {
+        for c in list {
+            out.push(DeckCard {
+                name: c.identity.name.clone(),
+                count: 1,
+                set_code: c.identity.set_code.clone(),
+                card_number: c.identity.card_number.clone(),
+            });
+        }
+    };
+    push(&mut out, &deck.cards);
+    push(&mut out, &deck.sideboard);
+    if let Some(commanders) = &deck.commanders {
+        push(&mut out, commanders);
+    }
+    if let Some(attractions) = &deck.attractions {
+        push(&mut out, attractions);
+    }
+    if let Some(contraptions) = &deck.contraptions {
+        push(&mut out, contraptions);
+    }
+    if let Some(schemes) = &deck.schemes {
+        push(&mut out, schemes);
+    }
+    if let Some(planes) = &deck.planes {
+        push(&mut out, planes);
+    }
+    out
 }
 
 /// Game configuration.
@@ -63,12 +89,12 @@ pub fn echo(msg: &str) -> String {
     format!("forge-wasm echo: {}", msg)
 }
 
-/// Parse a deck list from JSON.
+/// Parse a deck from JSON.
 ///
 /// Returns a summary of the parsed deck for verification.
 #[wasm_bindgen]
 pub fn parse_deck(deck_json: JsValue) -> Result<JsValue, JsError> {
-    let deck: Vec<CardIdentity> = serde_wasm_bindgen::from_value(deck_json)
+    let deck: WireDeck = serde_wasm_bindgen::from_value(deck_json)
         .map_err(|e| JsError::new(&format!("Failed to parse deck: {}", e)))?;
 
     #[derive(Serialize)]
@@ -78,8 +104,8 @@ pub fn parse_deck(deck_json: JsValue) -> Result<JsValue, JsError> {
     }
 
     let summary = DeckSummary {
-        card_count: deck.len(),
-        card_names: deck.iter().map(|c| c.name.clone()).collect(),
+        card_count: deck.cards.len(),
+        card_names: deck.cards.iter().map(|c| c.identity.name.clone()).collect(),
     };
 
     serde_wasm_bindgen::to_value(&summary)
@@ -151,35 +177,6 @@ pub fn test_foundation() -> JsValue {
 // Full Game API
 // ============================================================================
 
-/// Deck list input from JavaScript.
-#[derive(Debug, Clone, Deserialize)]
-pub struct JsDeckList {
-    pub cards: Vec<JsDeckCard>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct JsDeckCard {
-    pub name: String,
-    #[serde(default = "default_count")]
-    pub count: usize,
-    #[serde(default)]
-    pub set: Option<String>,
-}
-
-fn default_count() -> usize {
-    1
-}
-
-impl From<&JsDeckCard> for DeckCard {
-    fn from(card: &JsDeckCard) -> Self {
-        DeckCard {
-            name: card.name.clone(),
-            count: card.count,
-            set: card.set.clone().unwrap_or_default(),
-            extra: std::collections::HashMap::new(),
-        }
-    }
-}
 
 // ============================================================================
 // Interactive Game API (uses shared PromptAgent + Atomics.wait)
@@ -212,9 +209,9 @@ pub fn run_interactive_game(
     }
 
     // Parse decks
-    let human_deck: JsDeckList = serde_wasm_bindgen::from_value(human_deck_json)
+    let human_deck: WireDeck = serde_wasm_bindgen::from_value(human_deck_json)
         .map_err(|e| JsError::new(&format!("Failed to parse human deck: {}", e)))?;
-    let ai_deck: JsDeckList = serde_wasm_bindgen::from_value(ai_deck_json)
+    let ai_deck: WireDeck = serde_wasm_bindgen::from_value(ai_deck_json)
         .map_err(|e| JsError::new(&format!("Failed to parse AI deck: {}", e)))?;
 
     // Parse config
@@ -226,8 +223,8 @@ pub fn run_interactive_game(
     };
 
     // Convert decks
-    let human_cards: Vec<DeckCard> = human_deck.cards.iter().map(DeckCard::from).collect();
-    let ai_cards: Vec<DeckCard> = ai_deck.cards.iter().map(DeckCard::from).collect();
+    let human_cards: Vec<DeckCard> = deck_cards_for_engine(&human_deck);
+    let ai_cards: Vec<DeckCard> = deck_cards_for_engine(&ai_deck);
 
     web_sys::console::log_1(
         &format!(
@@ -310,9 +307,9 @@ pub fn run_multiplayer_game(
         return Err(JsError::new("Card database not loaded"));
     }
 
-    let deck0: JsDeckList = serde_wasm_bindgen::from_value(player0_deck_json)
+    let deck0: WireDeck = serde_wasm_bindgen::from_value(player0_deck_json)
         .map_err(|e| JsError::new(&format!("Failed to parse player 0 deck: {}", e)))?;
-    let deck1: JsDeckList = serde_wasm_bindgen::from_value(player1_deck_json)
+    let deck1: WireDeck = serde_wasm_bindgen::from_value(player1_deck_json)
         .map_err(|e| JsError::new(&format!("Failed to parse player 1 deck: {}", e)))?;
 
     let config: RustGameConfig = if config_json.is_undefined() || config_json.is_null() {
@@ -322,8 +319,8 @@ pub fn run_multiplayer_game(
             .map_err(|e| JsError::new(&format!("Failed to parse config: {}", e)))?
     };
 
-    let cards0: Vec<DeckCard> = deck0.cards.iter().map(DeckCard::from).collect();
-    let cards1: Vec<DeckCard> = deck1.cards.iter().map(DeckCard::from).collect();
+    let cards0: Vec<DeckCard> = deck_cards_for_engine(&deck0);
+    let cards1: Vec<DeckCard> = deck_cards_for_engine(&deck1);
 
     let mut wasm_game = WasmGame::new(&cards0, &cards1, &config)
         .map_err(|e| JsError::new(&format!("Failed to create game: {}", e)))?;

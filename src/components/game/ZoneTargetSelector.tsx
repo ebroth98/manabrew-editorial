@@ -1,5 +1,5 @@
 import { Card } from "@/components/game/Card";
-import type { Card as CardType } from "@/types/manabrew";
+import type { GameCard } from "@/types/manabrew";
 import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { Modal } from "@/components/game/modals/Modal";
 import { cn } from "@/lib/utils";
@@ -8,7 +8,7 @@ import { MODAL_CARD_SIZE } from "./game.styles";
 
 interface ZoneTargetSelectorProps {
   title: string;
-  cards: CardType[];
+  cards: GameCard[];
   validCardIds: string[];
   onSelect: (cardId: string) => void;
   onCancel: () => void;

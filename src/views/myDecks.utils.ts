@@ -1,24 +1,11 @@
-import type { Card } from "@/types/manabrew";
+import type { DeckCard } from "@/types/manabrew";
 import type { SavedDeck } from "@/stores/useDeckStore";
-import { MANA_LETTERS } from "@/themes/gameTheme";
+import { getDeckColors } from "@/components/deck/deckDisplay.utils";
 export { type CardGroup, groupCards } from "@/components/editor/deckBuilder.utils";
 
-const VALID_COLORS = new Set<string>(MANA_LETTERS);
-
-export function extractColors(cards: Card[]): string[] {
-  const set = new Set<string>();
-  for (const card of cards) {
-    for (const ch of card.color ?? "") {
-      if (VALID_COLORS.has(ch)) set.add(ch);
-    }
-    if (card.manaCost?.includes("{C}")) set.add("C");
-  }
-  return MANA_LETTERS.filter((color) => set.has(color));
-}
-
 export function categorize(
-  groups: { card: Card; count: number }[],
-): { label: string; items: { card: Card; count: number }[] }[] {
+  groups: { card: DeckCard; count: number }[],
+): { label: string; items: { card: DeckCard; count: number }[] }[] {
   const lands: typeof groups = [];
   const creatures: typeof groups = [];
   const other: typeof groups = [];
@@ -62,7 +49,7 @@ export function applyDeckFilters(
     if (search && !savedDeck.deck.name.toLowerCase().includes(search.toLowerCase())) return false;
     if (formatFilter && (savedDeck.deck.format ?? "standard") !== formatFilter) return false;
     if (colorFilter.length > 0) {
-      const deckColors = extractColors(savedDeck.deck.cards);
+      const deckColors = getDeckColors(savedDeck.deck.cards);
       if (!colorFilter.every((color) => deckColors.includes(color))) return false;
     }
     return true;
@@ -73,8 +60,8 @@ export function applyDeckFilters(
       case "name":
         return left.deck.name.localeCompare(right.deck.name);
       case "color": {
-        const leftColors = extractColors(left.deck.cards);
-        const rightColors = extractColors(right.deck.cards);
+        const leftColors = getDeckColors(left.deck.cards);
+        const rightColors = getDeckColors(right.deck.cards);
         if (leftColors.length !== rightColors.length) return leftColors.length - rightColors.length;
         return colorSortKey(rightColors) - colorSortKey(leftColors);
       }

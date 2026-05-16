@@ -1172,7 +1172,7 @@ impl GameState {
                         Some("ChangeZoneToAltDestination"),
                         &message,
                         &[],
-                        Some(&name),
+                        Some(cid),
                         None,
                     )
                 } else {

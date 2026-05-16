@@ -1,33 +1,30 @@
 import { Button } from "@/components/ui/button";
 import { Modal } from "./Modal";
 import { Card } from "@/components/game/Card";
-import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL, MODAL_FOOTER_BETWEEN } from "../game.styles";
 import { useState, useCallback } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
-import type { Card as CardType } from "@/types/manabrew";
+import type { DeckCard, GameCard } from "@/types/manabrew";
 import { cn } from "@/lib/utils";
 
 interface ReorderLibraryModalProps {
-  cards: CardType[];
-  cardName?: string;
+  cards: GameCard[];
+  sourceCard?: DeckCard;
   onConfirm: (orderedCardIds: string[]) => void;
 }
 
-export function ReorderLibraryModal({ cards, cardName, onConfirm }: ReorderLibraryModalProps) {
-  const cardData = useCard({ name: cardName ?? "" });
-  const imageUrl = cardData?.uris.normal;
+export function ReorderLibraryModal({ cards, sourceCard, onConfirm }: ReorderLibraryModalProps) {
   // unsorted = cards not yet placed; sorted = placed in chosen order
-  const [sorted, setSorted] = useState<CardType[]>([]);
+  const [sorted, setSorted] = useState<GameCard[]>([]);
   const unsorted = cards.filter((c) => !sorted.some((s) => s.id === c.id));
   const allSorted = sorted.length === cards.length;
 
-  const handleClickUnsorted = (card: CardType) => {
+  const handleClickUnsorted = (card: GameCard) => {
     setSorted((prev) => [...prev, card]);
   };
 
-  const handleClickSorted = (card: CardType) => {
+  const handleClickSorted = (card: GameCard) => {
     // Remove from sorted (put back in unsorted)
     setSorted((prev) => prev.filter((c) => c.id !== card.id));
   };
@@ -49,16 +46,10 @@ export function ReorderLibraryModal({ cards, cardName, onConfirm }: ReorderLibra
     <Modal maxWidth="max-w-lg" maxHeight="">
       <Modal.Header>
         <div className="flex items-center gap-3">
-          {imageUrl && (
-            <CardImageThumbnail
-              imageUrl={imageUrl}
-              cardName={cardName ?? "Source card"}
-              className={MODAL_CARD_THUMBNAIL}
-            />
-          )}
+          {sourceCard && <CardImageThumbnail card={sourceCard} className={MODAL_CARD_THUMBNAIL} />}
           <div>
             <h2 className="font-semibold text-base">Reorder Top of Library</h2>
-            {cardName && <p className="text-xs text-muted-foreground font-medium">{cardName}</p>}
+            <p className="text-xs text-muted-foreground font-medium">{sourceCard?.name}</p>
           </div>
         </div>
       </Modal.Header>

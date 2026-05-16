@@ -203,6 +203,7 @@ impl GameManager {
             let prompt = AgentPrompt {
                 deciding_player_id: String::new(),
                 display_events: vec![],
+                source_card_id: None,
                 inner: AgentPromptInner::GameOver { game_view },
             };
             if let Ok(mut lp) = self.latest_prompt.lock() {

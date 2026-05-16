@@ -8,7 +8,7 @@ import {
   PromptModalController,
 } from "@/components/game/modals";
 import { ZoneTargetSelector } from "@/components/game/ZoneTargetSelector";
-import type { Card as ManaBrewCard, StackObject } from "@/types/manabrew";
+import type { DeckCard, GameCard, StackObject } from "@/types/manabrew";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { AbilityPickerState, HandActionOption } from "@/stores/useGameUIStore";
 import type { PromptType } from "@/types/promptType";
@@ -17,18 +17,19 @@ import { PromptType as PT } from "@/types/promptType";
 interface TargetModalsProps {
   promptType?: PromptType;
   currentPrompt: AgentPrompt | null;
+  sourceDeckCard?: DeckCard;
   viewingZone: {
     title: string;
-    cards: ManaBrewCard[];
+    cards: GameCard[];
     onClickCard?: (cardId: string) => void;
   } | null;
   onCloseZone: () => void;
-  zoneTargetSelector: { title: string; cards: ManaBrewCard[]; validCardIds: string[] } | null;
+  zoneTargetSelector: { title: string; cards: GameCard[]; validCardIds: string[] } | null;
   onSelectZoneTarget: (cardId: string) => void;
   onCancelZoneTarget: () => void;
   libraryPeekModal: {
     mode: LibraryPeekMode;
-    cards: ManaBrewCard[];
+    cards: GameCard[];
     numToTake?: number;
     optional?: boolean;
   } | null;
@@ -50,6 +51,7 @@ interface TargetModalsProps {
 export function TargetModals({
   promptType,
   currentPrompt,
+  sourceDeckCard,
   viewingZone,
   onCloseZone,
   zoneTargetSelector,
@@ -116,9 +118,9 @@ export function TargetModals({
         />
       )}
 
-      {abilityPickerState && (
+      {abilityPickerState?.card && (
         <AbilityPickerModal
-          cardName={abilityPickerState.cardName}
+          sourceCard={abilityPickerState.card}
           abilities={abilityPickerState.abilities}
           onSelect={onSelectAbility}
           onCancel={onCancelAbilityPicker}
@@ -131,7 +133,7 @@ export function TargetModals({
             cards={currentPrompt.zoneCards}
             minChoices={currentPrompt.minChoices ?? 1}
             maxChoices={currentPrompt.maxChoices ?? 1}
-            sourceCardName={currentPrompt.sourceCardName}
+            sourceCardName={sourceDeckCard?.name}
             description={currentPrompt.description}
             onConfirm={onChooseCardsDecision}
           />

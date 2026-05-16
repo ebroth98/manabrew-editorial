@@ -170,12 +170,11 @@ impl GameLoop {
                         description.push_str(&format!("Triggered by {triggered_name}."));
                     }
                 }
-                let source_name = entry.optional_trigger_source_name.as_deref();
                 let api = entry.spell_ability.api;
                 let accepted = agents[decider.index()].choose_optional_trigger(
                     decider,
                     &description,
-                    source_name,
+                    entry.spell_ability.source,
                     api,
                 );
                 if !accepted {

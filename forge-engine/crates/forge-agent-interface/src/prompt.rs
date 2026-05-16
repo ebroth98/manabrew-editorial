@@ -48,6 +48,18 @@ pub struct AgentPrompt {
     /// Display events to animate before applying the game state.
     #[serde(default)]
     pub display_events: Vec<DisplayEvent>,
+    /// Engine card id of the prompt's source card (the spell being cast, the
+    /// permanent whose ability triggered, etc.). The UI resolves the matching
+    /// `DeckCard` from this for image rendering. `None` when the prompt has
+    /// no source card (synthetic choosers, mulligans, etc.). Set by
+    /// `PromptAgent::set_source` and attached automatically to every outgoing
+    /// prompt — variant payloads no longer carry their own source field.
+    #[serde(
+        rename = "sourceCardId",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub source_card_id: Option<String>,
     /// The actual prompt data (type + gameView + prompt-specific fields).
     #[serde(flatten)]
     pub inner: AgentPromptInner,
@@ -125,8 +137,6 @@ pub enum AgentPromptInner {
         game_view: GameViewDto,
         #[serde(rename = "validPlayerIds")]
         valid_player_ids: Vec<String>,
-        #[serde(rename = "sourceCardId", skip_serializing_if = "Option::is_none")]
-        source_card_id: Option<String>,
         /// Whether the targeting effect is hostile (damage/destroy) vs friendly (buff).
         /// Kept for backwards compatibility; prefer `intent`.
         #[serde(default)]
@@ -140,8 +150,6 @@ pub enum AgentPromptInner {
         game_view: GameViewDto,
         #[serde(rename = "validCardIds")]
         valid_card_ids: Vec<String>,
-        #[serde(rename = "sourceCardId", skip_serializing_if = "Option::is_none")]
-        source_card_id: Option<String>,
         #[serde(default)]
         hostile: bool,
         #[serde(default = "default_intent")]
@@ -154,8 +162,6 @@ pub enum AgentPromptInner {
         valid_player_ids: Vec<String>,
         #[serde(rename = "validCardIds")]
         valid_card_ids: Vec<String>,
-        #[serde(rename = "sourceCardId", skip_serializing_if = "Option::is_none")]
-        source_card_id: Option<String>,
         #[serde(default)]
         hostile: bool,
         #[serde(default = "default_intent")]
@@ -169,8 +175,6 @@ pub enum AgentPromptInner {
         zone: String,
         #[serde(rename = "zoneCards")]
         zone_cards: Vec<CardDto>,
-        #[serde(rename = "sourceCardId", skip_serializing_if = "Option::is_none")]
-        source_card_id: Option<String>,
         #[serde(default = "default_intent")]
         intent: TargetingIntent,
     },
@@ -244,8 +248,6 @@ pub enum AgentPromptInner {
         /// Stack entry IDs (as strings) that can be countered.
         #[serde(rename = "validSpellIds")]
         valid_spell_ids: Vec<String>,
-        #[serde(rename = "sourceCardId", skip_serializing_if = "Option::is_none")]
-        source_card_id: Option<String>,
         #[serde(default = "default_intent")]
         intent: TargetingIntent,
     },
@@ -258,9 +260,6 @@ pub enum AgentPromptInner {
         /// Optional card DTOs to show alongside the prompt (e.g. looked-at cards).
         #[serde(default)]
         cards: Vec<CardDto>,
-        /// Name of the source card (for displaying card image in modals).
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
         /// Optional context tag: e.g. "optional_trigger" or "confirm_action".
         #[serde(rename = "promptKind")]
         prompt_kind: Option<String>,
@@ -278,8 +277,6 @@ pub enum AgentPromptInner {
         description: String,
         #[serde(rename = "costKind")]
         cost_kind: String,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
         api: Option<String>,
     },
     /// Choose N modes for a modal spell (SP$ Charm).
@@ -294,8 +291,11 @@ pub enum AgentPromptInner {
         /// Maximum number of modes that can be chosen.
         #[serde(rename = "maxChoices")]
         max_choices: usize,
-        /// Name of the source card (for displaying card image in modals).
-        #[serde(rename = "sourceCardName")]
+        /// Synthetic header text for prompts without a source card
+        /// ("Replacement Effect", "Choose colors", …). The card-anchored
+        /// case uses the envelope `source_card_id`; this field is only set
+        /// when no card source exists.
+        #[serde(rename = "sourceCardName", skip_serializing_if = "Option::is_none")]
         source_card_name: Option<String>,
     },
     /// Choose whether to pay 2 life instead of mana for a Phyrexian mana shard.
@@ -305,9 +305,6 @@ pub enum AgentPromptInner {
         /// The phyrexian shard string (e.g. "W/P", "U/P").
         #[serde(rename = "phyrexianColor")]
         phyrexian_color: String,
-        /// Name of the source card.
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose whether to pay a kicker cost.
     ChooseKicker {
@@ -316,9 +313,6 @@ pub enum AgentPromptInner {
         /// The kicker cost string (e.g. "W", "2 R").
         #[serde(rename = "kickerCost")]
         kicker_cost: String,
-        /// Name of the source card (for displaying card image in modals).
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose whether to pay buyback cost.
     ChooseBuyback {
@@ -326,8 +320,6 @@ pub enum AgentPromptInner {
         game_view: GameViewDto,
         #[serde(rename = "buybackCost")]
         buyback_cost: String,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose how many times to pay multikicker cost.
     ChooseMultikicker {
@@ -336,8 +328,6 @@ pub enum AgentPromptInner {
         cost: String,
         #[serde(rename = "maxKicks")]
         max_kicks: u32,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose how many times to pay replicate cost.
     ChooseReplicate {
@@ -346,16 +336,12 @@ pub enum AgentPromptInner {
         cost: String,
         #[serde(rename = "maxReplicates")]
         max_replicates: u32,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose between normal cost and an alternative cost.
     ChooseAlternativeCost {
         #[serde(rename = "gameView")]
         game_view: GameViewDto,
         options: Vec<String>,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose a color (for ChooseColorEffect).
     ChooseColor {
@@ -363,8 +349,6 @@ pub enum AgentPromptInner {
         game_view: GameViewDto,
         #[serde(rename = "validColors")]
         valid_colors: Vec<String>,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose a creature/card type (for ChooseType effect).
     ChooseType {
@@ -376,8 +360,6 @@ pub enum AgentPromptInner {
         /// Valid type choices.
         #[serde(rename = "validTypes")]
         valid_types: Vec<String>,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose a number (for ChooseNumber effect).
     ChooseNumber {
@@ -385,8 +367,6 @@ pub enum AgentPromptInner {
         game_view: GameViewDto,
         min: i32,
         max: i32,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose a card name (for NameCard effect).
     ChooseCardName {
@@ -395,8 +375,6 @@ pub enum AgentPromptInner {
         /// Valid card name choices (for ChooseFromList mode).
         #[serde(rename = "validNames")]
         valid_names: Vec<String>,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose damage assignment order for a multi-blocked attacker.
     ChooseDamageAssignmentOrder {
@@ -455,8 +433,6 @@ pub enum AgentPromptInner {
         zone_cards: Vec<CardDto>,
         #[serde(rename = "maxCards")]
         max_cards: usize,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose creatures to tap for Convoke.
     ChooseConvoke {
@@ -466,8 +442,6 @@ pub enum AgentPromptInner {
         valid_card_ids: Vec<String>,
         #[serde(rename = "remainingCost")]
         remaining_cost: String,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose artifacts to tap for Improvise.
     ChooseImprovise {
@@ -477,8 +451,6 @@ pub enum AgentPromptInner {
         valid_card_ids: Vec<String>,
         #[serde(rename = "remainingCost")]
         remaining_cost: String,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Pay a mana cost interactively (for spells/abilities).
     PayManaCost {
@@ -510,8 +482,6 @@ pub enum AgentPromptInner {
         available_colors: Vec<String>,
         /// Total amount of mana to distribute.
         amount: usize,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose which attackers to exert.
     ChooseExertAttackers {
@@ -540,9 +510,6 @@ pub enum AgentPromptInner {
         card_ids: Vec<String>,
         /// Card DTOs for display.
         cards: Vec<CardDto>,
-        /// Name of the source card.
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Explore: choose whether to put the revealed nonland card in graveyard or on top.
     ExploreDecision {
@@ -554,9 +521,6 @@ pub enum AgentPromptInner {
         /// Card DTO for the revealed card (for display).
         #[serde(rename = "revealedCard")]
         revealed_card: Option<CardDto>,
-        /// Name of the exploring creature.
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Help pay for a spell with Assist.
     HelpPayAssist {
@@ -607,32 +571,24 @@ pub enum AgentPromptInner {
         #[serde(rename = "gameView")]
         game_view: GameViewDto,
         rolls: Vec<i32>,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose one rolled value to exchange with a creature's P/T.
     ChooseRollToSwap {
         #[serde(rename = "gameView")]
         game_view: GameViewDto,
         rolls: Vec<i32>,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose one rolled value to increment/decrement by 1.
     ChooseRollToModify {
         #[serde(rename = "gameView")]
         game_view: GameViewDto,
         rolls: Vec<i32>,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose any subset of dice to reroll.
     ChooseDiceToReroll {
         #[serde(rename = "gameView")]
         game_view: GameViewDto,
         rolls: Vec<i32>,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose whether a roll/PT exchange swaps power or toughness.
     ChooseRollSwapValue {
@@ -642,8 +598,6 @@ pub enum AgentPromptInner {
         current_result: i32,
         power: i32,
         toughness: i32,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
     },
     /// Choose card(s) for an effect (ChooseCardEffect, CloneEffect).
     ChooseCardsForEffect {

@@ -1,17 +1,11 @@
+pub use forge_agent_interface::deck_dto::Deck;
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CardIdentity {
-    pub name: String,
-    pub set_code: String,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerDeckInfo {
     pub username: String,
     pub deck_name: String,
-    pub deck_list: Vec<CardIdentity>,
+    pub deck: Deck,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commander_name: Option<String>,
 }
@@ -50,7 +44,7 @@ pub enum ClientMessage {
 
     SetDeckSelection {
         deck_name: String,
-        deck_list: Vec<CardIdentity>,
+        deck: Deck,
         commander_name: Option<String>,
     },
 

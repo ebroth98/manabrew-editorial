@@ -85,7 +85,7 @@ pub(super) fn resolve_single_search(
             Some("ChangeZoneGeneral"),
             "Cancel search and select up to 1 cards?",
             &[],
-            source_name,
+            sa.source,
             Some(crate::ability::api_type::ApiType::ChangeZone),
         );
     }

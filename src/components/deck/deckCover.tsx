@@ -1,20 +1,19 @@
 import { cn } from "@/lib/utils";
-import { useCard } from "@/stores/useScryfallStore";
-import type { Card } from "@/types/manabrew";
+import { ScryfallImg } from "@/components/ScryfallImg";
+import type { DeckCard } from "@/types/manabrew";
 
 interface DeckCoverImageProps {
-  cover: Card | null | undefined;
+  cover: DeckCard | null | undefined;
   alt?: string;
   className?: string;
   fallbackClassName?: string;
 }
 
 export function DeckCoverImage({ cover, alt, className }: DeckCoverImageProps) {
-  const card = useCard(cover);
-  if (!card) return null;
+  if (!cover) return null;
   return (
-    <img
-      src={card.uris.art_crop}
+    <ScryfallImg
+      src={cover.uris.art_crop}
       alt={alt ?? cover?.name ?? "Deck cover"}
       loading="lazy"
       className={cn(

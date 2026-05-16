@@ -26,7 +26,7 @@ import type {
 import { isRoomRelayEnvelope } from "@/types/server";
 import type { RoomRelayEnvelope } from "@/types/server";
 import type { Deck } from "@/types/manabrew";
-import { presetDeckPayloadsToDecks, type PresetDeckPayload } from "@/lib/presetDecks";
+import { expandPresetDeckDefinitions, type PresetDeckDefinition } from "@/lib/presetDecks";
 
 // ============================================================================
 // Worker Message Types
@@ -365,10 +365,10 @@ class WebGameApi implements IGameApi {
 
   async startGame(params: StartGameParams): Promise<string> {
     return this.bridge.invoke<string>("start_game", {
-      deckList: params.deckList,
+      deck: params.deck,
       startingLife: params.startingLife,
       commanderName: params.commanderName,
-      opponentDeckList: params.opponentDeckList,
+      opponentDeck: params.opponentDeck,
     });
   }
 
@@ -380,7 +380,7 @@ class WebGameApi implements IGameApi {
     if (params.localIsHost) {
       // Host: run the engine in the worker with two SABs
       await this.bridge.invoke("start_multiplayer_game", {
-        deckLists: params.deckLists,
+        decks: params.decks,
         enginePlayerIndex: params.enginePlayerIndex,
         startingLife: params.startingLife,
       });
@@ -427,8 +427,8 @@ class WebGameApi implements IGameApi {
   }
 
   async getPresetDecks(): Promise<Deck[]> {
-    return presetDeckPayloadsToDecks(
-      await this.bridge.invoke<PresetDeckPayload[]>("get_preset_decks"),
+    return expandPresetDeckDefinitions(
+      await this.bridge.invoke<PresetDeckDefinition[]>("get_preset_decks"),
     );
   }
 
@@ -602,7 +602,7 @@ class WebServerApi implements IServerApi {
     this.send({
       type: "SetDeckSelection",
       deck_name: params.deckName,
-      deck_list: params.deckList,
+      deck: params.deck,
       commander_name: params.commanderName,
     });
   }

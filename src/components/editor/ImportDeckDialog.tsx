@@ -21,11 +21,6 @@ import {
 } from "@/lib/archidekt";
 import { fetchDeckBySource, fetchResultBySource, parseDeckUrl } from "@/lib/deckImport";
 import { GAME_FORMATS } from "@/lib/formats";
-import { createEmptyCard, scryfallToManaBrew } from "@/lib/scryfall.utils";
-import { useCardPreview } from "@/hooks/useCardPreview";
-import { HoverCardPreview } from "@/components/game/HoverCardPreview";
-import type { Card } from "@/types/manabrew";
-import { useScryfallStore } from "@/stores/useScryfallStore";
 
 export type ImportDeckDialogMode = "url" | "search";
 
@@ -437,50 +432,6 @@ function DeckPreview({ result, deck }: { result: ArchidektSearchResult; deck: Ar
   const colors = deck.colors.join("") || "—";
   const descFirst = deck.description.split("\n").find((l) => l.trim()) ?? "";
 
-  const preview = useCardPreview();
-  // Local cache so hovering the same card twice doesn't refetch.
-  const cardCacheRef = useRef<Map<string, Card>>(new Map());
-  const inflightRef = useRef<Map<string, Promise<Card | null>>>(new Map());
-
-  const resolveCard = useCallback(async (name: string): Promise<Card | null> => {
-    const key = name.toLowerCase();
-    const cached = cardCacheRef.current.get(key);
-    if (cached) return cached;
-    const existing = inflightRef.current.get(key);
-    if (existing) return existing;
-    const promise = (async () => {
-      try {
-        const sc = await useScryfallStore.getState().getCard({ name });
-        const card = scryfallToManaBrew(sc.info);
-        cardCacheRef.current.set(key, card);
-        return card;
-      } catch {
-        return null;
-      } finally {
-        inflightRef.current.delete(key);
-      }
-    })();
-    inflightRef.current.set(key, promise);
-    return promise;
-  }, []);
-
-  const handleRowEnter = useCallback(
-    (name: string, e: React.MouseEvent<HTMLDivElement>) => {
-      // Fire an instant preview with a placeholder card so the hover UI anchors
-      // immediately, then swap in the enriched card once Scryfall responds.
-      const cached = cardCacheRef.current.get(name.toLowerCase());
-      if (cached) {
-        preview.handleMouseEnter(cached, e, { useAnchor: true, useDelay: true });
-        return;
-      }
-      preview.handleMouseEnter(createEmptyCard(name), e, { useAnchor: true, useDelay: true });
-      void resolveCard(name).then((card) => {
-        if (card) preview.handleMouseEnter(card, undefined, { useAnchor: true });
-      });
-    },
-    [preview, resolveCard],
-  );
-
   return (
     <div className="space-y-3">
       <div className="space-y-1">
@@ -503,8 +454,6 @@ function DeckPreview({ result, deck }: { result: ArchidektSearchResult; deck: Ar
             <div
               key={card.name}
               className="flex gap-2 py-0.5 cursor-default rounded hover:bg-accent/50 px-1"
-              onMouseEnter={(e) => handleRowEnter(card.name, e)}
-              onMouseLeave={preview.handleMouseLeave}
             >
               <span className="text-muted-foreground w-6 text-right shrink-0">{card.count}×</span>
               <span className="truncate">{card.name}</span>
@@ -512,7 +461,6 @@ function DeckPreview({ result, deck }: { result: ArchidektSearchResult; deck: Ar
           ))}
         </div>
       </div>
-      <HoverCardPreview preview={preview} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
-import type { Card, Deck } from "@/types/manabrew";
+import type { Deck, DeckCard } from "@/types/manabrew";
 
-export function resolveCoverCard(deck: Deck): Card | undefined {
+export function resolveCoverCard(deck: Deck): DeckCard | undefined {
   const allCards = [...deck.cards, ...(deck.commanders ?? [])];
   if (deck.coverCardName) {
     const found = allCards.find((card) => card.name === deck.coverCardName);
@@ -9,5 +9,5 @@ export function resolveCoverCard(deck: Deck): Card | undefined {
   return deck.commanders?.[0] ?? deck.cards[0];
 }
 
-export const resolvePresetDeck = (presetDeck: Deck): Card | undefined =>
+export const resolvePresetDeck = (presetDeck: Deck): DeckCard | undefined =>
   resolveCoverCard(presetDeck);

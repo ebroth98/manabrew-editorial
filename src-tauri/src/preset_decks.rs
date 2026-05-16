@@ -1,5 +1,6 @@
 use std::sync::OnceLock;
 
+use forge_agent_interface::deck_dto::{Deck as WireDeck, DeckCard as WireDeckCard};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::PlayerId;
@@ -18,10 +19,48 @@ use crate::card_db::get_card_db;
 pub struct CardIdentity {
     pub name: String,
     pub set_code: String,
+    pub card_number: String,
     #[serde(default)]
     pub section: Option<String>,
     #[serde(default)]
     pub foil: bool,
+}
+
+/// Flatten a wire `Deck` into the internal `Vec<CardIdentity>` shape the
+/// rest of the Tauri backend (game_manager, engine_backend, …) still
+/// speaks. The wire-side `section` tag is gone — we derive it from which
+/// pile of the `Deck` each card came from.
+pub fn wire_deck_to_identities(deck: &WireDeck) -> Vec<CardIdentity> {
+    let mut out: Vec<CardIdentity> = Vec::new();
+    let push = |out: &mut Vec<CardIdentity>, list: &[WireDeckCard], section: Option<&str>| {
+        for c in list {
+            out.push(CardIdentity {
+                name: c.identity.name.clone(),
+                set_code: c.identity.set_code.clone(),
+                card_number: c.identity.card_number.clone(),
+                section: section.map(str::to_string),
+                foil: c.foil.unwrap_or(false),
+            });
+        }
+    };
+    push(&mut out, &deck.cards, Some("main"));
+    push(&mut out, &deck.sideboard, Some("sideboard"));
+    if let Some(list) = &deck.commanders {
+        push(&mut out, list, Some("commander"));
+    }
+    if let Some(list) = &deck.attractions {
+        push(&mut out, list, Some("attractions"));
+    }
+    if let Some(list) = &deck.contraptions {
+        push(&mut out, list, Some("contraptions"));
+    }
+    if let Some(list) = &deck.schemes {
+        push(&mut out, list, Some("schemes"));
+    }
+    if let Some(list) = &deck.planes {
+        push(&mut out, list, Some("planes"));
+    }
+    out
 }
 
 // ── Preset deck registry ───────────────────────────────────────────
@@ -45,12 +84,13 @@ pub struct PresetDeckInfo {
 
 /// A single card entry in a preset deck JSON file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeckCardEntry {
     pub name: String,
     pub count: usize,
-    #[serde(default)]
     pub set: String,
-    #[serde(flatten, default)]
+    pub card_number: String,
+    #[serde(flatten)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
@@ -300,6 +340,9 @@ fn prepare_cards_from_entries(
                     if !entry.set.is_empty() {
                         card.set_code = Some(entry.set.clone());
                     }
+                    if !entry.card_number.is_empty() {
+                        card.card_number = Some(entry.card_number.clone());
+                    }
                     let destination = fallback_deck_zone_for_card(&card);
                     register_card_name(registered, &card.card_name, destination);
                     cards.push((card, destination));
@@ -323,6 +366,9 @@ fn prepare_cards_from_identities(
                 let mut card = card_rules_to_instance(rules, PlayerId(0));
                 if !identity.set_code.is_empty() {
                     card.set_code = Some(identity.set_code.clone());
+                }
+                if !identity.card_number.is_empty() {
+                    card.card_number = Some(identity.card_number.clone());
                 }
                 card.paper_foil = identity.foil;
                 let destination = deck_zone_for_identity(identity.section.as_deref(), &card);

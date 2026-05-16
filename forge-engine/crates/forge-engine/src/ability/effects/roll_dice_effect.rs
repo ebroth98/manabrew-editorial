@@ -230,7 +230,7 @@ fn roll_for_player(
         ignore,
         &mut ignored_rolls,
         &mut dice_pt_exchanges,
-        Some(&source_name),
+        Some(source_id),
     );
 
     if sa.param_is_true("UseHighestRoll") && natural_rolls.len() > 1 {
@@ -316,12 +316,7 @@ fn roll_for_player(
     if let Some(chosen_svar) = sa.ir.chosen_svar_text.as_deref() {
         if !kept_rolls.is_empty() {
             let chosen = ctx.agents[player.index()]
-                .choose_number_from_list(
-                    player,
-                    &kept_rolls,
-                    "Choose a result",
-                    Some(&ctx.game.card(source_id).card_name),
-                )
+                .choose_number_from_list(player, &kept_rolls, "Choose a result", Some(source_id))
                 .unwrap_or(kept_rolls[0]);
             ctx.game
                 .card_mut(source_id)
@@ -431,7 +426,7 @@ fn roll_for_player(
                 Some("RerollResult"),
                 &format!("Reroll result {old_roll}?"),
                 &[],
-                Some(&ctx.game.card(source_id).card_name),
+                Some(source_id),
                 sa.api,
             ) {
                 let new_roll = roll_for_player(ctx, sa, source_id, player, sides, 1);
@@ -608,7 +603,7 @@ fn apply_chosen_ignores(
                 break;
             }
             let choice = agents[chooser.index()]
-                .choose_roll_to_ignore(chooser, natural_rolls, Some(card_name))
+                .choose_roll_to_ignore(chooser, natural_rolls, None)
                 .unwrap_or(natural_rolls[0]);
             let position = natural_rolls
                 .iter()
@@ -630,7 +625,7 @@ fn roll_action(
     ignore: i32,
     ignored_rolls: &mut Vec<i32>,
     dice_pt_exchanges: &mut HashSet<crate::ids::CardId>,
-    card_name: Option<&str>,
+    source: Option<crate::ids::CardId>,
 ) -> Vec<i32> {
     let mut event = ReplacementEvent::RollDice {
         player,
@@ -672,12 +667,8 @@ fn roll_action(
     let ignore_count = ignore_lowest.min(natural_rolls.len() as i32) as usize;
     ignored_rolls.extend(natural_rolls.drain(..ignore_count));
 
-    let (ignored_by_choice, _) = apply_chosen_ignores(
-        agents,
-        card_name.unwrap_or("Roll"),
-        &mut natural_rolls,
-        &ignore_chosen,
-    );
+    let (ignored_by_choice, _) =
+        apply_chosen_ignores(agents, "Roll", &mut natural_rolls, &ignore_chosen);
     ignored_rolls.extend(ignored_by_choice);
     natural_rolls
 }
@@ -711,7 +702,7 @@ fn apply_dice_pt_exchanges(
             roll_value,
             current_power,
             current_toughness,
-            Some(&game.card(card_id).card_name),
+            Some(card_id),
         );
         let Some(choice) = choice else { continue };
         match choice {
@@ -838,7 +829,7 @@ fn apply_simple_roll_modifiers(
                 "Increase or decrease the roll?",
                 crate::agent::BinaryChoiceKind::IncreaseOrDecrease,
                 Some(true),
-                Some(&game.card(card_id).card_name),
+                Some(card_id),
                 source_sa.and_then(|sa| sa.api),
             );
             roll_value += if increase { 1 } else { -1 };
@@ -954,7 +945,7 @@ fn pay_roll_cost(
                     _ => "Cost",
                 },
                 "Pay roll modification cost?",
-                Some(&game.card(card_id).card_name),
+                Some(card_id),
                 source_sa.and_then(|sa| sa.api),
             )
         {
@@ -1192,11 +1183,7 @@ fn apply_keyword_roll_rerolls(
         let dice_to_reroll = ctx.agents[player.index()].choose_dice_to_reroll(
             player,
             natural_rolls,
-            Some(
-                &ctx.game
-                    .card(sa.source.unwrap_or(reroll_cards[0]))
-                    .card_name,
-            ),
+            Some(sa.source.unwrap_or(reroll_cards[0])),
         );
         if dice_to_reroll.is_empty() {
             break;
@@ -1246,7 +1233,7 @@ fn apply_keyword_roll_rerolls(
             0,
             ignored_rolls,
             dice_pt_exchanges,
-            Some(&reroll_card_name),
+            sa.source,
         );
         natural_rolls.extend(rerolled);
         natural_rolls.sort();
@@ -1390,7 +1377,7 @@ mod tests {
             &mut self,
             _player: PlayerId,
             rolls: &[i32],
-            _card_name: Option<&str>,
+            _source: Option<crate::ids::CardId>,
         ) -> Option<i32> {
             rolls.first().copied()
         }
@@ -1401,7 +1388,7 @@ mod tests {
             _current_result: i32,
             _power: i32,
             _toughness: i32,
-            _card_name: Option<&str>,
+            _source: Option<crate::ids::CardId>,
         ) -> Option<crate::agent::RollSwapChoice> {
             Some(crate::agent::RollSwapChoice::Power)
         }
@@ -1492,7 +1479,7 @@ mod tests {
             &mut self,
             _player: PlayerId,
             rolls: &[i32],
-            _card_name: Option<&str>,
+            _source: Option<crate::ids::CardId>,
         ) -> Option<i32> {
             rolls.first().copied()
         }
@@ -1513,7 +1500,7 @@ mod tests {
             _question: &str,
             _kind: crate::agent::BinaryChoiceKind,
             _default: Option<bool>,
-            _card_name: Option<&str>,
+            _source: Option<crate::ids::CardId>,
             _api: Option<crate::ability::api_type::ApiType>,
         ) -> bool {
             true
@@ -1605,7 +1592,7 @@ mod tests {
             &mut self,
             _player: PlayerId,
             rolls: &[i32],
-            _card_name: Option<&str>,
+            _source: Option<crate::ids::CardId>,
         ) -> Vec<i32> {
             rolls.first().copied().into_iter().collect()
         }

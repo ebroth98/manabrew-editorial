@@ -19,7 +19,7 @@ import type {
 import { useHandScale } from "@/hooks/useHandScale";
 import { HandCardActions } from "@/components/game/zones/HandCardActions";
 import type { HandActionOption } from "@/stores/useGameUIStore";
-import type { Card } from "@/types/manabrew";
+import type { GameCard } from "@/types/manabrew";
 import { useGameDevStore } from "@/stores/useGameDevStore";
 import {
   FPS_SAMPLE_INTERVAL_MS,
@@ -60,8 +60,8 @@ interface PixiGameCanvasProps {
    */
   bottomRightReserved?: { width: number; height: number } | null;
   className?: string;
-  getHandActions?: (card: Card) => HandActionOption[];
-  onSelectHandAction?: (card: Card, action: HandActionOption) => void;
+  getHandActions?: (card: GameCard) => HandActionOption[];
+  onSelectHandAction?: (card: GameCard, action: HandActionOption) => void;
   /**
    * Construction-time feature flags — `mirrored`, `showHand`, `allowDrag`.
    * The scene reads them once in its constructor, so remounting the
@@ -72,7 +72,7 @@ interface PixiGameCanvasProps {
 }
 
 interface HandHoverState {
-  card: Card;
+  card: GameCard;
   bounds: ScreenBounds;
 }
 

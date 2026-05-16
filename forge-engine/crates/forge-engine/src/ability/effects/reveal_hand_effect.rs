@@ -29,7 +29,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             None,
             "Do you want to reveal your hand?",
             &[],
-            source_name,
+            sa.source,
             Some(crate::ability::api_type::ApiType::RevealHand),
         );
         if !accepted {

@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 import { withAlpha } from "@/themes/gameTheme";
 import { CARD_BACK_IMAGE_URL } from "@/components/game/game.constants";
 import { useTheme } from "@/hooks/useTheme";
+import { ScryfallImg } from "@/components/ScryfallImg";
 
 interface LibraryZoneTileProps {
   count: number;
@@ -33,7 +34,7 @@ export function LibraryZoneTile({ count, onClick, label = "Lib" }: LibraryZoneTi
         title="Library"
       >
         {!empty && (
-          <img
+          <ScryfallImg
             src={CARD_BACK_IMAGE_URL}
             alt=""
             loading="eager"

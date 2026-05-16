@@ -2,11 +2,10 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "./Modal";
 import { useEffect, useRef, useCallback } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
-import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { Card } from "@/components/game/Card";
 import { MODAL_CARD_IMAGE } from "../game.styles";
-import type { Card as GameCard } from "@/types/manabrew";
+import type { DeckCard, GameCard } from "@/types/manabrew";
 import { usePromptPreferencesStore } from "@/stores/usePromptPreferencesStore";
 
 interface ChooseOptionalTriggerModalProps {
@@ -14,8 +13,7 @@ interface ChooseOptionalTriggerModalProps {
   description: string;
   /** Optional cards to show as part of the prompt context. */
   cards?: GameCard[];
-  /** Name of the source card (for displaying card image). */
-  cardName?: string;
+  sourceCard?: DeckCard;
   sourceCardId?: string;
   /** Prompt context (optional_trigger, confirm_action, confirm_payment, choose_binary). */
   promptKind?: string;
@@ -31,7 +29,7 @@ interface ChooseOptionalTriggerModalProps {
 export function ChooseOptionalTriggerModal({
   description,
   cards,
-  cardName,
+  sourceCard,
   sourceCardId,
   promptKind,
   optionLabels,
@@ -51,8 +49,6 @@ export function ChooseOptionalTriggerModal({
     if (sourceCardId) rememberTrigger(sourceCardId, "no");
     onConfirm(false);
   }, [sourceCardId, rememberTrigger, onConfirm]);
-  const cardData = useCard({ name: cardName ?? "" });
-  const imageUrl = cardData?.uris.normal;
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -106,12 +102,8 @@ export function ChooseOptionalTriggerModal({
         </Modal.Header>
 
         <div className="px-4 py-4 flex gap-3">
-          {imageUrl && (
-            <CardImageThumbnail
-              imageUrl={imageUrl}
-              cardName={cardName ?? "Source card"}
-              className={MODAL_CARD_IMAGE}
-            />
+          {sourceCard && (
+            <CardImageThumbnail card={sourceCard} className={MODAL_CARD_IMAGE} />
           )}
           <p className="text-sm leading-relaxed self-center">
             {description || "A triggered ability would trigger. Do you want it to?"}

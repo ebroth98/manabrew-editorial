@@ -20,11 +20,12 @@ import { Input } from "@/components/ui/input";
 import { useCard, useCardRulings, useScryfallStore } from "@/stores/useScryfallStore";
 import { isHorizontalCard } from "@/lib/cardLayout";
 import { HorizontalCardImage } from "@/components/game/HorizontalCardImage";
+import { ScryfallImg } from "@/components/ScryfallImg";
 import { usePreferredPrintsStore } from "@/stores/usePreferredPrintsStore";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { PrintPickerModal } from "@/components/editor/PrintPickerModal";
 import { getScryfallManaCost } from "@/api/scryfall";
-import { scryfallToManaBrew } from "@/lib/scryfall.utils";
+import { scryfallToDeckCard } from "@/lib/scryfall.utils";
 import { useSetLookup } from "@/stores/useScryfallStore";
 import { FORMAT_DISPLAY, LEGALITY_STYLES } from "@/lib/constants";
 import { toast } from "sonner";
@@ -78,7 +79,12 @@ export function CardDetailModal({
   }
 
   const card = selectedPrint ?? initialCard;
-  const storeCard = useCard(card);
+  const storeCard = useCard({
+    id: card.id,
+    name: card.name,
+    setCode: card.set,
+    collectorNumber: card.collector_number,
+  });
   const isDoubleFaced = !!(card.card_faces && card.card_faces.length >= 2);
 
   const activeFace = isDoubleFaced ? card.card_faces![faceIndex] : null;
@@ -99,13 +105,13 @@ export function CardDetailModal({
     : isHorizontalCard({ layout: card.layout, typeLine: card.type_line });
 
   function handleAddToCurrentDeck() {
-    addToMain(scryfallToManaBrew(card));
+    addToMain(scryfallToDeckCard(card));
     setShowDeckPicker(false);
     toast.success(`Added to ${currentDeck.name}`);
   }
 
   function handleAddToSavedDeck(deckId: string, deckName: string) {
-    addCardToSavedDeck(deckId, scryfallToManaBrew(card));
+    addCardToSavedDeck(deckId, scryfallToDeckCard(card));
     setShowDeckPicker(false);
     toast.success(`Added to ${deckName}`);
   }
@@ -163,7 +169,7 @@ export function CardDetailModal({
                         className="w-full aspect-[7/5] rounded-lg shadow-lg"
                       />
                     ) : (
-                      <img
+                      <ScryfallImg
                         src={imageUrl}
                         alt={displayName}
                         className="w-full rounded-lg shadow-lg"
@@ -242,7 +248,7 @@ export function CardDetailModal({
                     <div className="flex items-center gap-1">
                       <span className="font-semibold text-muted-foreground">Set: </span>
                       {setLookup.get(card.set)?.icon_svg_uri && (
-                        <img
+                        <ScryfallImg
                           src={setLookup.get(card.set)!.icon_svg_uri}
                           alt=""
                           className="h-4 w-4 shrink-0 brightness-0 dark:invert"

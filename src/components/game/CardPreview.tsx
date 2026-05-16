@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { Loader2 } from "lucide-react";
-import type { Card } from "@/types/manabrew";
+import type { DeckCard, GameCard } from "@/types/manabrew";
 import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { TextWithMana } from "@/components/game/TextWithMana";
@@ -8,16 +8,18 @@ import { FLASH_CARD_SIZE } from "./game.styles";
 import { CARD_BADGES } from "./game.constants";
 import { withAlpha } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
-import { isCreature, isLethalDamage, upgradeScryfallUrl } from "./game.utils";
+import { isCreature, isLethalDamage } from "./game.utils";
 import { isHorizontalCard } from "@/lib/cardLayout";
 import { cn } from "@/lib/utils";
 import type { HandActionOption } from "@/stores/useGameUIStore";
 import { useEffect, useMemo } from "react";
 import type { CSSProperties } from "react";
-import { useCard } from "@/stores/useScryfallStore";
+import { useGameStore } from "@/stores/useGameStore";
+import { asDeckCard } from "@/lib/decks";
+import { ScryfallImg } from "@/components/ScryfallImg";
 
 interface CardPreviewProps {
-  card: Card;
+  card: GameCard;
   mouseX: number;
   mouseY: number;
   anchorRect?: DOMRect | null;
@@ -38,7 +40,7 @@ interface CardPreviewProps {
 const { w: CARD_W, h: CARD_H } = FLASH_CARD_SIZE;
 const ACTIONS_PANEL_W = 220;
 
-function CardDetailOverlay({ card }: { card: Card }) {
+function CardDetailOverlay({ card }: { card: GameCard }) {
   const themeColors = useTheme().gameTheme;
   const creature = isCreature(card);
   const lethal = isLethalDamage(card);
@@ -190,16 +192,18 @@ export function CardPreview({
   const showSidePanel = hasActions;
   const themeColors = useTheme().gameTheme;
   const ringColor = themeColors.cardRing; // matches battlefield playable color
-  const cardD = useCard(card);
-  const isLoading = !card.imageUrl && !cardD;
-  const imageUrl = upgradeScryfallUrl(card.imageUrl ?? cardD?.uris.large, "large");
-  const frontFace = cardD?.info?.card_faces?.[0];
-  const backFace = cardD?.info?.card_faces?.[1];
+  const deck = useGameStore((s) => s.gameDecks[card.ownerId]);
+  // Deck-editor hover bypasses the game runtime: `gameDecks[ownerId]` is
+  // undefined and the hovered object is a `DeckCard` (uris already on it).
+  // Fall back to that case instead of going through `asDeckCard`.
+  const deckCard: DeckCard = deck ? asDeckCard(deck, card) : (card as unknown as DeckCard);
+  const isLoading = false;
+  const imageUrl = deckCard.uris.large;
   const doubleFacedData = {
-    frontImageUrl: frontFace?.image_uris?.large ?? frontFace?.image_uris?.normal ?? null,
-    backImageUrl: backFace?.image_uris?.large ?? backFace?.image_uris?.normal ?? null,
-    frontName: frontFace?.name,
-    backName: backFace?.name,
+    frontImageUrl: deckCard.uris.large,
+    backImageUrl: null,
+    frontName: deckCard.name,
+    backName: undefined,
   };
 
   // Dismiss on Escape, outside click, or number key shortcut
@@ -236,14 +240,10 @@ export function CardPreview({
     };
   }, [hasActions, isSticky, onDismiss, onSelectAction, actions]);
 
-  const visibleFace = showBackFace ? backFace : frontFace;
-  const horizontal = visibleFace
-    ? isHorizontalCard({ typeLine: visibleFace.type_line })
-    : isHorizontalCard({
-        layout: card.layout ?? cardD?.info?.layout,
-        types: card.types,
-        typeLine: cardD?.info?.type_line,
-      });
+  const horizontal = isHorizontalCard({
+    layout: card.layout,
+    types: card.types,
+  });
   const cardWidth = horizontal ? CARD_H : CARD_W;
   const cardHeight = horizontal ? CARD_W : CARD_H;
 
@@ -282,8 +282,7 @@ export function CardPreview({
   }
 
   const hasDoubleFace = !!doubleFacedData?.backImageUrl;
-  const currentImageUrl =
-    hasDoubleFace && showBackFace ? doubleFacedData.backImageUrl : imageUrl || cardD?.uris.large;
+  const currentImageUrl = hasDoubleFace && showBackFace ? doubleFacedData.backImageUrl : imageUrl;
   const currentCardName =
     hasDoubleFace && showBackFace
       ? doubleFacedData.backName
@@ -340,14 +339,14 @@ export function CardPreview({
             ) : currentImageUrl ? (
               <>
                 {horizontal ? (
-                  <img
+                  <ScryfallImg
                     src={currentImageUrl}
                     alt={currentCardName}
                     title=""
                     className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-90 origin-center h-[calc(100%*7/5)] aspect-[5/7]"
                   />
                 ) : (
-                  <img
+                  <ScryfallImg
                     src={currentImageUrl}
                     alt={currentCardName}
                     title=""

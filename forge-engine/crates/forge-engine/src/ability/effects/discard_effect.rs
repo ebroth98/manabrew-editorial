@@ -87,13 +87,12 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
         }
 
         if sa.ir.optional && !any_number && !chooser_style_optional {
-            let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
             let accepted = ctx.agents[target_player.index()].confirm_action(
                 target_player,
                 None,
                 "Do you want to discard?",
                 &[],
-                source_name,
+                sa.source,
                 Some(crate::ability::api_type::ApiType::Discard),
             );
             if !accepted {

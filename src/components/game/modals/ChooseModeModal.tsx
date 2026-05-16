@@ -5,9 +5,9 @@ import { TextWithMana } from "@/components/game/TextWithMana";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
-import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL, MODAL_FOOTER_BETWEEN } from "../game.styles";
+import type { DeckCard } from "@/types/manabrew";
 
 interface ChooseModeModalProps {
   /** Human-readable descriptions for each available mode (0-indexed). */
@@ -16,8 +16,8 @@ interface ChooseModeModalProps {
   minChoices: number;
   /** Maximum number of modes that can be chosen. */
   maxChoices: number;
-  /** Name of the source card (for displaying card image). */
-  cardName?: string;
+  sourceCard?: DeckCard;
+  sourceLabel?: string;
   onConfirm: (chosenIndices: number[]) => void;
 }
 
@@ -25,11 +25,10 @@ export function ChooseModeModal({
   options,
   minChoices,
   maxChoices,
-  cardName,
+  sourceCard,
+  sourceLabel,
   onConfirm,
 }: ChooseModeModalProps) {
-  const cardData = useCard({ name: cardName ?? "" });
-  const imageUrl = cardData?.uris.normal;
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
   // Reset selection whenever the option list changes (new prompt arrived).
@@ -103,19 +102,17 @@ export function ChooseModeModal({
         <Modal.Header>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {imageUrl && (
-                <CardImageThumbnail
-                  imageUrl={imageUrl}
-                  cardName={cardName ?? "Source card"}
-                  className={MODAL_CARD_THUMBNAIL}
-                />
+              {sourceCard && (
+                <CardImageThumbnail card={sourceCard} className={MODAL_CARD_THUMBNAIL} />
               )}
               <div>
                 <h2 id="choose-mode-title" className="font-semibold text-base">
                   Choose Mode
                 </h2>
-                {cardName && (
-                  <p className="text-xs text-muted-foreground font-medium">{cardName}</p>
+                {(sourceCard?.name ?? sourceLabel) && (
+                  <p className="text-xs text-muted-foreground font-medium">
+                    {sourceCard?.name ?? sourceLabel}
+                  </p>
                 )}
                 <p className="text-xs text-muted-foreground">{subtitle}</p>
               </div>

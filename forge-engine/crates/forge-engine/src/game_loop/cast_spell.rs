@@ -726,7 +726,7 @@ impl GameLoop {
             if available_mana.can_pay(&combined) {
                 let name = game.card(card_id).card_name.clone();
                 agents[player.index()].snapshot_state(game, &self.mana_pools);
-                agents[player.index()].choose_kicker(player, &kicker_cost_str, Some(&name))
+                agents[player.index()].choose_kicker(player, &kicker_cost_str, Some(card_id))
             } else {
                 false
             }
@@ -752,7 +752,7 @@ impl GameLoop {
             if available_mana.can_pay(&combined) {
                 let name = game.card(card_id).card_name.clone();
                 agents[player.index()].snapshot_state(game, &self.mana_pools);
-                agents[player.index()].choose_buyback(player, &buyback_cost_str, Some(&name))
+                agents[player.index()].choose_buyback(player, &buyback_cost_str, Some(card_id))
             } else {
                 false
             }
@@ -795,7 +795,7 @@ impl GameLoop {
                     player,
                     &mk_cost_str,
                     max_kicks,
-                    Some(&name),
+                    Some(card_id),
                 )
             } else {
                 0
@@ -845,7 +845,7 @@ impl GameLoop {
                     player,
                     &rep_cost_str,
                     max_reps,
-                    Some(&name),
+                    Some(card_id),
                 )
             } else {
                 0
@@ -905,7 +905,6 @@ impl GameLoop {
                     }
                 }
                 // Ask player to choose modes
-                let card_name = game.card(card_id).card_name.clone();
                 let min_modes = ability_params
                     .get("MinCharmNum")
                     .and_then(|s| s.parse::<usize>().ok())
@@ -916,7 +915,7 @@ impl GameLoop {
                     &mode_descriptions,
                     min_modes,
                     max_modes,
-                    Some(&card_name),
+                    Some(card_id),
                 );
                 // Add selected ModeCosts to base cost
                 let mut total = mana_cost.clone();
@@ -978,7 +977,7 @@ impl GameLoop {
             if available_mana.can_pay(&combined) {
                 let name = game.card(card_id).card_name.clone();
                 agents[player.index()].snapshot_state(game, &self.mana_pools);
-                agents[player.index()].choose_kicker(player, &entwine_cost_str, Some(&name))
+                agents[player.index()].choose_kicker(player, &entwine_cost_str, Some(card_id))
             } else {
                 false
             }
@@ -1244,7 +1243,7 @@ impl GameLoop {
                     player,
                     1,
                     "Tap creature?",
-                    Some(&game.card(card_id).card_name),
+                    Some(card_id),
                 ) == 1;
                 if pay_keyword_cost {
                     payable_base_cost = payable_base_cost.reduce_generic(chosen_power);
@@ -2305,7 +2304,7 @@ impl GameLoop {
                     None,
                     &format!("Do you want to play {}?", card_name),
                     &[],
-                    Some(&card_name),
+                    Some(cascade_card_id),
                     Some(crate::ability::api_type::ApiType::Play),
                 );
 

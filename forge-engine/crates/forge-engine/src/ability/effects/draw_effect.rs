@@ -57,7 +57,7 @@ fn draw_for_player(
             None,
             &format!("Do you want to draw {} card(s)?", actual_num),
             &[],
-            source_name,
+            sa.source,
             Some(crate::ability::api_type::ApiType::Draw),
         );
         if !accepted {

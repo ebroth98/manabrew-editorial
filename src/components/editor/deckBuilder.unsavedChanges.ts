@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useDeckStore } from "@/stores/useDeckStore";
-import type { Card } from "@/types/manabrew";
+import type { DeckCard } from "@/types/manabrew";
 
 let _hasUnsavedChanges = false;
 const _listeners = new Set<() => void>();
@@ -21,14 +21,14 @@ export function setLastSavedSnapshotRef(snapshot: string | null) {
 export function buildDeckSnapshot(deck: {
   format?: string;
   draft?: boolean;
-  cards: Card[];
-  commanders?: Card[];
-  sideboard: Card[];
-  maybeboard?: Card[];
-  attractions?: Card[];
-  contraptions?: Card[];
-  schemes?: Card[];
-  planes?: Card[];
+  cards: DeckCard[];
+  commanders?: DeckCard[];
+  sideboard: DeckCard[];
+  maybeboard?: DeckCard[];
+  attractions?: DeckCard[];
+  contraptions?: DeckCard[];
+  schemes?: DeckCard[];
+  planes?: DeckCard[];
   name: string;
   stackPositions?: Record<string, { x: number; y: number }>;
 }): string {

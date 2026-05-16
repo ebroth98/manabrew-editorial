@@ -96,15 +96,9 @@ if (commandExists("wasm-opt")) {
   rmSync(wasmFile);
   run("mv", [tmpOut, wasmFile]);
 } else {
-  console.log(
-    "\n[build-wasm] `wasm-opt` not on PATH; shipping unoptimized wasm.",
-  );
-  console.log(
-    "[build-wasm] Install Binaryen (`brew install binaryen`) to fix Firefox compat",
-  );
-  console.log(
-    "[build-wasm] and shrink the .wasm by ~30–50%.",
-  );
+  console.log("\n[build-wasm] `wasm-opt` not on PATH; shipping unoptimized wasm.");
+  console.log("[build-wasm] Install Binaryen (`brew install binaryen`) to fix Firefox compat");
+  console.log("[build-wasm] and shrink the .wasm by ~30–50%.");
 }
 
 console.log("\nBuilding card archive...");

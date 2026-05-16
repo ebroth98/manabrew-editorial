@@ -1,16 +1,14 @@
 import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
-import { upgradeScryfallUrl } from "./game.utils";
+import { ScryfallImg } from "@/components/ScryfallImg";
+import type { DeckCard } from "@/types/manabrew";
 
 const PREVIEW_W = 240;
 const PREVIEW_H = 336;
 
 interface CardImageThumbnailProps {
-  /** Scryfall image URL. */
-  imageUrl: string;
-  /** Card name for the alt text. */
-  cardName: string;
+  card: DeckCard;
   /** CSS classes applied to the thumbnail <img>. */
   className?: string;
 }
@@ -19,12 +17,10 @@ interface CardImageThumbnailProps {
  * Small card image that shows a large floating preview on hover.
  * Used inside modals where the user needs to read card text.
  */
-export function CardImageThumbnail({ imageUrl, cardName, className }: CardImageThumbnailProps) {
+export function CardImageThumbnail({ card, className }: CardImageThumbnailProps) {
   const [hovered, setHovered] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const imgRef = useRef<HTMLImageElement>(null);
-
-  const previewUrl = upgradeScryfallUrl(imageUrl, "large");
 
   function handleMouseEnter(e: React.MouseEvent) {
     setMousePos({ x: e.clientX, y: e.clientY });
@@ -49,10 +45,10 @@ export function CardImageThumbnail({ imageUrl, cardName, className }: CardImageT
 
   return (
     <>
-      <img
+      <ScryfallImg
         ref={imgRef}
-        src={imageUrl}
-        alt={cardName}
+        src={card.uris.normal}
+        alt={card.name}
         className={cn("cursor-zoom-in", className)}
         onMouseEnter={handleMouseEnter}
         onMouseMove={handleMouseMove}
@@ -64,9 +60,9 @@ export function CardImageThumbnail({ imageUrl, cardName, className }: CardImageT
             className="fixed z-[10001] pointer-events-none select-none"
             style={{ left, top, width: PREVIEW_W, height: PREVIEW_H }}
           >
-            <img
-              src={previewUrl || imageUrl}
-              alt={cardName}
+            <ScryfallImg
+              src={card.uris.large}
+              alt={card.name}
               className="w-full h-full object-contain rounded-xl shadow-2xl ring-1 ring-black/20"
             />
           </div>,

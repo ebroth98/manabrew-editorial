@@ -1,20 +1,18 @@
 import { Modal } from "../modals/Modal";
 import { Button } from "@/components/ui/button";
-import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { MODAL_CARD_IMAGE } from "../game.styles";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
+import type { DeckCard } from "@/types/manabrew";
 
 interface BuybackModalProps {
   buybackCost: string;
-  sourceCardName?: string;
+  sourceCard?: DeckCard;
   onDecide: (paid: boolean) => void;
 }
 
-export function BuybackModal({ buybackCost, sourceCardName, onDecide }: BuybackModalProps) {
-  const cardData = useCard({ name: sourceCardName ?? "" });
-  const imageUrl = cardData?.uris.normal;
+export function BuybackModal({ buybackCost, sourceCard, onDecide }: BuybackModalProps) {
   useModalKeyboard({ onSpace: () => onDecide(true) }, [onDecide]);
   return (
     <Modal maxWidth="max-w-md" maxHeight="">
@@ -22,13 +20,7 @@ export function BuybackModal({ buybackCost, sourceCardName, onDecide }: BuybackM
         <h2 className="font-semibold text-base">Pay Buyback?</h2>
       </Modal.Header>
       <div className="px-4 py-4 flex gap-3">
-        {imageUrl && (
-          <CardImageThumbnail
-            imageUrl={imageUrl}
-            cardName={sourceCardName ?? "Spell"}
-            className={MODAL_CARD_IMAGE}
-          />
-        )}
+        {sourceCard && <CardImageThumbnail card={sourceCard} className={MODAL_CARD_IMAGE} />}
         <div className="self-center">
           <p className="text-sm text-muted-foreground">
             Pay additional buyback cost: <ManaSymbols cost={buybackCost} size="lg" />

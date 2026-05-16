@@ -12,12 +12,10 @@ import {
 import { getFormat } from "@/lib/formats";
 import { applyPrompt } from "./gameStore.constants";
 import { useServerStore } from "./useServerStore";
-import type { GameState, GameConfig } from "./gameStore.types";
+import type { GameState } from "./gameStore.types";
 import type { AgentPrompt } from "./gameStore.types";
-import type { Card, Deck, GameView } from "@/types/manabrew";
-import type { CardIdentity } from "@/types/server";
+import type { GameCard, Deck, DeckCard, GameView } from "@/types/manabrew";
 import { usePhaseStopStore } from "@/stores/usePhaseStopStore";
-import { prefetchCards } from "@/stores/useScryfallStore";
 import type { GameRuntime, ManualTabletopApi } from "@/game";
 
 export type {
@@ -34,7 +32,7 @@ function isManualTabletopApi(
   return runtime.capabilities.manualTabletop && "applyManualAction" in runtime.api;
 }
 
-function manualZoneCard(card: Card, playerId: string, zoneId: string): Card {
+function manualZoneCard(card: DeckCard, playerId: string, zoneId: string): GameCard {
   return {
     ...card,
     id: `manual-card-${crypto.randomUUID()}`,
@@ -51,7 +49,7 @@ function manualZoneCard(card: Card, playerId: string, zoneId: string): Card {
 function seedManualDeck(
   gameView: GameView,
   deck: Deck,
-): { gameView: GameView; libraries: Record<string, Card[]> } {
+): { gameView: GameView; libraries: Record<string, GameCard[]> } {
   const playerId = gameView.players[0]?.id ?? "player-0";
   const openingHandSize = Math.min(7, deck.cards.length);
   const hand = deck.cards
@@ -85,6 +83,51 @@ function seedManualDeck(
   };
 }
 
+async function initializeGame({
+  deck,
+  opponentDeck,
+  formatId,
+  set,
+  commanderName,
+}: {
+  deck: Deck;
+  opponentDeck?: Deck;
+  formatId?: string;
+  commanderName?: string;
+  set: (partial: Partial<GameState>) => void;
+  get: () => GameState;
+}): Promise<void> {
+  const selectedFormatId = formatId ?? deck.format ?? "standard";
+  const format = getFormat(selectedFormatId);
+  const startingLife = format?.deckRules.startingLife ?? 20;
+  const gameDecks: Record<string, Deck> = { "player-0": deck };
+  if (opponentDeck) gameDecks["player-1"] = opponentDeck;
+  const runtime = getSelectedGameRuntime();
+
+  set({
+    isGameActive: true,
+    gameView: null,
+    currentPrompt: null,
+    gameLog: [],
+    snapshots: [],
+    deferredQueue: [],
+    isFlashing: false,
+    isWaitingForResponse: false,
+    gameConfig: { formatId: selectedFormatId, startingLife },
+    gameDecks,
+    isPrefetchingCards: true,
+    debugInfo: "Starting engine...",
+  });
+
+  const result = await runtime.api.startGame({
+    deck,
+    startingLife,
+    commanderName: commanderName ?? null,
+    opponentDeck: opponentDeck ?? null,
+  });
+  set({ debugInfo: `Game started: ${result}.` });
+}
+
 export const useGameStore = create<GameState>()(
   devtools(
     (set, get) => ({
@@ -94,7 +137,7 @@ export const useGameStore = create<GameState>()(
       snapshots: [],
       isGameActive: false,
       debugInfo: "",
-      prefetchProgress: null,
+      isPrefetchingCards: false,
       deferredQueue: [],
       isFlashing: false,
       isWaitingForResponse: false,
@@ -102,90 +145,25 @@ export const useGameStore = create<GameState>()(
       isMultiplayer: false,
       isHost: false,
       myPlayerSlot: null,
+      gameDecks: {},
 
       updateGameView: (view) => set({ gameView: view }),
 
       setGameConfig: (config) => set({ gameConfig: config }),
 
-      startGame: async (deckList, formatId, commanderName, opponentDeckList) => {
+      startGame: async (deck, formatId, commanderName, opponentDeck) => {
         try {
-          // Flip into the loading screen immediately so the user sees a
-          // spinner during validation / prefetch instead of staring at the
-          // deck selector.
-          set({
-            isGameActive: true,
-            gameView: null,
-            currentPrompt: null,
-            gameLog: [],
-            snapshots: [],
-            deferredQueue: [],
-            isFlashing: false,
-            isWaitingForResponse: false,
-            debugInfo: "Starting game...",
-            prefetchProgress: null,
-          });
-          const format = formatId ? getFormat(formatId) : undefined;
-          const startingLife = format?.deckRules.startingLife ?? 20;
-          const gameConfig: GameConfig = { formatId: formatId ?? "standard", startingLife };
-          set({ gameConfig });
-          const runtime = getSelectedGameRuntime();
-          // Prefetch BEFORE starting the engine. Otherwise the engine
-          // emits its first prompt within milliseconds and the loading
-          // screen dismisses (gameView becomes non-null) before the
-          // texture cache is warm — leaving cards rendering as text
-          // placeholders while images stream in.
-          const allCards = [...deckList, ...(opponentDeckList ?? [])];
-          set({
-            debugInfo: "Loading card images...",
-            prefetchProgress: { loaded: 0, failed: 0, total: allCards.length },
-          });
-          const progress = await prefetchCards(allCards, (p) => {
-            set({ prefetchProgress: p });
-          });
-          if (progress.failed > 0) {
-            console.warn(
-              `[store] prefetch finished with ${progress.failed}/${progress.total} failures`,
-            );
-          }
-          set({ debugInfo: "Starting engine..." });
-          const result = await runtime.api.startGame({
-            deckList: deckList,
-            startingLife,
-            commanderName: commanderName ?? null,
-            opponentDeckList: opponentDeckList ?? null,
-          });
-          set({ debugInfo: `Game started: ${result}. Polling...`, prefetchProgress: null });
-          if (runtime.capabilities.manualTabletop) {
-            const prompt = await runtime.api.getPrompt();
-            if (prompt && (prompt as AgentPrompt).gameView) {
-              applyPrompt(prompt as AgentPrompt, "Manual", set, get);
-            }
-          }
+          await initializeGame({ deck, opponentDeck, formatId, commanderName, set, get });
         } catch (e) {
-          set({ isGameActive: false, debugInfo: `Start failed: ${e}`, prefetchProgress: null });
+          set({ isGameActive: false, debugInfo: `Start failed: ${e}`, isPrefetchingCards: false });
           console.error("[store] Failed to start game:", e);
           toast.error(e instanceof Error ? e.message : "Failed to start game");
         }
       },
 
-      startManualTabletopGame: async (
-        deck?: Deck,
-        deckList?: CardIdentity[],
-        formatId?: string,
-        commanderName?: string,
-      ) => {
+      startManualTabletopGame: async (deck, formatId, commanderName) => {
         selectGameRuntime("manual-tabletop");
-        // If a deckList is provided (e.g. preset deck), pass it to the engine
-        // so it can resolve the deck. Otherwise start with empty lists and
-        // seed manually from the Deck object below.
-        const engineDeckList = deckList ?? [];
-        await get().startGame(
-          engineDeckList,
-          formatId ?? deck?.format ?? "standard",
-          commanderName,
-          [],
-        );
-        if (!deck) return;
+        await get().startGame(deck, formatId ?? deck.format ?? "standard", commanderName);
 
         const runtime = getSelectedGameRuntime();
         if (!isManualTabletopApi(runtime)) return;
@@ -196,7 +174,6 @@ export const useGameStore = create<GameState>()(
           type: "replaceState",
           ...seedManualDeck(gameView, deck),
         });
-        await prefetchCards([...deck.cards, ...(deck.commanders ?? []), ...(deck.sideboard ?? [])]);
         const prompt = await runtime.api.getPrompt();
         if (prompt && (prompt as AgentPrompt).gameView) {
           applyPrompt(prompt as AgentPrompt, "Manual", set, get);
@@ -275,7 +252,7 @@ export const useGameStore = create<GameState>()(
 
       startMultiplayerGame: async (
         playerNames,
-        deckLists,
+        decks,
         commanderNames,
         enginePlayerIndex,
         localIsHost,
@@ -293,6 +270,10 @@ export const useGameStore = create<GameState>()(
           );
           return;
         }
+        const gameDecks: Record<string, Deck> = {};
+        decks.forEach((d, i) => {
+          gameDecks[`player-${i}`] = d;
+        });
         try {
           set({
             isGameActive: true,
@@ -307,41 +288,27 @@ export const useGameStore = create<GameState>()(
             isFlashing: false,
             isWaitingForResponse: false,
             debugInfo: "Starting multiplayer game...",
-            prefetchProgress: null,
+            isPrefetchingCards: true,
+            gameDecks,
           });
           resetSelectedGameRuntime();
           const runtime = getSelectedGameRuntime();
-          // Same ordering rule as `startGame`: prefetch BEFORE the engine
-          // boots so first prompts can't dismiss the loading screen
-          // ahead of the texture cache.
-          const allCards = deckLists.flat();
-          set({
-            debugInfo: "Loading card images...",
-            prefetchProgress: { loaded: 0, failed: 0, total: allCards.length },
-          });
-          const progress = await prefetchCards(allCards, (p) => {
-            set({ prefetchProgress: p });
-          });
-          if (progress.failed > 0) {
-            console.warn(
-              `[store] prefetch finished with ${progress.failed}/${progress.total} failures`,
-            );
-          }
           set({ debugInfo: "Starting engine..." });
           await runtime.api.startMultiplayerGame({
             playerNames,
-            deckLists,
+            decks,
             commanderNames,
             enginePlayerIndex,
             localIsHost,
             startingLife,
           });
-          set({ debugInfo: "Multiplayer game started.", prefetchProgress: null });
+          set({ debugInfo: "Multiplayer game started.", isPrefetchingCards: false });
         } catch (e) {
           set({
             isGameActive: false,
             debugInfo: `Multiplayer start failed: ${e}`,
-            prefetchProgress: null,
+            isPrefetchingCards: false,
+            gameDecks: {},
           });
           console.error("[store] Failed to start multiplayer game:", e);
           toast.error(e instanceof Error ? e.message : "Failed to start multiplayer game");
@@ -628,6 +595,7 @@ export const useGameStore = create<GameState>()(
             isMultiplayer: false,
             isHost: false,
             myPlayerSlot: null,
+            gameDecks: {},
           });
         } catch (e) {
           console.error("Failed to end game:", e);

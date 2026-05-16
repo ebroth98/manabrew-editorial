@@ -105,7 +105,7 @@ export function log(msg: string): void;
 export function parse_config(config_json: any): any;
 
 /**
- * Parse a deck list from JSON.
+ * Parse a deck from JSON.
  *
  * Returns a summary of the parsed deck for verification.
  */
@@ -174,20 +174,20 @@ export interface InitOutput {
     readonly limited_update_gauntlet_human_deck: (a: any) => [number, number, number];
     readonly limited_winston_pass: (a: number, b: number) => [number, number, number];
     readonly limited_winston_take: (a: number, b: number) => [number, number, number];
-    readonly log: (a: number, b: number) => void;
-    readonly wasm_init: () => void;
     readonly echo: (a: number, b: number) => [number, number];
     readonly get_engine_info: () => any;
+    readonly has_card: (a: number, b: number) => number;
+    readonly is_card_db_loaded: () => number;
+    readonly is_token_db_loaded: () => number;
+    readonly load_card_archive: (a: number, b: number) => [bigint, number, number];
+    readonly log: (a: number, b: number) => void;
     readonly parse_config: (a: any) => [number, number, number];
     readonly parse_deck: (a: any) => [number, number, number];
     readonly run_interactive_game: (a: any, b: any, c: any, d: any) => [number, number, number];
     readonly run_multiplayer_game: (a: any, b: any, c: any, d: any, e: any, f: number) => [number, number, number];
     readonly test_foundation: () => any;
     readonly test_rng: () => any;
-    readonly has_card: (a: number, b: number) => number;
-    readonly is_card_db_loaded: () => number;
-    readonly is_token_db_loaded: () => number;
-    readonly load_card_archive: (a: number, b: number) => [bigint, number, number];
+    readonly wasm_init: () => void;
     readonly get_card_count: () => number;
     readonly get_token_count: () => number;
     readonly __wbindgen_malloc_command_export: (a: number, b: number) => number;

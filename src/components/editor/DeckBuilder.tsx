@@ -47,15 +47,16 @@ import {
 } from "lucide-react";
 import { ImportDeckDialog, type ImportDeckDialogMode } from "./ImportDeckDialog";
 import type { ArchidektDeck } from "@/lib/archidekt";
-import { extractColors } from "@/views/myDecks.utils";
+import { getDeckColors } from "@/components/deck/deckDisplay.utils";
+import { ScryfallImg } from "@/components/ScryfallImg";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { DeckStats } from "./DeckStats";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
-import type { Card, DeckFormatId } from "@/types/manabrew";
+import type { DeckCard, DeckFormatId, GameCard } from "@/types/manabrew";
 import { fetchCardCollection, searchCards } from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
-import { createEmptyCard, scryfallToManaBrew } from "@/lib/scryfall.utils";
+import { scryfallToDeckCard } from "@/lib/scryfall.utils";
 import { DROP_ZONE, DEFAULT_DECK_NAME } from "@/lib/constants";
 import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
@@ -70,10 +71,11 @@ import {
   GAME_FORMATS,
   allowsAnyNumberOfCopies,
 } from "@/lib/formats";
-import { serializeDeck } from "@/lib/decks";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { DeckListView } from "./DeckListView";
 import { PreviewRail } from "./PreviewRail";
+import { HoverCardPreview } from "@/components/game/HoverCardPreview";
+import { useCardPreview } from "@/hooks/useCardPreview";
 import { CardDetailModal } from "./CardDetailModal";
 import { DeckLabelsModal } from "./DeckLabelsModal";
 import { DeckLabelBadge } from "@/components/deck/DeckLabelBadge";
@@ -89,10 +91,8 @@ import {
   computeGroupedSections,
   computeGroupedStackColumns,
 } from "./deckBuilder.utils";
-import { useCardPreview, type HoverOptions } from "@/hooks/useCardPreview";
-import { useTokenProducers } from "@/hooks/useTokenProducers";
 import { TokenSection } from "./TokenSection";
-import { HoverCardPreview } from "@/components/game/HoverCardPreview";
+import { TokenPickerModal } from "./TokenPickerModal";
 
 import {
   buildDeckSnapshot,
@@ -110,14 +110,10 @@ function QuickCardSearch({
   onAdd,
   onRemove,
   getCount,
-  onHover,
-  onLeave,
 }: {
   onAdd: (card: ScryfallCard) => void;
   onRemove: (cardName: string) => void;
   getCount: (cardName: string) => number;
-  onHover: (card: Card, e: React.MouseEvent, options?: HoverOptions) => void;
-  onLeave: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ScryfallCard[]>([]);
@@ -200,14 +196,11 @@ function QuickCardSearch({
               <div
                 key={sc.id}
                 className="flex items-center gap-2 px-2 py-1 hover:bg-muted border-b border-border/30 last:border-0 cursor-pointer"
-                onMouseEnter={(e) => onHover(scryfallToManaBrew(sc), e, { useDelay: true })}
-                onMouseMove={(e) => onHover(scryfallToManaBrew(sc), e, { useDelay: true })}
-                onMouseLeave={onLeave}
                 onClick={() => onAdd(sc)}
                 title={`Add ${sc.name}`}
               >
                 {sc.image_uris?.small && (
-                  <img
+                  <ScryfallImg
                     src={sc.image_uris.small}
                     alt=""
                     className="w-8 h-11 rounded object-cover object-top shrink-0"
@@ -275,6 +268,7 @@ export function DeckBuilder({
 } = {}) {
   const [printPickerCard, setPrintPickerCard] = useState<string | null>(null);
   const [tokenPrintPickerName, setTokenPrintPickerName] = useState<string | null>(null);
+  const [tokenPickerOpen, setTokenPickerOpen] = useState(false);
   const [detailCard, setDetailCard] = useState<ScryfallCard | null>(null);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [importDialogMode, setImportDialogMode] = useState<ImportDeckDialogMode | null>(null);
@@ -305,9 +299,10 @@ export function DeckBuilder({
     untagCard,
     setCoverCard,
     setStackPositions,
-    setTokens,
-    updateTokenPrint,
+    updatePrint,
     toggleFoil,
+    addToken,
+    removeToken,
   } = useDeckStore();
 
   const [editingName, setEditingName] = useState(false);
@@ -315,8 +310,6 @@ export function DeckBuilder({
   const [newTagInput, setNewTagInput] = useState("");
   const [deckSearchFilter, setDeckSearchFilter] = useState("");
   const [nameInput, setNameInput] = useState(currentDeck.name);
-
-  const preview = useCardPreview();
 
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [cardSize, setCardSize] = useState(3);
@@ -386,6 +379,8 @@ export function DeckBuilder({
   const { selectedCards, toggleCard, rangeSelect, clearSelection, selectCards } =
     useDeckSelection();
 
+  const preview = useCardPreview();
+
   const { setNodeRef: setMainDropRef, isOver: isOverMain } = useDroppable({ id: DROP_ZONE.MAIN });
   const { setNodeRef: setSideDropRef, isOver: isOverSide } = useDroppable({ id: DROP_ZONE.SIDE });
   const { setNodeRef: setMaybeDropRef, isOver: isOverMaybe } = useDroppable({
@@ -408,8 +403,8 @@ export function DeckBuilder({
     uniqueNames.forEach((n) => enrichedNamesRef.current.add(n.toLowerCase()));
     fetchCardCollection(uniqueNames.map((n) => ({ name: n })))
       .then((scryfallMap) => {
-        const updates = new Map<string, Partial<Card>>();
-        for (const [key, sc] of scryfallMap) updates.set(key, scryfallToManaBrew(sc));
+        const updates = new Map<string, Partial<DeckCard>>();
+        for (const [key, sc] of scryfallMap) updates.set(key, scryfallToDeckCard(sc));
         enrichDeckCards(updates);
       })
       .catch((err) => {
@@ -488,16 +483,7 @@ export function DeckBuilder({
   const isDeckLegal = deckFormat
     ? validateDeckSections(
         {
-          deckList: serializeDeck(currentDeck),
-          availableCards: [
-            ...currentDeck.cards,
-            ...currentDeck.sideboard,
-            ...(currentDeck.attractions ?? []),
-            ...(currentDeck.contraptions ?? []),
-            ...(currentDeck.schemes ?? []),
-            ...(currentDeck.planes ?? []),
-            ...(currentDeck.commanders ?? []),
-          ],
+          deck: currentDeck,
           commanderName: currentDeck.commanders?.[0]?.name,
         },
         deckFormat,
@@ -565,34 +551,6 @@ export function DeckBuilder({
       ),
     [filteredMain, groupBy, currentDeck.customTags, currentDeck.cardTags],
   );
-
-  const allDeckCardsForTokens = useMemo(
-    () => [...currentDeck.cards, ...(currentDeck.commanders ?? []), ...currentDeck.sideboard],
-    [currentDeck.cards, currentDeck.commanders, currentDeck.sideboard],
-  );
-  const { tokens: discoveredTokens, isLoading: tokensLoading } = useTokenProducers(
-    allDeckCardsForTokens,
-    currentDeck.tokens,
-  );
-
-  // Sync discovered tokens into the store, preserving user-selected print data.
-  useEffect(() => {
-    if (discoveredTokens.length === 0 && !currentDeck.tokens?.length) return;
-    const stored = currentDeck.tokens ?? [];
-    const storedByName = new Map(stored.map((t) => [t.name, t]));
-    const merged = discoveredTokens.map((d) => {
-      const s = storedByName.get(d.name);
-      return s
-        ? {
-            ...d,
-            setCode: s.setCode ?? d.setCode,
-            cardNumber: s.cardNumber ?? d.cardNumber,
-            imageUrl: s.imageUrl ?? d.imageUrl,
-          }
-        : d;
-    });
-    if (JSON.stringify(merged) !== JSON.stringify(stored)) setTokens(merged);
-  }, [discoveredTokens]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Handlers ──
 
@@ -750,7 +708,7 @@ export function DeckBuilder({
     toast.success(`Moved ${copies.length} ${cardName} to sideboard`);
   }
 
-  function handleSetCommander(card: Card) {
+  function handleSetCommander(card: DeckCard) {
     if (!isCommanderEligible(card)) {
       toast.error(`"${card.name}" is not a legal commander`);
       return;
@@ -833,27 +791,25 @@ export function DeckBuilder({
         toast.error("No cards to import");
         return;
       }
-      let imported = 0;
-      for (const { name, count, side } of entries) {
-        for (let i = 0; i < count; i++) {
-          const card = createEmptyCard(name);
-          if (side) addToSide(card);
-          else addToMain(card);
-          imported++;
-        }
-      }
-      toast.success(`Imported ${imported} cards — fetching data…`);
       try {
         const scryfallMap = await fetchCardCollection(entries.map((p) => ({ name: p.name })));
-        const updates = new Map<string, Partial<Card>>();
-        for (const [key, sc] of scryfallMap) updates.set(key, scryfallToManaBrew(sc));
-        enrichDeckCards(updates);
-        toast.success("Card data loaded from Scryfall");
+        let imported = 0;
+        for (const { name, count, side } of entries) {
+          const sc = scryfallMap.get(name.toLowerCase());
+          if (!sc) throw new Error(`Scryfall card not found: ${name}`);
+          for (let i = 0; i < count; i++) {
+            const card = scryfallToDeckCard(sc);
+            if (side) addToSide(card);
+            else addToMain(card);
+            imported++;
+          }
+        }
+        toast.success(`Imported ${imported} cards`);
       } catch {
-        toast.error("Could not fetch card data from Scryfall");
+        toast.error("Could not import cards from Scryfall");
       }
     },
-    [addToMain, addToSide, enrichDeckCards],
+    [addToMain, addToSide],
   );
 
   function handleImport() {
@@ -899,8 +855,7 @@ export function DeckBuilder({
         useScryfallStore
           .getState()
           .getCard({ name: cmd.name })
-          .then((sc) => setCommander(scryfallToManaBrew(sc.info)))
-          .catch(() => setCommander(createEmptyCard(cmd.name))),
+          .then((sc) => setCommander(scryfallToDeckCard(sc.info))),
       );
 
       await Promise.all([mainLoad, ...commanderLoads]);
@@ -1058,7 +1013,7 @@ export function DeckBuilder({
                     s.deck.name.toLowerCase().includes(deckSearchFilter.toLowerCase()),
                 )
                 .map((s) => {
-                  const colors = extractColors(s.deck.cards);
+                  const colors = getDeckColors(s.deck.cards);
                   const isActive = s.deck.name === currentDeck.name;
                   return (
                     <DropdownMenuItem
@@ -1216,15 +1171,13 @@ export function DeckBuilder({
                   );
                   return;
                 }
-                addToMain(scryfallToManaBrew(sc));
+                addToMain(scryfallToDeckCard(sc));
                 toast.success(`Added ${sc.name}`);
               }}
               onRemove={(name) => {
                 handleRemoveOneFromMain(name);
               }}
               getCount={(name) => currentDeck.cards.filter((c) => c.name === name).length}
-              onHover={preview.handleMouseEnter}
-              onLeave={preview.handleMouseLeave}
             />
           </div>
 
@@ -1475,7 +1428,9 @@ export function DeckBuilder({
               onMoveAllFromMaybeToSide={handleMoveAllFromMaybeToSide}
               onPickPrint={(name) => setPrintPickerCard(name)}
               onToggleFoil={toggleFoil}
-              onHover={preview.handleMouseEnter}
+              onHover={(card, e) =>
+                preview.handleMouseEnter(card as unknown as GameCard, e, { useDelay: true })
+              }
               onLeave={preview.handleMouseLeave}
               onAddToSide={(card) => addToSide(card)}
               onRemoveFromSide={handleRemoveOneFromSide}
@@ -1580,10 +1535,11 @@ export function DeckBuilder({
         <DeckValidationPanel />
         <TokenSection
           tokens={currentDeck.tokens ?? []}
-          isLoading={tokensLoading && !currentDeck.tokens?.length}
           cardSize={cardSize}
           onShowInfo={handleShowInfo}
           onPickPrint={setTokenPrintPickerName}
+          onAddToken={() => setTokenPickerOpen(true)}
+          onRemoveToken={removeToken}
         />
         <DeckStats />
 
@@ -1593,9 +1549,14 @@ export function DeckBuilder({
           cardName={tokenPrintPickerName}
           onClose={() => setTokenPrintPickerName(null)}
           onSelect={(sc) => {
-            if (tokenPrintPickerName) updateTokenPrint(tokenPrintPickerName, sc);
+            if (tokenPrintPickerName) updatePrint(tokenPrintPickerName, sc);
           }}
           isToken
+        />
+        <TokenPickerModal
+          open={tokenPickerOpen}
+          onClose={() => setTokenPickerOpen(false)}
+          onSelect={addToken}
         />
         {detailCard && (
           <CardDetailModal
@@ -1624,7 +1585,7 @@ export function DeckBuilder({
               isToken: detailCard
                 ? (currentDeck.tokens?.some((t) => t.name === detailCard.name) ?? false)
                 : false,
-              onUpdateTokenPrint: updateTokenPrint,
+              onUpdateTokenPrint: updatePrint,
             }}
           />
         )}

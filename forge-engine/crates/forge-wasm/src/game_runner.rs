@@ -43,13 +43,6 @@ impl Default for GameConfig {
     }
 }
 
-/// Deck list from JavaScript.
-#[derive(Debug, Clone, Deserialize)]
-pub struct DeckList {
-    #[allow(dead_code)]
-    pub cards: Vec<DeckCard>,
-}
-
 /// Convert CardRules to CardInstance.
 pub fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstance {
     CardInstance::from_rules(rules, owner)
@@ -74,7 +67,13 @@ pub fn prepare_player(
         };
         for _ in 0..deck_card.count {
             deck_names.push(rules.name());
-            let instance = card_rules_to_instance(rules, PlayerId(0)); // Owner set later
+            let mut instance = card_rules_to_instance(rules, PlayerId(0)); // Owner set later
+            if !deck_card.set_code.is_empty() {
+                instance.set_code = Some(deck_card.set_code.clone());
+            }
+            if !deck_card.card_number.is_empty() {
+                instance.card_number = Some(deck_card.card_number.clone());
+            }
             cards.push((instance, ZoneType::Library));
         }
     }

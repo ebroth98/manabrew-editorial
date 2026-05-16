@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { ScryfallImg } from "@/components/ScryfallImg";
 
 interface HorizontalCardImageProps {
   src: string;
@@ -13,7 +14,7 @@ interface HorizontalCardImageProps {
 export function HorizontalCardImage({ src, alt, className, loading }: HorizontalCardImageProps) {
   return (
     <div className={cn("relative overflow-hidden", className)}>
-      <img
+      <ScryfallImg
         src={src}
         alt={alt}
         loading={loading}

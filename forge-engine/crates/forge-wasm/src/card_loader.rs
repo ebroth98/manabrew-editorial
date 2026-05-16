@@ -6,7 +6,6 @@ use std::sync::OnceLock;
 use forge_carddb::CardDatabase;
 use forge_foundation::edition::EditionsRegistry;
 use forge_limited::bootstrap::build_registry;
-use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 /// The global card database, populated by `load_card_archive`.
@@ -16,17 +15,12 @@ static CARD_DB: OnceLock<CardDatabase> = OnceLock::new();
 static TOKEN_DB: OnceLock<CardDatabase> = OnceLock::new();
 static EDITIONS: OnceLock<EditionsRegistry> = OnceLock::new();
 
-/// A card entry inside a deck list passed in from JS. The web worker
-/// deserializes preset-deck JSONs into `{ name, count, set? }`, so the
-/// engine entry points accept the same shape.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A card entry inside a deck list, post-conversion from `JsDeckCard`.
 pub struct DeckCard {
     pub name: String,
     pub count: usize,
-    #[serde(default)]
-    pub set: String,
-    #[serde(flatten)]
-    pub extra: std::collections::HashMap<String, serde_json::Value>,
+    pub set_code: String,
+    pub card_number: String,
 }
 
 /// Load the card + token + edition database from a single rkyv archive.

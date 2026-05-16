@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Card } from "@/types/manabrew";
+import type { GameCard } from "@/types/manabrew";
 import { PromptType } from "@/types/promptType";
 
 export interface CombatAssignment {
@@ -117,7 +117,7 @@ export function useCombatState({
     }
   }
 
-  function handleBattlefieldClick(card: Card) {
+  function handleBattlefieldClick(card: GameCard) {
     if (!currentPrompt) return;
 
     // Awaiting a defender pick — battlefield cards can be defenders too
@@ -169,7 +169,7 @@ export function useCombatState({
     }
   }
 
-  function handleAttackerClick(card: Card) {
+  function handleAttackerClick(card: GameCard) {
     setPendingAttacker((prev) => (prev === card.id ? null : card.id));
   }
 

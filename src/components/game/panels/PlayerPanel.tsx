@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { Card, Player } from "@/types/manabrew";
+import type { GameCard, Player } from "@/types/manabrew";
 import { cn } from "@/lib/utils";
 import { GameIcon } from "@/components/game/GameIcon";
 import { ManaPool as ManaPoolDisplay } from "./ManaPool";
@@ -31,14 +31,14 @@ interface PlayerPanelProps {
   isFlashing?: boolean;
   isMonarch?: boolean;
   hasInitiative?: boolean;
-  commanders?: Card[];
-  graveyard?: Card[];
-  exile?: Card[];
+  commanders?: GameCard[];
+  graveyard?: GameCard[];
+  exile?: GameCard[];
   onOpenCommandZone?: () => void;
   onCastCommander?: (cardId: string) => void;
-  onCommanderDragStart?: (card: Card, e: React.MouseEvent) => void;
+  onCommanderDragStart?: (card: GameCard, e: React.MouseEvent) => void;
   draggingCardId?: string | null;
-  onHoverCard?: (card: Card | null, e?: React.MouseEvent) => void;
+  onHoverCard?: (card: GameCard | null, e?: React.MouseEvent) => void;
   onOpenLibrary?: () => void;
   onOpenGraveyard?: () => void;
   onOpenExile?: () => void;

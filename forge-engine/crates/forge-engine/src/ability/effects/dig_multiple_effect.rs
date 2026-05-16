@@ -110,7 +110,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             None,
             prompt,
             &[],
-            source_name.as_deref(),
+            sa.source,
             Some(crate::ability::api_type::ApiType::Dig),
         );
         if !accepted {

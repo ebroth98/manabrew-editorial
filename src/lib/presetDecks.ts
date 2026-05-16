@@ -1,10 +1,12 @@
-import type { Card, Deck, DeckFormatId } from "@/types/manabrew";
+import type { Deck, DeckCard, DeckFormatId } from "@/types/manabrew";
+import type { ScryfallImageUris } from "@/types/scryfall";
+import { frontFaceName } from "@/lib/scryfall.utils";
 
-export interface PresetDeckCardEntry {
+interface PresetDeckCardDefinition {
   name: string;
   count: number;
-  set?: string;
-  cardNumber?: string;
+  set: string;
+  cardNumber: string;
   manaCost?: string;
   colors?: string[];
   colorIdentity?: string[];
@@ -13,13 +15,13 @@ export interface PresetDeckCardEntry {
   subtypes?: string[];
   supertypes?: string[];
   text?: string;
-  imageUrl?: string;
+  uris: ScryfallImageUris;
   layout?: string;
   power?: string;
   toughness?: string;
 }
 
-export interface PresetDeckPayload {
+export interface PresetDeckDefinition {
   id: string;
   label: string;
   desc: string;
@@ -27,62 +29,63 @@ export interface PresetDeckPayload {
   format?: DeckFormatId;
   commander?: string;
   coverCardName?: string;
-  cards: PresetDeckCardEntry[];
+  cards: PresetDeckCardDefinition[];
 }
 
-function presetCardToCard(entry: PresetDeckCardEntry, presetId: string, index: number): Card {
-  return {
-    id: `preset:${presetId}:${index}:${entry.name}`,
-    name: entry.name,
-    setCode: entry.set ?? "",
-    cardNumber: entry.cardNumber ?? "",
-    color: entry.colors ? entry.colors.join("") : "",
-    colorIdentity: entry.colorIdentity ?? [],
-    manaCost: entry.manaCost ?? "",
-    cmc: entry.cmc,
-    types: entry.types ?? [],
-    subtypes: entry.subtypes ?? [],
-    supertypes: entry.supertypes ?? [],
-    power: entry.power,
-    toughness: entry.toughness,
-    text: entry.text ?? "",
-    imageUrl: entry.imageUrl,
-    layout: entry.layout,
-    isPlayable: true,
-    isSelected: false,
-    isChoosable: false,
-    controllerId: "",
-    ownerId: "",
-    zoneId: "",
-  };
-}
-
-export function presetDeckPayloadToDeck(preset: PresetDeckPayload): Deck {
+export function expandPresetDeckDefinition(preset: PresetDeckDefinition): Deck {
   let index = 0;
-  const cards = preset.cards.flatMap((entry) =>
-    Array.from({ length: entry.count }, () => presetCardToCard(entry, preset.id, index++)),
-  );
-  // Commander goes in `commanders[]`, not the main 99 — strip it out of cards.
-  let commanders: Card[] | undefined;
-  if (preset.commander) {
-    const commanderEntry: PresetDeckCardEntry = { name: preset.commander, count: 1 };
-    commanders = [presetCardToCard(commanderEntry, preset.id, index++)];
-    const cmdIdx = cards.findIndex((c) => c.name === preset.commander);
-    if (cmdIdx !== -1) cards.splice(cmdIdx, 1);
+  const cards: DeckCard[] = [];
+  let commander: DeckCard | undefined;
+
+  const presetCommander = preset.commander ? frontFaceName(preset.commander) : undefined;
+  for (const entry of preset.cards) {
+    const name = frontFaceName(entry.name);
+    for (let copy = 0; copy < entry.count; copy += 1) {
+      const card: DeckCard = {
+        id: `preset:${preset.id}:${index++}:${name}`,
+        name,
+        setCode: entry.set,
+        cardNumber: entry.cardNumber,
+        color: entry.colors ? entry.colors.join("") : "",
+        colorIdentity: entry.colorIdentity ?? [],
+        manaCost: entry.manaCost ?? "",
+        cmc: entry.cmc ?? 0,
+        types: entry.types ?? [],
+        subtypes: entry.subtypes ?? [],
+        supertypes: entry.supertypes ?? [],
+        power: entry.power,
+        toughness: entry.toughness,
+        text: entry.text ?? "",
+        uris: entry.uris,
+        layout: entry.layout,
+      };
+
+      if (!commander && name === presetCommander) {
+        commander = card;
+      } else {
+        cards.push(card);
+      }
+    }
   }
+
+  // Commander goes in `commanders[]`, not the main 99 — strip it out of cards.
+  if (preset.commander && !commander) {
+    throw new Error(`Preset commander missing from cards: ${preset.commander}`);
+  }
+
   return {
     id: preset.id,
     name: preset.label,
     description: preset.desc,
     color: preset.color,
     format: preset.format ?? "standard",
-    coverCardName: preset.coverCardName ?? preset.commander,
+    coverCardName: preset.coverCardName ? frontFaceName(preset.coverCardName) : presetCommander,
     cards,
     sideboard: [],
-    commanders,
+    commanders: commander ? [commander] : undefined,
   };
 }
 
-export function presetDeckPayloadsToDecks(presets: PresetDeckPayload[]): Deck[] {
-  return presets.map(presetDeckPayloadToDeck);
+export function expandPresetDeckDefinitions(presets: PresetDeckDefinition[]): Deck[] {
+  return presets.map(expandPresetDeckDefinition);
 }

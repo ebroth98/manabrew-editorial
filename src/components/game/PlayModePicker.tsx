@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/game/modals/Modal";
-import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL } from "./game.styles";
+import type { DeckCard } from "@/types/manabrew";
 
 interface PlayModeOption {
   cardId: string;
@@ -11,30 +11,21 @@ interface PlayModeOption {
 }
 
 interface PlayModePickerProps {
-  cardName: string;
+  card: DeckCard;
   options: PlayModeOption[];
   onSelect: (mode: string) => void;
   onCancel: () => void;
 }
 
-export function PlayModePicker({ cardName, options, onSelect, onCancel }: PlayModePickerProps) {
-  const cardData = useCard({ name: cardName });
-  const imageUrl = cardData?.uris.normal;
-
+export function PlayModePicker({ card, options, onSelect, onCancel }: PlayModePickerProps) {
   return (
     <Modal maxWidth="max-w-sm" maxHeight="">
       <Modal.Header>
         <div className="flex items-center gap-3">
-          {imageUrl && (
-            <CardImageThumbnail
-              imageUrl={imageUrl}
-              cardName={cardName}
-              className={MODAL_CARD_THUMBNAIL}
-            />
-          )}
+          <CardImageThumbnail card={card} className={MODAL_CARD_THUMBNAIL} />
           <div>
             <h2 className="font-semibold text-base">Choose how to cast</h2>
-            <p className="text-xs text-muted-foreground font-medium">{cardName}</p>
+            <p className="text-xs text-muted-foreground font-medium">{card.name}</p>
           </div>
         </div>
       </Modal.Header>

@@ -31,7 +31,7 @@ import { LimitedCompareDialog } from "@/components/limited/LimitedCompareDialog"
 import { LimitedDeckStats } from "@/components/limited/LimitedDeckStats";
 import { LimitedHoverPreviewPane } from "@/components/limited/LimitedHoverPreviewPane";
 import { RaritySetSymbol } from "@/components/limited/RaritySetSymbol";
-import { useScryfallStore } from "@/stores/useScryfallStore";
+import { peekCard, useScryfallStore } from "@/stores/useScryfallStore";
 import { useCardPreview } from "@/hooks/useCardPreview";
 import { useDeckStore } from "@/stores/useDeckStore";
 import {
@@ -211,22 +211,11 @@ export default function LimitedDeckBuilder({
     };
     const cardsForPipCount = nonLand.concat(sideboardCards);
     for (const card of cardsForPipCount) {
-      const set = card.setCode?.toLowerCase();
-      const cn = card.collectorNumber?.toLowerCase();
-      const tries = [
-        set && cn ? `set:${set}::cn:${cn}` : null,
-        card.name && set ? `name:${card.name.toLowerCase()}::set:${set}` : null,
-        card.name ? `name:${card.name.toLowerCase()}` : null,
-      ].filter(Boolean) as string[];
-      let cost: string | undefined;
-      for (const key of tries) {
-        const c = (cache as Record<string, { card?: { info?: { mana_cost?: string } } }>)[key]?.card
-          ?.info?.mana_cost;
-        if (c) {
-          cost = c;
-          break;
-        }
-      }
+      const cost = peekCard(cache, {
+        name: card.name,
+        setCode: card.setCode,
+        collectorNumber: card.collectorNumber,
+      })?.mana_cost;
       if (!cost) continue;
       for (const letter of ["W", "U", "B", "R", "G"]) {
         pips[colorToBasic[letter]] += countManaPips(cost, letter);
@@ -945,31 +934,13 @@ function renderByColor(entries: PoolEntry[]): RenderedGroup[] {
 
 function renderByCmc(entries: PoolEntry[]): RenderedGroup[] {
   const cache = useScryfallStore.getState().cards;
-  const nameIndex = new Map<string, number>();
-  for (const value of Object.values(cache)) {
-    const info = value.card?.info;
-    if (info?.name && typeof info.cmc === "number") {
-      const key = info.name.toLowerCase();
-      if (!nameIndex.has(key)) nameIndex.set(key, info.cmc);
-    }
-  }
   const cmcOf = (entry: PoolEntry): number | null => {
-    const set = entry.card.setCode?.toLowerCase();
-    const cn = entry.card.collectorNumber?.toLowerCase();
-    const tries = [
-      set && cn ? `set:${set}::cn:${cn}` : null,
-      set && entry.card.name ? `name:${entry.card.name.toLowerCase()}::set:${set}` : null,
-      entry.card.name ? `name:${entry.card.name.toLowerCase()}` : null,
-    ].filter(Boolean) as string[];
-    for (const key of tries) {
-      const v = cache[key]?.card?.info?.cmc;
-      if (typeof v === "number") return v;
-    }
-    if (entry.card.name) {
-      const v = nameIndex.get(entry.card.name.toLowerCase());
-      if (typeof v === "number") return v;
-    }
-    return null;
+    const cached = peekCard(cache, {
+      name: entry.card.name,
+      setCode: entry.card.setCode,
+      collectorNumber: entry.card.collectorNumber,
+    });
+    return typeof cached?.cmc === "number" ? cached.cmc : null;
   };
 
   const buckets: PoolEntry[][] = [[], [], [], [], [], [], [], []]; // 0..6, 7 = unknown

@@ -11,8 +11,7 @@ import {
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { Card, DeckLabel } from "@/types/manabrew";
-import type { CardIdentity } from "@/types/server";
+import type { DeckCard, DeckLabel } from "@/types/manabrew";
 
 interface DeckSelectionCardProps {
   id: string;
@@ -21,9 +20,8 @@ interface DeckSelectionCardProps {
   color?: string;
   badge?: string | null;
   labels?: DeckLabel[];
-  deckList: CardIdentity[];
-  cards: Card[];
-  cover: Card | null | undefined;
+  cards: DeckCard[];
+  cover: DeckCard | null | undefined;
   coverFallbackClassName?: string;
   isPreset: boolean;
   isSelected: boolean;
@@ -54,7 +52,6 @@ export function DeckSelectionCard({
   color,
   badge,
   labels,
-  deckList,
   cards,
   cover,
   coverFallbackClassName,
@@ -212,7 +209,7 @@ export function DeckSelectionCard({
 
           <div className="flex items-center gap-1 flex-wrap">
             <span className={cn("text-[10px]", cover ? "text-white/85" : "text-muted-foreground")}>
-              {isPreset ? "Preset deck" : `${deckList.length} cards`}
+              {isPreset ? "Preset deck" : `${cards.length} cards`}
             </span>
             {badge && (
               <Badge variant="outline" className="text-[9px] h-4 px-1 ml-auto">

@@ -2,6 +2,7 @@ import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef } from "react";
 import { manaSymbolUrl, normalizeManaCode } from "@/api/scryfall";
+import { ScryfallImg } from "@/components/ScryfallImg";
 import type { ManaCode } from "@/types/scryfall";
 
 interface ChooseColorModalProps {
@@ -63,7 +64,7 @@ export function ChooseColorModal({
                   info.bg,
                 )}
               >
-                <img
+                <ScryfallImg
                   src={manaSymbolUrl(info.symbol)}
                   alt={`{${info.symbol}}`}
                   className="w-10 h-10"

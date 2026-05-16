@@ -1,4 +1,4 @@
-import type { Card as CardType, StackObject } from "@/types/manabrew";
+import type { CardRulesSummary, GameCard, StackObject } from "@/types/manabrew";
 import { PROMPT_LABELS } from "./game.constants";
 
 export function getInitials(name: string): string {
@@ -15,11 +15,11 @@ export function getPromptLabel(promptType?: string): string {
   return PROMPT_LABELS[promptType] ?? promptType;
 }
 
-export function isCreature(card: CardType): boolean {
+export function isCreature(card: CardRulesSummary): boolean {
   return card.types?.some((t) => t.toLowerCase() === "creature") ?? false;
 }
 
-export function isLethalDamage(card: CardType, queuedDamage = 0): boolean {
+export function isLethalDamage(card: GameCard, queuedDamage = 0): boolean {
   if (!card.toughness) return false;
   const total = (card.damage ?? 0) + queuedDamage;
   if (total <= 0) return false;
@@ -27,32 +27,21 @@ export function isLethalDamage(card: CardType, queuedDamage = 0): boolean {
   return !isNaN(toughness) && total >= toughness;
 }
 
-export type ScryfallImageSize = "small" | "normal" | "large" | "png";
+export type ScryfallImageSize = "small" | "normal" | "large" | "png" | "border_crop" | "art_crop";
 
-/** Upgrade a Scryfall image URL to a higher resolution if it matches the Scryfall pattern. */
-export function upgradeScryfallUrl(
-  url: string | undefined,
-  size: ScryfallImageSize,
-): string | undefined {
-  if (!url || !url.includes("cards.scryfall.io")) return url;
-  // 1. Swap the size component (small/normal/large/png)
-  const newUrl = url.replace(/\/(small|normal|large|png)\//, `/${size}/`);
-  // 2. Swap extension if moving to/from PNG
-  if (size === "png") {
-    return newUrl.replace(/\.jpg(\?.*)?$/, ".png$1");
-  } else {
-    return newUrl.replace(/\.png(\?.*)?$/, ".jpg$1");
-  }
-}
-
-export function stackObjectToCardStub(obj: StackObject): CardType {
+/** GameCard view of a stack-resident source for rendering. Owner/controller
+ *  come from the StackObject; printing identity comes from the wire so
+ *  `asDeckCard` can resolve the image. */
+export function stackObjectToCardStub(obj: StackObject): GameCard {
   return {
     id: obj.sourceId,
     name: obj.name,
-    setCode: "",
-    cardNumber: "",
+    setCode: obj.setCode,
+    cardNumber: obj.cardNumber,
     color: "",
+    colorIdentity: [],
     manaCost: "",
+    cmc: 0,
     types: [],
     subtypes: [],
     supertypes: [],
@@ -60,8 +49,8 @@ export function stackObjectToCardStub(obj: StackObject): CardType {
     isPlayable: false,
     isSelected: false,
     isChoosable: false,
-    controllerId: "",
-    ownerId: "",
-    zoneId: "",
+    controllerId: obj.controllerId,
+    ownerId: obj.controllerId,
+    zoneId: "stack",
   };
 }

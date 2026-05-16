@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { manaSymbolUrl, normalizeManaCode } from "@/api/scryfall";
+import { ScryfallImg } from "@/components/ScryfallImg";
 import type { ManaCode } from "@/types/scryfall";
 
 /**
@@ -50,7 +51,7 @@ export function ManaSymbols({ cost, size = "md", className }: ManaSymbolsProps) 
   return (
     <span className={cn("inline-flex items-center gap-0.5", className)}>
       {symbols.map((sym, i) => (
-        <img
+        <ScryfallImg
           key={`${sym}-${i}`}
           src={manaSymbolUrl(sym)}
           alt={`{${sym}}`}

@@ -28,7 +28,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             None,
             "Do you want to surveil?",
             &[],
-            source_name,
+            sa.source,
             Some(crate::ability::api_type::ApiType::Surveil),
         );
         if !accepted {

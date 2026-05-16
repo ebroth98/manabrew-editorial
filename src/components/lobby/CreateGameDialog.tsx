@@ -5,14 +5,14 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useDeckStore } from "@/stores/useDeckStore";
-import type { CardIdentity } from "@/types/server";
+import type { Deck, DeckCard } from "@/types/manabrew";
 import { GAME_FORMATS, validateDeckSections, type GameFormat } from "@/lib/formats";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { DeckSelectionCard } from "./DeckSelectionCard";
 import { resolveCoverCard } from "@/components/deck/deckCover.utils";
 import { cn } from "@/lib/utils";
 import { Search, Shuffle, Swords } from "lucide-react";
-import { getDeckFingerprint, serializeDeck } from "@/lib/decks";
+import { getDeckFingerprint } from "@/lib/decks";
 
 interface CreateGameDialogProps {
   open: boolean;
@@ -23,14 +23,8 @@ interface CreateGameDialogProps {
   forcedFormatId?: string;
   /** Pre-select a saved deck by ID (e.g. when launched from MyDecks) */
   preSelectedDeckId?: string;
-  /** Called with the deck card names, format ID, optional commander name, and player count when Create is confirmed */
-  onStart: (
-    deckList: CardIdentity[],
-    formatId: string,
-    commanderName?: string,
-    playerCount?: number,
-    deckName?: string,
-  ) => void;
+  /** Called with the selected deck, format ID, optional commander name, and player count when Create is confirmed */
+  onStart: (deck: Deck, formatId: string, commanderName?: string, playerCount?: number) => void;
 }
 
 export function CreateGameDialog({
@@ -68,6 +62,16 @@ export function CreateGameDialog({
   const currentDeckIsPlayable =
     !currentDeck.draft &&
     (currentDeck.cards.length > 0 || (currentDeck.commanders?.length ?? 0) > 0);
+  const allDeckCards = (d: Deck): DeckCard[] => [
+    ...d.cards,
+    ...d.sideboard,
+    ...(d.attractions ?? []),
+    ...(d.contraptions ?? []),
+    ...(d.schemes ?? []),
+    ...(d.planes ?? []),
+    ...(d.commanders ?? []),
+  ];
+
   const currentDeckEntry = !currentDeckIsPlayable
     ? []
     : [
@@ -76,18 +80,10 @@ export function CreateGameDialog({
           name: currentDeck.name,
           badge: "editing",
           labels: currentDeck.labels,
-          deckList: serializeDeck(currentDeck),
+          sourceDeck: currentDeck,
           isPreset: false as const,
           cover: resolveCoverCard(currentDeck),
-          cards: [
-            ...currentDeck.cards,
-            ...currentDeck.sideboard,
-            ...(currentDeck.attractions ?? []),
-            ...(currentDeck.contraptions ?? []),
-            ...(currentDeck.schemes ?? []),
-            ...(currentDeck.planes ?? []),
-            ...(currentDeck.commanders ?? []),
-          ],
+          cards: allDeckCards(currentDeck),
           formatId: currentDeck.format ?? "standard",
           commanderName: currentDeck.commanders?.[0]?.name,
         },
@@ -99,18 +95,10 @@ export function CreateGameDialog({
       name: s.deck.name,
       badge: null as string | null,
       labels: s.deck.labels,
-      deckList: serializeDeck(s.deck),
+      sourceDeck: s.deck,
       isPreset: false as const,
       cover: resolveCoverCard(s.deck),
-      cards: [
-        ...s.deck.cards,
-        ...s.deck.sideboard,
-        ...(s.deck.attractions ?? []),
-        ...(s.deck.contraptions ?? []),
-        ...(s.deck.schemes ?? []),
-        ...(s.deck.planes ?? []),
-        ...(s.deck.commanders ?? []),
-      ],
+      cards: allDeckCards(s.deck),
       formatId: s.deck.format ?? "standard",
       commanderName: s.deck.commanders?.[0]?.name,
     })),
@@ -121,7 +109,7 @@ export function CreateGameDialog({
     name: deck.name,
     desc: deck.description,
     color: deck.color,
-    deckList: serializeDeck(deck),
+    sourceDeck: deck,
     isPreset: true as const,
     cover: resolveCoverCard(deck),
     cards: [...deck.cards, ...(deck.commanders ?? [])],
@@ -152,17 +140,16 @@ export function CreateGameDialog({
   }, [selectedDeck]);
 
   const selectedDeckEntry = allDecks.find((d) => d.id === selectedDeck);
-  const selectedDeckList = selectedDeckEntry?.deckList ?? [];
-  const selectedDeckValidation = selectedDeckEntry?.isPreset
-    ? { legal: true, errors: [] as string[] }
-    : validateDeckSections(
-        {
-          deckList: selectedDeckList,
-          availableCards: selectedDeckEntry?.cards ?? [],
-          commanderName: selectedCommander || selectedDeckEntry?.commanderName,
-        },
-        selectedFormat,
-      );
+  const selectedDeckValidation =
+    selectedDeckEntry?.isPreset || !selectedDeckEntry
+      ? { legal: true, errors: [] as string[] }
+      : validateDeckSections(
+          {
+            deck: selectedDeckEntry.sourceDeck,
+            commanderName: selectedCommander || selectedDeckEntry.commanderName,
+          },
+          selectedFormat,
+        );
 
   const legendaryCreatures = selectedDeckEntry
     ? Array.from(
@@ -201,7 +188,7 @@ export function CreateGameDialog({
     }
     onOpenChange(false);
     onStart(
-      selectedDeckList,
+      selectedDeckEntry.sourceDeck,
       selectedFormat.id,
       selectedFormat.deckRules.requiresCommander
         ? needsCommander
@@ -209,7 +196,6 @@ export function CreateGameDialog({
           : selectedDeckEntry.commanderName
         : undefined,
       playerCount,
-      selectedDeckEntry.name,
     );
   }
 
@@ -394,7 +380,6 @@ export function CreateGameDialog({
                       name={deck.name}
                       desc={deck.desc}
                       color={deck.color}
-                      deckList={deck.deckList}
                       cards={deck.cards}
                       cover={deck.cover}
                       isPreset={deck.isPreset}
@@ -427,8 +412,7 @@ export function CreateGameDialog({
                   {filteredUserDecks.map((d) => {
                     const validation = validateDeckSections(
                       {
-                        deckList: d.deckList,
-                        availableCards: d.cards,
+                        deck: d.sourceDeck,
                         commanderName: selectedFormat.deckRules.requiresCommander
                           ? d.id === selectedDeck
                             ? selectedCommander || d.commanderName
@@ -444,7 +428,6 @@ export function CreateGameDialog({
                         name={d.name}
                         badge={d.badge}
                         labels={d.labels}
-                        deckList={d.deckList}
                         cards={d.cards}
                         cover={d.cover}
                         isPreset={d.isPreset}

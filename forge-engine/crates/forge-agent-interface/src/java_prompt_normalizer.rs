@@ -703,25 +703,11 @@ fn snapshot_to_game_view(snapshot: &Value, session_id: Option<&Value>, actions: 
         "command",
         &action_card_names,
     );
-    let opponent_command_zone = zone_cards(
-        players_source.get(1),
-        "command_zone_cards",
-        1,
-        "opponentCommand",
-        &action_card_names,
-    );
     let graveyard = zone_cards(
         players_source.first(),
         "graveyard",
         0,
         "graveyard",
-        &action_card_names,
-    );
-    let opponent_graveyard = zone_cards(
-        players_source.get(1),
-        "graveyard",
-        1,
-        "opponentGraveyard",
         &action_card_names,
     );
     let exile = zone_cards(
@@ -731,13 +717,33 @@ fn snapshot_to_game_view(snapshot: &Value, session_id: Option<&Value>, actions: 
         "exile",
         &action_card_names,
     );
-    let opponent_exile = zone_cards(
-        players_source.get(1),
-        "exile",
-        1,
-        "opponentExile",
-        &action_card_names,
-    );
+
+    let mut opponent_zones = serde_json::Map::new();
+    for (i, opp) in players_source.iter().enumerate().skip(1) {
+        let opp_graveyard = zone_cards(
+            Some(opp),
+            "graveyard",
+            i,
+            "opponentGraveyard",
+            &action_card_names,
+        );
+        let opp_exile = zone_cards(Some(opp), "exile", i, "opponentExile", &action_card_names);
+        let opp_command = zone_cards(
+            Some(opp),
+            "command_zone_cards",
+            i,
+            "opponentCommand",
+            &action_card_names,
+        );
+        opponent_zones.insert(
+            format!("player-{i}"),
+            json!({
+                "graveyard": opp_graveyard,
+                "exile": opp_exile,
+                "commandZone": opp_command,
+            }),
+        );
+    }
 
     json!({
         "gameId": session_id.and_then(Value::as_str).unwrap_or("engine-game"),
@@ -751,10 +757,8 @@ fn snapshot_to_game_view(snapshot: &Value, session_id: Option<&Value>, actions: 
         "stack": stack,
         "exile": exile,
         "graveyard": graveyard,
-        "opponentGraveyard": opponent_graveyard,
-        "opponentExile": opponent_exile,
         "myCommandZone": my_command_zone,
-        "opponentCommandZone": opponent_command_zone,
+        "opponentZones": opponent_zones,
         "combatAssignments": [],
         "gameOver": snapshot.get("game_over").and_then(Value::as_bool).unwrap_or(false),
         "winnerId": snapshot.get("winner").and_then(Value::as_u64).map(|_| player_id(snapshot.get("winner"))),

@@ -147,7 +147,6 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     };
 
     // Ask the activating player to choose mode(s)
-    let card_name = ctx.game.card(source_id).card_name.clone();
     let use_preselected_modes = should_use_preselected_modes(ctx.game, source_id, &mode_texts);
     // Check if modes were pre-selected (Spree — chosen during casting before payment)
     let pre_selected = if use_preselected_modes {
@@ -168,7 +167,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             &valid_descriptions,
             min_charm_num,
             charm_num.min(valid_mode_indices.len()),
-            Some(&card_name),
+            Some(source_id),
         );
         // Map agent choices (indices into valid_descriptions) back to original mode indices
         agent_choices
@@ -341,13 +340,12 @@ pub fn make_choices_precast_with_count(
     } else if sa.ir.entwine || (has_entwine && sa.kicked) {
         valid_mode_indices.clone()
     } else {
-        let card_name = game.card(source_id).card_name.clone();
         let chosen = agents[player.index()].choose_mode(
             player,
             &valid_descriptions,
             min_charm_num,
             charm_num.min(valid_mode_indices.len()),
-            Some(&card_name),
+            Some(source_id),
         );
         chosen
             .into_iter()

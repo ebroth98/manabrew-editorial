@@ -1,8 +1,7 @@
 // Mirrors Forge's DeckFormat (structural rules) + GameFormat (card legality).
 // For our limited card pool, we combine both into a single GameFormat interface.
 
-import type { Card } from "@/types/manabrew";
-import type { CardIdentity, DeckSection } from "@/types/server";
+import type { Deck, DeckCard } from "@/types/manabrew";
 
 export interface GameFormat {
   id: string;
@@ -228,8 +227,10 @@ export interface DeckValidation {
 }
 
 export interface DeckValidationInput {
-  deckList: CardIdentity[];
-  availableCards?: Card[];
+  deck: Deck;
+  /** Optional override of the commander used for validation; when set and not
+   *  already in `deck.commanders`, the named card is treated as a commander
+   *  pulled out of the main deck for legality purposes. */
   commanderName?: string;
 }
 
@@ -283,15 +284,7 @@ export function validateDeck(
   return { legal: errors.length === 0, errors };
 }
 
-function isMainDeckSection(section?: DeckSection): boolean {
-  return section === undefined || section === "main" || section === "commander";
-}
-
-function getCardByName(cards: Card[], name: string): Card | undefined {
-  return cards.find((card) => card.name === name);
-}
-
-function getCardIdentity(card?: Card): string[] {
+function getCardIdentity(card?: DeckCard): string[] {
   if (!card) return [];
   if (card.colorIdentity && card.colorIdentity.length > 0) {
     return [...new Set(card.colorIdentity)];
@@ -302,7 +295,7 @@ function getCardIdentity(card?: Card): string[] {
 // ─── Partner utilities ───────────────────────────────────────────────────────
 
 /** Returns true if the card has the generic "Partner" keyword (not "Partner with"). */
-export function hasPartner(card?: Card): boolean {
+export function hasPartner(card?: DeckCard): boolean {
   if (!card) return false;
   if (card.keywords?.some((k) => /^partner$/i.test(k.trim()))) return true;
   return /(?:^|\n)partner(?!\s+with)/im.test(card.text);
@@ -312,7 +305,7 @@ export function hasPartner(card?: Card): boolean {
  * Returns the specific partner name this card must pair with ("Partner with Xxx"),
  * or null if it doesn't have the specific-partner ability.
  */
-export function getPartnerWithName(card?: Card): string | null {
+export function getPartnerWithName(card?: DeckCard): string | null {
   if (!card) return null;
   const fromKeywords = card.keywords?.find((k) => /^partner with /i.test(k));
   if (fromKeywords) return fromKeywords.replace(/^partner with /i, "").trim();
@@ -320,18 +313,18 @@ export function getPartnerWithName(card?: Card): string | null {
   return match ? match[1].trim() : null;
 }
 
-function hasFriendsForever(card?: Card): boolean {
+function hasFriendsForever(card?: DeckCard): boolean {
   if (!card) return false;
   if (card.keywords?.some((k) => /^friends forever$/i.test(k.trim()))) return true;
   return /friends forever/i.test(card.text);
 }
 
-function hasChooseBackground(card?: Card): boolean {
+function hasChooseBackground(card?: DeckCard): boolean {
   if (!card) return false;
   return card.text.toLowerCase().includes("choose a background");
 }
 
-function isBackgroundCard(card?: Card): boolean {
+function isBackgroundCard(card?: DeckCard): boolean {
   if (!card) return false;
   return card.subtypes?.some((s) => s.toLowerCase() === "background") ?? false;
 }
@@ -340,7 +333,7 @@ function isBackgroundCard(card?: Card): boolean {
  * Returns true if two cards are a legal pair of partner commanders.
  * Handles: generic Partner, "Partner with [Name]", Friends forever, and Background.
  */
-export function canBePartners(a: Card, b: Card): boolean {
+export function canBePartners(a: DeckCard, b: DeckCard): boolean {
   // Generic Partner: both must have Partner
   if (hasPartner(a) && hasPartner(b)) return true;
   // Friends forever: both must have Friends forever
@@ -361,7 +354,7 @@ export function canBePartners(a: Card, b: Card): boolean {
   return false;
 }
 
-export function isCommanderEligible(card?: Card): boolean {
+export function isCommanderEligible(card?: DeckCard): boolean {
   if (!card) return false;
   const isLegendary = card.supertypes.includes("Legendary");
   if (isLegendary && card.types.includes("Creature")) return true;
@@ -379,48 +372,43 @@ export function isCommanderEligible(card?: Card): boolean {
   return false;
 }
 
-function normalizeCommanderSelection(
-  deckList: CardIdentity[],
-  commanderName?: string,
-): CardIdentity[] {
-  if (!commanderName) return deckList;
-  const alreadyCommander = deckList.some(
-    (card) => card.section === "commander" && card.name === commanderName,
-  );
-  if (alreadyCommander) return deckList;
-
-  let promoted = false;
-  return deckList.flatMap((card) => {
-    if (!promoted && card.name === commanderName && isMainDeckSection(card.section)) {
-      promoted = true;
-      return [{ ...card, section: "commander" as const }];
-    }
-    return [card];
-  });
-}
-
 export function validateDeckSections(
   input: DeckValidationInput,
   format: GameFormat,
 ): DeckValidation {
-  const availableCards = input.availableCards ?? [];
-  const effectiveDeck = normalizeCommanderSelection(input.deckList, input.commanderName);
+  const { deck } = input;
   const errors: string[] = [];
 
-  const mainDeck = effectiveDeck.filter((card) => isMainDeckSection(card.section));
-  const sideboard = effectiveDeck.filter((card) => card.section === "sideboard");
-  const commanders = effectiveDeck.filter((card) => card.section === "commander");
-  const mainOnly = effectiveDeck.filter(
-    (card) => card.section === undefined || card.section === "main",
-  );
+  // Resolve commanders: deck.commanders takes precedence; otherwise the
+  // override name (if present) pulls one card out of deck.cards for
+  // legality checking.
+  let commanders: DeckCard[] = deck.commanders ?? [];
+  let mainDeck: DeckCard[] = deck.cards;
+  if (commanders.length === 0 && input.commanderName) {
+    const idx = mainDeck.findIndex((c) => c.name === input.commanderName);
+    if (idx >= 0) {
+      commanders = [mainDeck[idx]];
+      mainDeck = mainDeck.filter((_, i) => i !== idx);
+    }
+  }
+  const sideboard = deck.sideboard;
 
-  // Build the set of card names whose text allows unlimited copies
+  const availableCards: DeckCard[] = [
+    ...deck.cards,
+    ...sideboard,
+    ...(deck.attractions ?? []),
+    ...(deck.contraptions ?? []),
+    ...(deck.schemes ?? []),
+    ...(deck.planes ?? []),
+    ...commanders,
+  ];
+
   const anyNumberNames = new Set(
     availableCards.filter((c) => allowsAnyNumberOfCopies(c.text)).map((c) => c.name),
   );
 
   const baseValidation = validateDeck(
-    mainDeck.map((card) => card.name),
+    [...mainDeck, ...commanders].map((c) => c.name),
     format,
     anyNumberNames,
   );
@@ -440,44 +428,31 @@ export function validateDeckSections(
     }
 
     const expectedMainSize = format.deckRules.minDeckSize - commanders.length;
-    if (mainOnly.length !== expectedMainSize) {
+    if (mainDeck.length !== expectedMainSize) {
       errors.push(
-        `Commander deck must have exactly ${expectedMainSize} non-commander cards (has ${mainOnly.length})`,
+        `Commander deck must have exactly ${expectedMainSize} non-commander cards (has ${mainDeck.length})`,
       );
     }
 
-    // Validate each commander's eligibility
     for (const cmd of commanders) {
-      const commanderCard = getCardByName(availableCards, cmd.name);
-      if (!isCommanderEligible(commanderCard)) {
+      if (!isCommanderEligible(cmd)) {
         errors.push(`"${cmd.name}" is not a legal commander`);
       }
     }
 
-    // Validate partner legality when there are 2 commanders
-    if (commanders.length === 2) {
-      const cmd1 = getCardByName(availableCards, commanders[0].name);
-      const cmd2 = getCardByName(availableCards, commanders[1].name);
-      if (cmd1 && cmd2 && !canBePartners(cmd1, cmd2)) {
-        errors.push(
-          `"${commanders[0].name}" and "${commanders[1].name}" cannot be paired — both commanders must have a compatible partner ability`,
-        );
-      }
+    if (commanders.length === 2 && !canBePartners(commanders[0], commanders[1])) {
+      errors.push(
+        `"${commanders[0].name}" and "${commanders[1].name}" cannot be paired — both commanders must have a compatible partner ability`,
+      );
     }
 
-    // Combined color identity of all commanders
-    const commanderIdentity = new Set(
-      commanders.flatMap((cmd) => getCardIdentity(getCardByName(availableCards, cmd.name))),
-    );
+    const commanderIdentity = new Set(commanders.flatMap((cmd) => getCardIdentity(cmd)));
     if (commanderIdentity.size > 0) {
-      const invalidCards = mainOnly
-        .map((identity) => getCardByName(availableCards, identity.name))
-        .filter((card): card is Card => Boolean(card))
-        .filter((card) => getCardIdentity(card).some((color) => !commanderIdentity.has(color)));
-      if (invalidCards.length > 0) {
-        errors.push(
-          `Deck contains cards outside commander color identity: ${invalidCards[0]!.name}`,
-        );
+      const invalid = mainDeck.find((card) =>
+        getCardIdentity(card).some((color) => !commanderIdentity.has(color)),
+      );
+      if (invalid) {
+        errors.push(`Deck contains cards outside commander color identity: ${invalid.name}`);
       }
     }
   }
@@ -493,11 +468,6 @@ export function inferFormats(cardNames: string[]): GameFormat[] {
   return GAME_FORMATS.filter((f) => validateDeck(cardNames, f).legal);
 }
 
-export function inferFormatsFromDeck(
-  deckList: CardIdentity[],
-  availableCards: Card[] = [],
-): GameFormat[] {
-  return GAME_FORMATS.filter(
-    (format) => validateDeckSections({ deckList, availableCards }, format).legal,
-  );
+export function inferFormatsFromDeck(deck: Deck): GameFormat[] {
+  return GAME_FORMATS.filter((format) => validateDeckSections({ deck }, format).legal);
 }

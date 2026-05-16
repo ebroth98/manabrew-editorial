@@ -53,7 +53,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             None,
             &format!("Do you want to play {}?", card_name),
             &[],
-            Some(&card_name),
+            Some(card_id),
             Some(crate::ability::api_type::ApiType::Play),
         );
         if !accepted {
@@ -83,7 +83,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             Some("PlayEffectOptional"),
             "play_effect_optional",
             &[],
-            Some(&card_name),
+            Some(card_id),
             Some(crate::ability::api_type::ApiType::Play),
         );
         if !accepted {

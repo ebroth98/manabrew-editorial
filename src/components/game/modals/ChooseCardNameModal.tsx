@@ -3,19 +3,21 @@ import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
-import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL, MODAL_INPUT, MODAL_LIST_BUTTON } from "../game.styles";
+import type { DeckCard } from "@/types/manabrew";
 
 interface ChooseCardNameModalProps {
   validNames: string[];
-  cardName?: string;
+  sourceCard?: DeckCard;
   onConfirm: (chosenName: string | null) => void;
 }
 
-export function ChooseCardNameModal({ validNames, cardName, onConfirm }: ChooseCardNameModalProps) {
-  const cardData = useCard({ name: cardName ?? "" });
-  const imageUrl = cardData?.uris.normal;
+export function ChooseCardNameModal({
+  validNames,
+  sourceCard,
+  onConfirm,
+}: ChooseCardNameModalProps) {
   const [filter, setFilter] = useState("");
   const [textInput, setTextInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -47,18 +49,12 @@ export function ChooseCardNameModal({ validNames, cardName, onConfirm }: ChooseC
       <div role="dialog" aria-modal="true" aria-labelledby="choose-card-name-title">
         <Modal.Header>
           <div className="flex items-center gap-3">
-            {imageUrl && (
-              <CardImageThumbnail
-                imageUrl={imageUrl}
-                cardName={cardName ?? "Source card"}
-                className={MODAL_CARD_THUMBNAIL}
-              />
-            )}
+            {sourceCard && <CardImageThumbnail card={sourceCard} className={MODAL_CARD_THUMBNAIL} />}
             <div>
               <h2 id="choose-card-name-title" className="font-semibold text-base">
                 Name a Card
               </h2>
-              {cardName && <p className="text-xs text-muted-foreground font-medium">{cardName}</p>}
+              <p className="text-xs text-muted-foreground font-medium">{sourceCard?.name}</p>
             </div>
           </div>
         </Modal.Header>

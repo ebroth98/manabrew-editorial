@@ -1,13 +1,13 @@
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/game/modals/Modal";
-import { useCard } from "@/stores/useScryfallStore";
 import { useTheme } from "@/hooks/useTheme";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL } from "@/components/game/game.styles";
 import { DiceRollAnimation } from "./DiceRollAnimation";
 import { resolvePlayerColor, type PlayerSeatInfo } from "./playerColor";
 import type { DiceRollSpec } from "./types";
+import type { DeckCard } from "@/types/manabrew";
 
 interface DiceRollFeedbackProps {
   sides: number;
@@ -18,7 +18,7 @@ interface DiceRollFeedbackProps {
   playerId?: string;
   /** Players from the current game view; used to assign self/opponent colors. */
   players: PlayerSeatInfo[];
-  sourceCardName?: string;
+  sourceCard?: DeckCard;
   onAcknowledge: () => void;
 }
 
@@ -33,11 +33,9 @@ export function DiceRollFeedback({
   ignoredRolls,
   playerId,
   players,
-  sourceCardName,
+  sourceCard,
   onAcknowledge,
 }: DiceRollFeedbackProps) {
-  const cardData = useCard({ name: sourceCardName ?? "" });
-  const imageUrl = cardData?.uris.normal;
   const themeColors = useTheme().gameTheme;
   const accentColor = resolvePlayerColor(playerId, players, themeColors.playerColors);
 
@@ -53,20 +51,12 @@ export function DiceRollFeedback({
       <div role="dialog" aria-modal="true" aria-labelledby="dice-roll-title">
         <Modal.Header>
           <div className="flex items-center gap-3">
-            {imageUrl && (
-              <CardImageThumbnail
-                imageUrl={imageUrl}
-                cardName={sourceCardName ?? "Roll"}
-                className={MODAL_CARD_THUMBNAIL}
-              />
-            )}
+            {sourceCard && <CardImageThumbnail card={sourceCard} className={MODAL_CARD_THUMBNAIL} />}
             <div>
               <h2 id="dice-roll-title" className="font-semibold text-base">
                 Rolled {summary} (d{sides})
               </h2>
-              {sourceCardName && (
-                <p className="text-xs text-muted-foreground font-medium">{sourceCardName}</p>
-              )}
+              <p className="text-xs text-muted-foreground font-medium">{sourceCard?.name}</p>
             </div>
           </div>
         </Modal.Header>

@@ -1,44 +1,44 @@
-import type { Card, Deck } from "@/types/manabrew";
-import type { CardIdentity, DeckSection } from "@/types/server";
+import type { Deck, DeckCard, GameCard } from "@/types/manabrew";
+import { peekArchivedToken } from "@/stores/useScryfallStore";
 
-export function deckSectionForCard(card: Card, fallback: DeckSection): DeckSection {
-  if (card.subtypes.some((subtype) => subtype.toLowerCase() === "attraction")) {
-    return "attractions";
-  }
-  if (card.subtypes.some((subtype) => subtype.toLowerCase() === "contraption")) {
-    return "contraptions";
-  }
-  if (card.types.some((type) => type.toLowerCase() === "scheme")) {
-    return "schemes";
-  }
-  if (card.types.some((type) => type.toLowerCase() === "plane")) {
-    return "planes";
-  }
-  return fallback;
+/** Engine emits token names with a "Token" suffix ("Map Token", "Blood
+ *  Token"); Scryfall (and so the archive + user-pinned `deck.tokens`)
+ *  stores them as bare names ("Map", "Blood"). Compare on the bare form. */
+function normalizeTokenName(name: string): string {
+  return name.toLowerCase().replace(/\s+token$/i, "");
 }
 
-export function toCardIdentity(card: Card, section: DeckSection): CardIdentity {
-  return {
-    name: card.name,
-    setCode: card.setCode || "",
-    section: deckSectionForCard(card, section),
-    foil: card.foil ? true : undefined,
-  };
+export function asDeckCard(deck: Deck, gameCard: GameCard): DeckCard {
+  const pool = getDeckCardPool(deck);
+  const exact = pool.find(
+    (c) =>
+      c.name === gameCard.name &&
+      c.setCode === gameCard.setCode &&
+      c.cardNumber === gameCard.cardNumber,
+  );
+  if (exact) return exact;
+  if (gameCard.isToken) {
+    const target = normalizeTokenName(gameCard.name);
+    const byName = pool.find(
+      (c) => c.name === gameCard.name || normalizeTokenName(c.name) === target,
+    );
+    if (byName) return byName;
+    const token = peekArchivedToken({
+      name: gameCard.name,
+      setCode: gameCard.setCode,
+      cardNumber: gameCard.cardNumber,
+    });
+    if (token) return token;
+    throw new Error(
+      `Token archive has no entry for ${gameCard.name} (${gameCard.setCode}#${gameCard.cardNumber})`,
+    );
+  }
+  throw new Error(
+    `No DeckCard in "${deck.name}" for ${gameCard.name} (${gameCard.setCode}#${gameCard.cardNumber})`,
+  );
 }
 
-export function serializeDeck(deck: Deck): CardIdentity[] {
-  return [
-    ...deck.cards.map((card) => toCardIdentity(card, "main")),
-    ...deck.sideboard.map((card) => toCardIdentity(card, "sideboard")),
-    ...(deck.attractions ?? []).map((card) => toCardIdentity(card, "attractions")),
-    ...(deck.contraptions ?? []).map((card) => toCardIdentity(card, "contraptions")),
-    ...(deck.schemes ?? []).map((card) => toCardIdentity(card, "schemes")),
-    ...(deck.planes ?? []).map((card) => toCardIdentity(card, "planes")),
-    ...(deck.commanders ?? []).map((card) => toCardIdentity(card, "commander")),
-  ];
-}
-
-export function getDeckCardPool(deck: Deck): Card[] {
+export function getDeckCardPool(deck: Deck): DeckCard[] {
   return [
     ...deck.cards,
     ...deck.sideboard,
@@ -47,19 +47,26 @@ export function getDeckCardPool(deck: Deck): Card[] {
     ...(deck.schemes ?? []),
     ...(deck.planes ?? []),
     ...(deck.commanders ?? []),
+    ...(deck.tokens ?? []),
   ];
 }
 
 export function getDeckCardNames(deck: Deck): string[] {
-  return serializeDeck(deck)
-    .filter((card) => card.section === "main" || card.section === "commander")
-    .map((card) => card.name);
+  return [...deck.cards, ...(deck.commanders ?? [])].map((c) => c.name);
 }
 
 export function getDeckFingerprint(deck: Deck): string {
-  const serialized = serializeDeck(deck)
-    .map((card) => `${card.section ?? "main"}:${card.name}:${card.setCode}`)
-    .sort();
+  const tag = (section: string, list: DeckCard[]) =>
+    list.map((c) => `${section}:${c.name}:${c.setCode}`);
+  const serialized = [
+    ...tag("main", deck.cards),
+    ...tag("sideboard", deck.sideboard),
+    ...tag("attractions", deck.attractions ?? []),
+    ...tag("contraptions", deck.contraptions ?? []),
+    ...tag("schemes", deck.schemes ?? []),
+    ...tag("planes", deck.planes ?? []),
+    ...tag("commander", deck.commanders ?? []),
+  ].sort();
   return JSON.stringify({
     name: deck.name,
     format: deck.format ?? "standard",

@@ -24,7 +24,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             None,
             &format!("Would you like to abandon {source_name}?"),
             &[],
-            Some(&source_name),
+            Some(source_id),
             None,
         );
         if !confirmed {

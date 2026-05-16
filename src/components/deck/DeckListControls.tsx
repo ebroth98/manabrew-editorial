@@ -12,6 +12,7 @@ import { GAME_FORMATS } from "@/lib/formats";
 import type { SortBy } from "@/views/myDecks.utils";
 import { MANA_LETTERS, type ManaLetter } from "@/themes/gameTheme";
 import { manaSymbolUrl } from "@/api/scryfall";
+import { ScryfallImg } from "@/components/ScryfallImg";
 
 type Color = ManaLetter;
 
@@ -148,7 +149,7 @@ export function DeckListControls({
                   : "border-transparent opacity-40 hover:opacity-70",
               )}
             >
-              <img src={manaSymbolUrl(color)} alt={color} className="h-full w-full" />
+              <ScryfallImg src={manaSymbolUrl(color)} alt={color} className="h-full w-full" />
             </button>
           );
         })}

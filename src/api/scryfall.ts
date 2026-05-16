@@ -173,10 +173,6 @@ export async function fetchCardsBySet(setCode: string): Promise<ScryfallCard[]> 
     `${SCRYFALL_API}/cards/search?q=${encodeURIComponent(`e:${setCode.toLowerCase()}`)}` +
     `&unique=prints&order=set&include_extras=true`;
 
-  // Don't silently swallow page-fetch failures: an empty result from this
-  // function flows all the way to the WASM draft pool and surfaces there as
-  // "supplied 0 cards" with no diagnostic. Propagating the error lets the
-  // limited UI show what actually went wrong.
   while (url) {
     const page: ScryfallListResponse = await scryfallFetch<ScryfallListResponse>(
       url,
@@ -191,26 +187,13 @@ export async function fetchCardsBySet(setCode: string): Promise<ScryfallCard[]> 
   return out;
 }
 
-export async function fetchImageElement(url: string): Promise<HTMLImageElement> {
-  let response: Response | null = null;
-  for (let attempt = 0; attempt <= SCRYFALL_MAX_RETRIES; attempt += 1) {
-    response = await queuedScryfallFetch(url);
-    if (response.status === 429 && attempt < SCRYFALL_MAX_RETRIES) {
-      const retryAfterMs = applyScryfallCooldown(response);
-      console.warn(`SCRYFALL 429; pausing queue for ${Math.ceil(retryAfterMs / 1000)}s`);
-      await sleep(retryAfterMs);
-      continue;
-    }
-    break;
-  }
-  if (!response?.ok) throw new Error(`HTTP ${response?.status ?? "unknown"} for ${url}`);
-  const blob = await response.blob();
-  const blobUrl = URL.createObjectURL(blob);
+export function fetchImageElement(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Failed to decode: ${url}`));
-    img.src = blobUrl;
+    img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
+    img.src = url;
   });
 }
 

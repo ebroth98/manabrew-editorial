@@ -19,6 +19,7 @@ import { LimitedModeToggle, type LimitedDraftMode } from "@/components/limited/L
 import { useCardPreview } from "@/hooks/useCardPreview";
 import { cn } from "@/lib/utils";
 import { useLimitedStore } from "@/stores/useLimitedStore";
+import { ScryfallImg } from "@/components/ScryfallImg";
 
 type WinstonMode = LimitedDraftMode;
 
@@ -307,7 +308,7 @@ function FaceDownStack({ count }: { count: number }) {
   }
   return (
     <div className="relative aspect-[5/7] w-full">
-      <img
+      <ScryfallImg
         src={CARD_BACK_IMAGE_URL}
         alt={`Face-down pile of ${count} card${count === 1 ? "" : "s"}`}
         loading="lazy"

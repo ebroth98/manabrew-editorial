@@ -1,7 +1,8 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-use forge_server::protocol::{CardIdentity, GameFormat};
+use forge_agent_interface::deck_dto::{CardIdentity, Deck, DeckCard};
+use forge_server::protocol::GameFormat;
 use serde::Deserialize;
 use tracing::warn;
 
@@ -26,7 +27,7 @@ pub struct Config {
 #[derive(Debug, Clone)]
 pub struct DeckSelection {
     pub name: String,
-    pub cards: Vec<CardIdentity>,
+    pub deck: Deck,
     pub commander_name: Option<String>,
 }
 
@@ -131,15 +132,24 @@ fn load_preset_deck(
     let mut cards = Vec::new();
     for entry in preset.cards {
         for _ in 0..entry.count {
-            cards.push(CardIdentity {
-                name: entry.name.clone(),
-                set_code: entry.set.clone(),
+            cards.push(DeckCard {
+                identity: CardIdentity {
+                    name: entry.name.clone(),
+                    set_code: entry.set.clone(),
+                    ..Default::default()
+                },
+                ..Default::default()
             });
         }
     }
+    let label = preset.label;
     Ok(DeckSelection {
-        name: preset.label,
-        cards,
+        deck: Deck {
+            name: label.clone(),
+            cards,
+            ..Default::default()
+        },
+        name: label,
         commander_name,
     })
 }
@@ -151,14 +161,23 @@ fn preset_decks_dir() -> PathBuf {
 }
 
 fn synthetic_deck(name: &str, commander_name: Option<String>) -> DeckSelection {
-    DeckSelection {
-        name: name.to_string(),
-        cards: (0..60)
-            .map(|_| CardIdentity {
+    let cards: Vec<DeckCard> = (0..60)
+        .map(|_| DeckCard {
+            identity: CardIdentity {
                 name: "Mountain".to_string(),
                 set_code: "M20".to_string(),
-            })
-            .collect(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .collect();
+    DeckSelection {
+        name: name.to_string(),
+        deck: Deck {
+            name: name.to_string(),
+            cards,
+            ..Default::default()
+        },
         commander_name,
     }
 }

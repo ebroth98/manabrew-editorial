@@ -2,8 +2,8 @@ use tauri::{AppHandle, State};
 
 use crate::client_bot::{ClientBotConfig, ClientBotManager};
 use crate::multiplayer_controller::relay_response_value;
-use crate::preset_decks::CardIdentity;
 use crate::server_client::ServerClient;
+use forge_agent_interface::deck_dto::Deck;
 
 fn send_server_message(client: &ServerClient, msg: serde_json::Value) -> Result<(), String> {
     client.send(&msg.to_string())
@@ -38,7 +38,7 @@ pub async fn server_spawn_ai_bot(
     room_id: String,
     username: String,
     deck_name: String,
-    deck_list: Vec<CardIdentity>,
+    deck: Deck,
     commander_name: Option<String>,
 ) -> Result<(), String> {
     let connection = client.connection_config()?;
@@ -47,7 +47,7 @@ pub async fn server_spawn_ai_bot(
         room_id,
         username,
         deck_name,
-        deck_list,
+        deck,
         commander_name,
     })
 }
@@ -134,7 +134,7 @@ pub async fn server_set_ready(client: State<'_, ServerClient>, ready: bool) -> R
 pub async fn server_set_deck_selection(
     client: State<'_, ServerClient>,
     deck_name: String,
-    deck_list: Vec<CardIdentity>,
+    deck: Deck,
     commander_name: Option<String>,
 ) -> Result<(), String> {
     send_server_message(
@@ -142,7 +142,7 @@ pub async fn server_set_deck_selection(
         serde_json::json!({
             "type": "SetDeckSelection",
             "deck_name": deck_name,
-            "deck_list": deck_list,
+            "deck": deck,
             "commander_name": commander_name,
         }),
     )

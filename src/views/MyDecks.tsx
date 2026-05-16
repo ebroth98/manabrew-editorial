@@ -14,19 +14,17 @@ import { toast } from "sonner";
 import { DeckStats } from "@/components/editor/DeckStats";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
-import { DeckCard } from "@/components/deck/DeckCard";
+import { DeckCard as DeckCardComponent } from "@/components/deck/DeckCard";
 import { DeckListControls } from "@/components/deck/DeckListControls";
-import type { Card } from "@/types/manabrew";
-import type { CardIdentity } from "@/types/server";
+import type { DeckCard } from "@/types/manabrew";
 import { fetchCardCollection } from "@/api/scryfall";
-import { scryfallToManaBrew } from "@/lib/scryfall.utils";
+import { scryfallToDeckCard } from "@/lib/scryfall.utils";
 import { ROUTES, DEFAULT_DECK_NAME } from "@/lib/constants";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { extractColors, groupCards, categorize, applyDeckFilters } from "./myDecks.utils";
+import { groupCards, categorize, applyDeckFilters } from "./myDecks.utils";
+import { getDeckColors } from "@/components/deck/deckDisplay.utils";
 import type { SortBy } from "./myDecks.utils";
 import { getDeckCardNames } from "@/lib/decks";
-import { useCardPreview } from "@/hooks/useCardPreview";
-import { HoverCardPreview } from "@/components/game/HoverCardPreview";
 import { usePresetDecks } from "@/stores/usePresetDecksStore";
 import type { SavedDeck } from "@/stores/useDeckStore";
 import type { Deck as DeckType } from "@/types/manabrew";
@@ -50,8 +48,6 @@ export default function MyDecks() {
   const [cardFilter, setCardFilter] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-
-  const preview = useCardPreview();
 
   const enrichedDecksRef = useRef(new Set<string>());
 
@@ -113,9 +109,9 @@ export default function MyDecks() {
     const uniqueNames = [...new Set(toFetch)];
     fetchCardCollection(uniqueNames.map((n) => ({ name: n })))
       .then((scryfallMap) => {
-        const updates = new Map<string, Partial<Card>>();
+        const updates = new Map<string, Partial<DeckCard>>();
         for (const [key, sc] of scryfallMap) {
-          updates.set(key, scryfallToManaBrew(sc));
+          updates.set(key, scryfallToDeckCard(sc));
         }
         enrichSavedDeck(selected.id, updates);
       })
@@ -140,9 +136,9 @@ export default function MyDecks() {
     ? allMainGroups.filter((g) => g.card.name.toLowerCase().includes(filterLc))
     : allMainGroups;
   const categories = categorize(mainGroups);
-  const colors = selected ? extractColors(selected.deck.cards) : [];
+  const colors = selected ? getDeckColors(selected.deck.cards) : [];
 
-  function patchSavedDeck(id: string, patch: { name?: string; commander?: Card | undefined }) {
+  function patchSavedDeck(id: string, patch: { name?: string; commander?: DeckCard | undefined }) {
     useDeckStore.setState((state) => ({
       savedDecks: state.savedDecks.map((s) =>
         s.id === id ? { ...s, deck: { ...s.deck, ...patch } } : s,
@@ -150,7 +146,7 @@ export default function MyDecks() {
     }));
   }
 
-  function setSavedCommander(id: string, card: Card) {
+  function setSavedCommander(id: string, card: DeckCard) {
     patchSavedDeck(id, { commander: card });
   }
 
@@ -232,7 +228,7 @@ export default function MyDecks() {
             ) : (
               <div className="py-1">
                 {filteredValid.map((s) => (
-                  <DeckCard
+                  <DeckCardComponent
                     key={s.id}
                     deck={s}
                     isSelected={s.id === selectedId}
@@ -259,7 +255,7 @@ export default function MyDecks() {
                       </span>
                     </div>
                     {filteredDrafts.map((s) => (
-                      <DeckCard
+                      <DeckCardComponent
                         key={s.id}
                         deck={s}
                         isSelected={s.id === selectedId}
@@ -288,7 +284,7 @@ export default function MyDecks() {
                       </span>
                     </div>
                     {presetSavedDecks.map((s) => (
-                      <DeckCard
+                      <DeckCardComponent
                         key={s.id}
                         deck={s}
                         isSelected={false}
@@ -391,13 +387,7 @@ export default function MyDecks() {
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                       Commander
                     </h3>
-                    <div
-                      className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40 group"
-                      onMouseEnter={(e) =>
-                        preview.handleMouseEnter(selected.deck.commanders![0], e)
-                      }
-                      onMouseLeave={preview.handleMouseLeave}
-                    >
+                    <div className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40 group">
                       <GameIcon name="overlord-helm" className="h-3 w-3 text-commander shrink-0" />
                       <span className="text-sm flex-1 truncate">
                         {selected.deck.commanders![0].name}
@@ -434,8 +424,6 @@ export default function MyDecks() {
                           <div
                             key={card.name}
                             className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40 group"
-                            onMouseEnter={(e) => preview.handleMouseEnter(card, e)}
-                            onMouseLeave={preview.handleMouseLeave}
                           >
                             <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
                               {count}
@@ -498,8 +486,6 @@ export default function MyDecks() {
                               <div
                                 key={`${label}-${card.name}`}
                                 className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40"
-                                onMouseEnter={(e) => preview.handleMouseEnter(card, e)}
-                                onMouseLeave={preview.handleMouseLeave}
                               >
                                 <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
                                   {copies}
@@ -536,15 +522,13 @@ export default function MyDecks() {
         )}
       </ResizablePanel>
 
-      <HoverCardPreview preview={preview} />
-
       <CreateGameDialog
         key={playDeckId}
         open={playDialogOpen}
         onOpenChange={setPlayDialogOpen}
         preSelectedDeckId={playDeckId}
-        onStart={(deckList: CardIdentity[], formatId, commanderName) => {
-          startGame(deckList, formatId, commanderName);
+        onStart={(deck, formatId, commanderName) => {
+          startGame(deck, formatId, commanderName);
           navigate(ROUTES.PLAY);
         }}
       />

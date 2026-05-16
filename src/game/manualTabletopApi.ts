@@ -6,7 +6,7 @@ import type {
   StartMultiplayerGameParams,
 } from "@/platform";
 import { PromptType } from "@/types/promptType";
-import type { Card, Deck, GameView, Player } from "@/types/manabrew";
+import type { GameCard, Deck, GameView, Player } from "@/types/manabrew";
 import type { ManualTabletopApi, ManualTabletopAction } from "./runtime.types";
 
 const MANUAL_GAME_ID = "manual-tabletop";
@@ -38,14 +38,14 @@ function createInitialGameView(params: StartGameParams): GameView {
     "Player 1",
     true,
     params.startingLife,
-    params.deckList.length,
+    params.deck.cards.length,
   );
   const opponent = createPlayer(
     "player-1",
     "Player 2",
     false,
     params.startingLife,
-    params.opponentDeckList?.length ?? params.deckList.length,
+    params.opponentDeck?.cards.length ?? params.deck.cards.length,
   );
 
   return {
@@ -60,22 +60,38 @@ function createInitialGameView(params: StartGameParams): GameView {
     stack: [],
     exile: [],
     graveyard: [],
-    opponentGraveyard: [],
-    opponentExile: [],
     myCommandZone: [],
-    opponentCommandZone: [],
+    opponentZones: {
+      [opponent.id]: { graveyard: [], exile: [], commandZone: [] },
+    },
     gameOver: false,
     winnerId: null,
   };
 }
 
+/** Manual tabletop is 1v1, so there's exactly one opponent slot to look up. */
+function singleOpponentId(gameView: GameView): string | undefined {
+  return Object.keys(gameView.opponentZones)[0];
+}
+
 function updateVisibleCard(
   gameView: GameView,
   cardId: string,
-  update: (card: Card) => Card,
+  update: (card: GameCard) => GameCard,
 ): GameView {
-  const updateCards = (cards: Card[]): Card[] =>
+  const updateCards = (cards: GameCard[]): GameCard[] =>
     cards.map((card) => (card.id === cardId ? update(card) : card));
+
+  const opponentZones = Object.fromEntries(
+    Object.entries(gameView.opponentZones).map(([pid, z]) => [
+      pid,
+      {
+        graveyard: updateCards(z.graveyard),
+        exile: updateCards(z.exile),
+        commandZone: updateCards(z.commandZone),
+      },
+    ]),
+  );
 
   return {
     ...gameView,
@@ -83,24 +99,33 @@ function updateVisibleCard(
     battlefield: updateCards(gameView.battlefield),
     exile: updateCards(gameView.exile),
     graveyard: updateCards(gameView.graveyard),
-    opponentGraveyard: updateCards(gameView.opponentGraveyard),
-    opponentExile: updateCards(gameView.opponentExile),
     myCommandZone: updateCards(gameView.myCommandZone ?? []),
-    opponentCommandZone: updateCards(gameView.opponentCommandZone ?? []),
+    opponentZones,
   };
 }
 
 function removeVisibleCard(
   gameView: GameView,
   cardId: string,
-): { gameView: GameView; card: Card | null } {
-  let removed: Card | null = null;
-  const removeFrom = (cards: Card[]): Card[] =>
+): { gameView: GameView; card: GameCard | null } {
+  let removed: GameCard | null = null;
+  const removeFrom = (cards: GameCard[]): GameCard[] =>
     cards.filter((card) => {
       if (card.id !== cardId) return true;
       removed = card;
       return false;
     });
+
+  const opponentZones = Object.fromEntries(
+    Object.entries(gameView.opponentZones).map(([pid, z]) => [
+      pid,
+      {
+        graveyard: removeFrom(z.graveyard),
+        exile: removeFrom(z.exile),
+        commandZone: removeFrom(z.commandZone),
+      },
+    ]),
+  );
 
   return {
     gameView: {
@@ -109,10 +134,8 @@ function removeVisibleCard(
       battlefield: removeFrom(gameView.battlefield),
       exile: removeFrom(gameView.exile),
       graveyard: removeFrom(gameView.graveyard),
-      opponentGraveyard: removeFrom(gameView.opponentGraveyard),
-      opponentExile: removeFrom(gameView.opponentExile),
       myCommandZone: removeFrom(gameView.myCommandZone ?? []),
-      opponentCommandZone: removeFrom(gameView.opponentCommandZone ?? []),
+      opponentZones,
     },
     card: removed,
   };
@@ -121,10 +144,10 @@ function removeVisibleCard(
 function addCardToZone(
   gameView: GameView,
   zoneId: string,
-  card: Card,
+  card: GameCard,
   position?: number,
 ): GameView {
-  const withInsertedCard = (cards: Card[]): Card[] => {
+  const withInsertedCard = (cards: GameCard[]): GameCard[] => {
     const nextCard = { ...card, zoneId };
     if (position == null || position < 0 || position >= cards.length) {
       return [...cards, nextCard];
@@ -147,20 +170,26 @@ function addCardToZone(
         myCommandZone: withInsertedCard(gameView.myCommandZone ?? []),
       };
     case "opponentGraveyard":
-      return {
-        ...gameView,
-        opponentGraveyard: withInsertedCard(gameView.opponentGraveyard),
-      };
     case "opponentExile":
+    case "opponentCommand": {
+      const oppId = singleOpponentId(gameView);
+      if (!oppId) return gameView;
+      const current = gameView.opponentZones[oppId] ?? {
+        graveyard: [],
+        exile: [],
+        commandZone: [],
+      };
+      const next =
+        zoneId === "opponentGraveyard"
+          ? { ...current, graveyard: withInsertedCard(current.graveyard) }
+          : zoneId === "opponentExile"
+            ? { ...current, exile: withInsertedCard(current.exile) }
+            : { ...current, commandZone: withInsertedCard(current.commandZone) };
       return {
         ...gameView,
-        opponentExile: withInsertedCard(gameView.opponentExile),
+        opponentZones: { ...gameView.opponentZones, [oppId]: next },
       };
-    case "opponentCommand":
-      return {
-        ...gameView,
-        opponentCommandZone: withInsertedCard(gameView.opponentCommandZone ?? []),
-      };
+    }
     default:
       return gameView;
   }
@@ -179,7 +208,7 @@ function updatePlayer(
 
 function syncVisibleZoneCountsWithLibraries(
   gameView: GameView,
-  libraries: Record<string, Card[]>,
+  libraries: Record<string, GameCard[]>,
 ): GameView {
   const humanId = gameView.players[0]?.id;
   const opponentId = gameView.players[1]?.id;
@@ -196,11 +225,12 @@ function syncVisibleZoneCountsWithLibraries(
         };
       }
       if (player.id === opponentId) {
+        const oppZones = gameView.opponentZones[player.id];
         return {
           ...player,
           libraryCount: libraries[player.id]?.length ?? player.libraryCount,
-          graveyardCount: gameView.opponentGraveyard.length,
-          exileCount: gameView.opponentExile.length,
+          graveyardCount: oppZones?.graveyard.length ?? 0,
+          exileCount: oppZones?.exile.length ?? 0,
         };
       }
       return player;
@@ -211,7 +241,7 @@ function syncVisibleZoneCountsWithLibraries(
 export class ManualTabletopGameApi implements ManualTabletopApi {
   private gameView: GameView | null = null;
   private latestPrompt: unknown = null;
-  private libraries: Record<string, Card[]> = {};
+  private libraries: Record<string, GameCard[]> = {};
 
   async startGame(params: StartGameParams): Promise<string> {
     this.gameView = createInitialGameView(params);

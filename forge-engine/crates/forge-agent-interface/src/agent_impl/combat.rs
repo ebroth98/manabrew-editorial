@@ -35,11 +35,14 @@ pub(super) fn choose_attackers<T: AgentTransport>(
     let possible_defender_dtos = PromptAgent::<T>::defender_ids_to_dtos(possible_defenders);
     let mut view = agent.view();
     PromptAgent::<T>::mark_battlefield_choosable(&mut view, &available_attacker_ids);
-    agent.send_prompt(AgentPromptInner::ChooseAttackers {
-        game_view: view,
-        available_attacker_ids,
-        possible_defender_ids: possible_defender_dtos,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseAttackers {
+            game_view: view,
+            available_attacker_ids,
+            possible_defender_ids: possible_defender_dtos,
+        },
+        None,
+    );
     let default_defender = possible_defenders
         .first()
         .copied()
@@ -74,11 +77,14 @@ pub(super) fn choose_blockers<T: AgentTransport>(
     let available_blocker_ids = PromptAgent::<T>::card_ids(available_blockers);
     let mut view = agent.view();
     PromptAgent::<T>::mark_battlefield_choosable(&mut view, &available_blocker_ids);
-    agent.send_prompt(AgentPromptInner::ChooseBlockers {
-        game_view: view,
-        attacker_ids,
-        available_blocker_ids,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseBlockers {
+            game_view: view,
+            attacker_ids,
+            available_blocker_ids,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::RestoreSnapshot { checkpoint_id } => {
             agent.pending_restore_checkpoint = Some(checkpoint_id);
@@ -111,12 +117,15 @@ pub(super) fn choose_damage_assignment_order<T: AgentTransport>(
     let blocker_ids: Vec<String> = blockers.iter().map(|&b| card_id_str(b)).collect();
     let blocker_cards: Vec<CardDto> = Vec::new(); // Blocker info available from gameView
     let view = agent.view();
-    agent.send_prompt(AgentPromptInner::ChooseDamageAssignmentOrder {
-        game_view: view,
-        attacker_id,
-        blocker_ids,
-        blocker_cards,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseDamageAssignmentOrder {
+            game_view: view,
+            attacker_id,
+            blocker_ids,
+            blocker_cards,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::DamageAssignmentOrderDecision {
             ordered_blocker_ids,
@@ -151,14 +160,17 @@ pub(super) fn choose_combat_damage_assignment<T: AgentTransport>(
         DefenderId::Permanent(cid) => format!("card-{}", cid.0),
     });
     let view = agent.view();
-    agent.send_prompt(AgentPromptInner::ChooseCombatDamageAssignment {
-        game_view: view,
-        attacker_id,
-        blocker_ids: blocker_ids.clone(),
-        defender_id: defender_id.clone(),
-        total_damage,
-        attacker_has_deathtouch,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseCombatDamageAssignment {
+            game_view: view,
+            attacker_id,
+            blocker_ids: blocker_ids.clone(),
+            defender_id: defender_id.clone(),
+            total_damage,
+            attacker_has_deathtouch,
+        },
+        None,
+    );
 
     match agent.recv_action() {
         PlayerAction::CombatDamageAssignmentDecision { assignments } => assignments
@@ -206,16 +218,19 @@ pub(super) fn pay_combat_cost<T: AgentTransport>(
     let tappable_land_ids = PromptAgent::<T>::card_ids(tappable_lands);
     let untappable_land_ids = PromptAgent::<T>::card_ids(untappable_lands);
 
-    agent.send_prompt(AgentPromptInner::PayCombatCost {
-        game_view: agent.view(),
-        attacker_id,
-        attacker_name,
-        cost,
-        description: description.to_string(),
-        tappable_land_ids,
-        untappable_land_ids,
-        mana_pool_total,
-    });
+    agent.send_prompt(
+        AgentPromptInner::PayCombatCost {
+            game_view: agent.view(),
+            attacker_id,
+            attacker_name,
+            cost,
+            description: description.to_string(),
+            tappable_land_ids,
+            untappable_land_ids,
+            mana_pool_total,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::TapLand { card_id, .. } => parse_card_id(&card_id)
             .map(CombatCostAction::TapLand)
@@ -239,11 +254,14 @@ pub(super) fn exert_attackers<T: AgentTransport>(
         .iter()
         .filter_map(|id| view.battlefield.iter().find(|c| c.id == *id).cloned())
         .collect();
-    agent.send_prompt(AgentPromptInner::ChooseExertAttackers {
-        game_view: view,
-        attacker_ids,
-        attacker_cards,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseExertAttackers {
+            game_view: view,
+            attacker_ids,
+            attacker_cards,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::ExertDecision {
             chosen_attacker_ids,
@@ -267,11 +285,14 @@ pub(super) fn enlist_attackers<T: AgentTransport>(
         .iter()
         .filter_map(|id| view.battlefield.iter().find(|c| c.id == *id).cloned())
         .collect();
-    agent.send_prompt(AgentPromptInner::ChooseEnlistAttackers {
-        game_view: view,
-        attacker_ids,
-        attacker_cards,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseEnlistAttackers {
+            game_view: view,
+            attacker_ids,
+            attacker_cards,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::EnlistDecision {
             chosen_attacker_ids,

@@ -8,6 +8,7 @@ name = "forge-server"
 path = "src/main.rs"
 
 [dependencies]
+forge-agent-interface = { path = "../forge-agent-interface" }
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = "0.24"
 futures-util = "0.3"

@@ -2,8 +2,9 @@ use tauri::{AppHandle, State};
 
 use crate::game_manager::GameManager;
 use crate::multiplayer_controller::relay_response;
-use crate::preset_decks::PresetDeckInfo;
+use crate::preset_decks::{wire_deck_to_identities, PresetDeckInfo};
 use crate::server_client::ServerClient;
+use forge_agent_interface::deck_dto::Deck;
 use forge_agent_interface::prompt::PlayerAction;
 use serde_json::Value;
 
@@ -11,11 +12,13 @@ use serde_json::Value;
 pub async fn start_game(
     app: AppHandle,
     gm: State<'_, GameManager>,
-    deck_list: Vec<crate::preset_decks::CardIdentity>,
+    deck: Deck,
     starting_life: i32,
     commander_name: Option<String>,
-    opponent_deck_list: Option<Vec<crate::preset_decks::CardIdentity>>,
+    opponent_deck: Option<Deck>,
 ) -> Result<String, String> {
+    let deck_list = wire_deck_to_identities(&deck);
+    let opponent_deck_list = opponent_deck.as_ref().map(wire_deck_to_identities);
     gm.start_game(
         app,
         deck_list,
@@ -72,12 +75,14 @@ pub async fn start_multiplayer_game(
     app: AppHandle,
     gm: State<'_, GameManager>,
     player_names: Vec<String>,
-    deck_lists: Vec<Vec<crate::preset_decks::CardIdentity>>,
+    decks: Vec<Deck>,
     commander_names: Vec<Option<String>>,
     engine_player_index: usize,
     local_is_host: bool,
     starting_life: i32,
 ) -> Result<String, String> {
+    let deck_lists: Vec<Vec<crate::preset_decks::CardIdentity>> =
+        decks.iter().map(wire_deck_to_identities).collect();
     gm.start_multiplayer_game(
         app,
         player_names,

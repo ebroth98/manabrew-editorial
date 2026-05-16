@@ -1,6 +1,5 @@
-use crate::protocol::{
-    CardIdentity, GameFormat, PlayerDeckInfo, RoomInfo, RoomPlayerInfo, RoomStatus,
-};
+use crate::protocol::{GameFormat, PlayerDeckInfo, RoomInfo, RoomPlayerInfo, RoomStatus};
+use forge_agent_interface::deck_dto::Deck;
 
 #[derive(Debug, Clone)]
 pub struct RoomSlot {
@@ -9,7 +8,7 @@ pub struct RoomSlot {
     pub ready: bool,
     pub connected: bool,
     pub selected_deck_name: Option<String>,
-    pub selected_deck_list: Vec<CardIdentity>,
+    pub selected_deck: Option<Deck>,
     pub selected_commander_name: Option<String>,
 }
 
@@ -52,7 +51,7 @@ impl Room {
                     ready: false,
                     connected: true,
                     selected_deck_name: None,
-                    selected_deck_list: vec![],
+                    selected_deck: None,
                     selected_commander_name: None,
                 }],
                 vec![],
@@ -108,7 +107,7 @@ impl Room {
             ready: false,
             connected: true,
             selected_deck_name: None,
-            selected_deck_list: vec![],
+            selected_deck: None,
             selected_commander_name: None,
         });
         Ok(())
@@ -183,12 +182,12 @@ impl Room {
         &mut self,
         player_id: &str,
         deck_name: String,
-        deck_list: Vec<CardIdentity>,
+        deck: Deck,
         commander_name: Option<String>,
     ) -> Result<(), String> {
         if let Some(slot) = self.players.iter_mut().find(|p| p.player_id == player_id) {
             slot.selected_deck_name = Some(deck_name);
-            slot.selected_deck_list = deck_list;
+            slot.selected_deck = Some(deck);
             slot.selected_commander_name = commander_name;
             slot.ready = false;
             Ok(())
@@ -201,21 +200,23 @@ impl Room {
         self.players
             .iter()
             .find(|p| p.player_id == player_id)
-            .map(|p| !p.selected_deck_list.is_empty() && p.selected_deck_name.is_some())
+            .map(|p| p.selected_deck.is_some() && p.selected_deck_name.is_some())
             .unwrap_or(false)
     }
 
     pub fn player_decks(&self) -> Vec<PlayerDeckInfo> {
         self.players
             .iter()
-            .map(|p| PlayerDeckInfo {
-                username: p.username.clone(),
-                deck_name: p
-                    .selected_deck_name
-                    .clone()
-                    .unwrap_or_else(|| "Unknown Deck".to_string()),
-                deck_list: p.selected_deck_list.clone(),
-                commander_name: p.selected_commander_name.clone(),
+            .filter_map(|p| {
+                p.selected_deck.clone().map(|deck| PlayerDeckInfo {
+                    username: p.username.clone(),
+                    deck_name: p
+                        .selected_deck_name
+                        .clone()
+                        .unwrap_or_else(|| "Unknown Deck".to_string()),
+                    deck,
+                    commander_name: p.selected_commander_name.clone(),
+                })
             })
             .collect()
     }

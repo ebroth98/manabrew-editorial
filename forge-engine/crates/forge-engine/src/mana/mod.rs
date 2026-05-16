@@ -800,7 +800,7 @@ pub fn determine_mana_production_ir(
                         player,
                         &available,
                         amount as usize,
-                        Some(&card_name),
+                        Some(card_id),
                     );
                     *ms = chosen.join(" ");
                 } else {

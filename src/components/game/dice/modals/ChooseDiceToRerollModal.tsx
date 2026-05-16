@@ -1,17 +1,17 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/game/modals/Modal";
-import { useCard } from "@/stores/useScryfallStore";
 import { useTheme } from "@/hooks/useTheme";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL } from "@/components/game/game.styles";
 import { DieFaceStatic } from "../DieFaceStatic";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
+import type { DeckCard } from "@/types/manabrew";
 
 interface ChooseDiceToRerollModalProps {
   rolls: number[];
   sides?: number;
-  sourceCardName?: string;
+  sourceCard?: DeckCard;
   onConfirm: (rolls: number[]) => void;
 }
 
@@ -28,11 +28,9 @@ interface SelectableDie {
 export function ChooseDiceToRerollModal({
   rolls,
   sides = 6,
-  sourceCardName,
+  sourceCard,
   onConfirm,
 }: ChooseDiceToRerollModalProps) {
-  const cardData = useCard({ name: sourceCardName ?? "" });
-  const imageUrl = cardData?.uris.normal;
   const accentColor = useTheme().gameTheme.playerColors.self;
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
@@ -60,20 +58,12 @@ export function ChooseDiceToRerollModal({
       <div role="dialog" aria-modal="true" aria-labelledby="choose-dice-reroll-title">
         <Modal.Header>
           <div className="flex items-center gap-3">
-            {imageUrl && (
-              <CardImageThumbnail
-                imageUrl={imageUrl}
-                cardName={sourceCardName ?? "Source card"}
-                className={MODAL_CARD_THUMBNAIL}
-              />
-            )}
+            {sourceCard && <CardImageThumbnail card={sourceCard} className={MODAL_CARD_THUMBNAIL} />}
             <div>
               <h2 id="choose-dice-reroll-title" className="font-semibold text-base">
                 Choose dice to reroll
               </h2>
-              {sourceCardName && (
-                <p className="text-xs text-muted-foreground font-medium">{sourceCardName}</p>
-              )}
+              <p className="text-xs text-muted-foreground font-medium">{sourceCard?.name}</p>
             </div>
           </div>
         </Modal.Header>

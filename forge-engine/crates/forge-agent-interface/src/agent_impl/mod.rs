@@ -102,12 +102,17 @@ impl<T: AgentTransport> PromptAgent<T> {
         }
     }
 
-    /// Send a prompt to the frontend, bundling any accumulated display events.
-    pub(crate) fn send_prompt(&mut self, inner: AgentPromptInner) {
+    /// Send a prompt to the frontend. `source` is the engine card id of the
+    /// prompt's source — the spell being cast, the ability whose trigger
+    /// fired, the cost being paid. `None` only for genuinely sourceless
+    /// prompts (mulligan, game-over, generic state updates). Required at
+    /// every call site so the compiler can't let one slip through.
+    pub(crate) fn send_prompt(&mut self, inner: AgentPromptInner, source: Option<CardId>) {
         let display_events = std::mem::take(&mut self.pending_display_events);
         let prompt = AgentPrompt {
             deciding_player_id: player_id_str(self.player_id),
             display_events,
+            source_card_id: source.map(card_id_str),
             inner,
         };
         self.transport.send_prompt(prompt);
@@ -502,16 +507,19 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
             .chain(std::iter::once(EnginePlayerAction::PassPriority))
             .collect();
 
-        self.send_prompt(AgentPromptInner::ChooseAction {
-            game_view: view,
-            playable_card_ids,
-            playable_options,
-            tappable_land_ids,
-            untappable_land_ids,
-            activatable_ability_ids,
-            mana_ability_options,
-            available_player_actions,
-        });
+        self.send_prompt(
+            AgentPromptInner::ChooseAction {
+                game_view: view,
+                playable_card_ids,
+                playable_options,
+                tappable_land_ids,
+                untappable_land_ids,
+                activatable_ability_ids,
+                mana_ability_options,
+                available_player_actions,
+            },
+            None,
+        );
         match self.recv_action() {
             PlayerAction::EngineAction { action } => action,
             PlayerAction::Pass { until_phase } => {
@@ -795,9 +803,9 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         descriptions: &[String],
         min: usize,
         max: usize,
-        card_name: Option<&str>,
+        source_card_id: Option<CardId>,
     ) -> Vec<usize> {
-        choices::choose_mode(self, player, descriptions, min, max, card_name)
+        choices::choose_mode(self, player, descriptions, min, max, source_card_id)
     }
 
     fn choose_spell_abilities_for_effect(
@@ -849,19 +857,19 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         player: PlayerId,
         question: &str,
         effect_description: &str,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> bool {
-        choices::confirm_replacement_effect(self, player, question, effect_description, card_name)
+        choices::confirm_replacement_effect(self, player, question, effect_description, source)
     }
 
     fn choose_optional_trigger(
         &mut self,
         player: PlayerId,
         description: &str,
-        card_name: Option<&str>,
+        source: Option<CardId>,
         api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
-        choices::choose_optional_trigger(self, player, description, card_name, api)
+        choices::choose_optional_trigger(self, player, description, source, api)
     }
 
     fn confirm_action(
@@ -870,10 +878,10 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         mode: Option<&str>,
         message: &str,
         options: &[String],
-        card_name: Option<&str>,
+        source: Option<CardId>,
         api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
-        choices::confirm_action(self, player, mode, message, options, card_name, api)
+        choices::confirm_action(self, player, mode, message, options, source, api)
     }
 
     fn confirm_payment(
@@ -881,10 +889,10 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         player: PlayerId,
         cost_kind: &str,
         message: &str,
-        card_name: Option<&str>,
+        source: Option<CardId>,
         api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
-        choices::confirm_payment(self, player, cost_kind, message, card_name, api)
+        choices::confirm_payment(self, player, cost_kind, message, source, api)
     }
 
     fn pay_cost_to_prevent_effect(
@@ -892,13 +900,11 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         player: PlayerId,
         cost_kind: &str,
         message: &str,
-        card_name: Option<&str>,
+        source: Option<CardId>,
         api: Option<forge_engine_core::ability::api_type::ApiType>,
         can_pay: bool,
     ) -> bool {
-        choices::pay_cost_to_prevent_effect(
-            self, player, cost_kind, message, card_name, api, can_pay,
-        )
+        choices::pay_cost_to_prevent_effect(self, player, cost_kind, message, source, api, can_pay)
     }
 
     fn choose_binary(
@@ -907,37 +913,37 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         question: &str,
         kind: BinaryChoiceKind,
         default_choice: Option<bool>,
-        card_name: Option<&str>,
+        source: Option<CardId>,
         api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
-        choices::choose_binary(self, player, question, kind, default_choice, card_name, api)
+        choices::choose_binary(self, player, question, kind, default_choice, source, api)
     }
 
     fn choose_phyrexian_pay_life(
         &mut self,
         player: PlayerId,
         color: &str,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> bool {
-        costs::choose_phyrexian_pay_life(self, player, color, card_name)
+        costs::choose_phyrexian_pay_life(self, player, color, source)
     }
 
     fn choose_kicker(
         &mut self,
         player: PlayerId,
         kicker_cost: &str,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> bool {
-        costs::choose_kicker(self, player, kicker_cost, card_name)
+        costs::choose_kicker(self, player, kicker_cost, source)
     }
 
     fn choose_buyback(
         &mut self,
         player: PlayerId,
         buyback_cost: &str,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> bool {
-        costs::choose_buyback(self, player, buyback_cost, card_name)
+        costs::choose_buyback(self, player, buyback_cost, source)
     }
 
     fn choose_multikicker(
@@ -945,9 +951,9 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         player: PlayerId,
         cost: &str,
         max_kicks: u32,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> u32 {
-        costs::choose_multikicker(self, player, cost, max_kicks, card_name)
+        costs::choose_multikicker(self, player, cost, max_kicks, source)
     }
 
     fn choose_replicate(
@@ -955,18 +961,18 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         player: PlayerId,
         cost: &str,
         max_replicates: u32,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> u32 {
-        costs::choose_replicate(self, player, cost, max_replicates, card_name)
+        costs::choose_replicate(self, player, cost, max_replicates, source)
     }
 
     fn choose_alternative_cost(
         &mut self,
         player: PlayerId,
         options: &[String],
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> usize {
-        costs::choose_alternative_cost(self, player, options, card_name)
+        costs::choose_alternative_cost(self, player, options, source)
     }
 
     fn choose_color(&mut self, player: PlayerId, valid_colors: &[String]) -> Option<String> {
@@ -1036,8 +1042,8 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         choices::choose_card_name(self, player, valid_names)
     }
 
-    fn choose_x_value(&mut self, player: PlayerId, max_x: u32, card_name: Option<&str>) -> u32 {
-        choices::choose_x_value(self, player, max_x, card_name)
+    fn choose_x_value(&mut self, player: PlayerId, max_x: u32, source: Option<CardId>) -> u32 {
+        choices::choose_x_value(self, player, max_x, source)
     }
 
     fn choose_number(&mut self, player: PlayerId, min: i32, max: i32) -> Option<i32> {
@@ -1049,45 +1055,45 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         player: PlayerId,
         choices: &[i32],
         message: &str,
-        card_name: Option<&str>,
+        source_card_id: Option<CardId>,
     ) -> Option<i32> {
-        choices::choose_number_from_list(self, player, choices, message, card_name)
+        choices::choose_number_from_list(self, player, choices, message, source_card_id)
     }
 
     fn choose_roll_to_ignore(
         &mut self,
         player: PlayerId,
         rolls: &[i32],
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> Option<i32> {
-        choices::choose_roll_to_ignore(self, player, rolls, card_name)
+        choices::choose_roll_to_ignore(self, player, rolls, source)
     }
 
     fn choose_roll_to_swap(
         &mut self,
         player: PlayerId,
         rolls: &[i32],
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> Option<i32> {
-        choices::choose_roll_to_swap(self, player, rolls, card_name)
+        choices::choose_roll_to_swap(self, player, rolls, source)
     }
 
     fn choose_dice_to_reroll(
         &mut self,
         player: PlayerId,
         rolls: &[i32],
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> Vec<i32> {
-        choices::choose_dice_to_reroll(self, player, rolls, card_name)
+        choices::choose_dice_to_reroll(self, player, rolls, source)
     }
 
     fn choose_roll_to_modify(
         &mut self,
         player: PlayerId,
         rolls: &[i32],
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> Option<i32> {
-        choices::choose_roll_to_modify(self, player, rolls, card_name)
+        choices::choose_roll_to_modify(self, player, rolls, source)
     }
 
     fn choose_roll_swap_value(
@@ -1096,9 +1102,9 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         current_result: i32,
         power: i32,
         toughness: i32,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> Option<RollSwapChoice> {
-        choices::choose_roll_swap_value(self, player, current_result, power, toughness, card_name)
+        choices::choose_roll_swap_value(self, player, current_result, power, toughness, source)
     }
 
     fn flip_coin_call(&mut self, player: PlayerId) -> bool {
@@ -1132,9 +1138,9 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         player: PlayerId,
         valid: &[CardId],
         max: usize,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> Vec<CardId> {
-        costs::choose_delve(self, player, valid, max, card_name)
+        costs::choose_delve(self, player, valid, max, source)
     }
 
     fn choose_improvise(
@@ -1142,9 +1148,9 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         player: PlayerId,
         untapped_artifacts: &[CardId],
         remaining_cost: &forge_foundation::ManaCost,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> Vec<CardId> {
-        costs::choose_improvise(self, player, untapped_artifacts, remaining_cost, card_name)
+        costs::choose_improvise(self, player, untapped_artifacts, remaining_cost, source)
     }
 
     fn choose_convoke(
@@ -1152,9 +1158,9 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         player: PlayerId,
         untapped_creatures: &[CardId],
         remaining_cost: &forge_foundation::ManaCost,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> Vec<CardId> {
-        costs::choose_convoke(self, player, untapped_creatures, remaining_cost, card_name)
+        costs::choose_convoke(self, player, untapped_creatures, remaining_cost, source)
     }
 
     fn pay_mana_cost(
@@ -1201,9 +1207,9 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
         player: PlayerId,
         available_colors: &[String],
         amount: usize,
-        card_name: Option<&str>,
+        source: Option<CardId>,
     ) -> Vec<String> {
-        costs::specify_mana_combo(self, player, available_colors, amount, card_name)
+        costs::specify_mana_combo(self, player, available_colors, amount, source)
     }
 
     fn exert_attackers(&mut self, player: PlayerId, attackers: &[CardId]) -> Vec<CardId> {
@@ -1273,9 +1279,12 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                     set_code,
                     player_id: player_id_str(player),
                 });
-                self.send_prompt(AgentPromptInner::StateUpdate {
-                    game_view: self.view(),
-                });
+                self.send_prompt(
+                    AgentPromptInner::StateUpdate {
+                        game_view: self.view(),
+                    },
+                    None,
+                );
             }
             GameNotification::TurnChanged {
                 active_player,
@@ -1300,14 +1309,20 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                     active_player_name,
                     turn_number,
                 });
-                self.send_prompt(AgentPromptInner::StateUpdate {
-                    game_view: self.view(),
-                });
+                self.send_prompt(
+                    AgentPromptInner::StateUpdate {
+                        game_view: self.view(),
+                    },
+                    None,
+                );
             }
             GameNotification::PhaseChanged { .. } | GameNotification::StateChanged => {
-                self.send_prompt(AgentPromptInner::StateUpdate {
-                    game_view: self.view(),
-                });
+                self.send_prompt(
+                    AgentPromptInner::StateUpdate {
+                        game_view: self.view(),
+                    },
+                    None,
+                );
             }
             GameNotification::PriorityChanged { .. } => {}
             GameNotification::FirstPlayerRoll {
@@ -1333,12 +1348,15 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                         }
                     })
                     .collect();
-                self.send_prompt(AgentPromptInner::FirstPlayerRoll {
-                    game_view: view,
-                    sides,
-                    rolls: entries,
-                    winner_player_id: player_id_str(winner),
-                });
+                self.send_prompt(
+                    AgentPromptInner::FirstPlayerRoll {
+                        game_view: view,
+                        sides,
+                        rolls: entries,
+                        winner_player_id: player_id_str(winner),
+                    },
+                    None,
+                );
                 // Caller is responsible for `await_display_ack` after the
                 // full broadcast — see `roll_for_first_player`.
             }
@@ -1355,15 +1373,18 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
                 // pass after broadcasting — that way all clients see the
                 // animation start at the same time and we wait once for
                 // the slowest player rather than serially per-agent.
-                self.send_prompt(AgentPromptInner::DiceRolled {
-                    game_view: self.view(),
-                    player_id: player_id_str(player),
-                    sides,
-                    natural_results,
-                    final_results,
-                    ignored_rolls,
-                    source_card_name,
-                });
+                self.send_prompt(
+                    AgentPromptInner::DiceRolled {
+                        game_view: self.view(),
+                        player_id: player_id_str(player),
+                        sides,
+                        natural_results,
+                        final_results,
+                        ignored_rolls,
+                        source_card_name,
+                    },
+                    None,
+                );
             }
             GameNotification::SnapshotCreated {
                 checkpoint_id,
@@ -1379,9 +1400,12 @@ impl<T: AgentTransport> PlayerAgent for PromptAgent<T> {
             }
             GameNotification::ManaPaymentResolved { .. } => {}
             GameNotification::ActivatedAbilityPaymentFailed { .. } => {
-                self.send_prompt(AgentPromptInner::StateUpdate {
-                    game_view: self.view(),
-                });
+                self.send_prompt(
+                    AgentPromptInner::StateUpdate {
+                        game_view: self.view(),
+                    },
+                    None,
+                );
             }
         }
     }

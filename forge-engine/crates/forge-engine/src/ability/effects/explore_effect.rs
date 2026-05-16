@@ -139,7 +139,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 None,
                 &msg,
                 &[],
-                Some(&explorer_name),
+                sa.source,
                 Some(crate::ability::api_type::ApiType::Explore),
             );
 

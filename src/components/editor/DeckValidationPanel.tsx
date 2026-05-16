@@ -2,7 +2,6 @@ import { useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { getFormat, validateDeckSections } from "@/lib/formats";
-import { serializeDeck } from "@/lib/decks";
 
 export function DeckValidationPanel() {
   const [collapsed, setCollapsed] = useState(false);
@@ -11,20 +10,9 @@ export function DeckValidationPanel() {
   const format = getFormat(currentDeck.format ?? "standard");
   if (!format) return null;
 
-  const allCards = [
-    ...currentDeck.cards,
-    ...currentDeck.sideboard,
-    ...(currentDeck.attractions ?? []),
-    ...(currentDeck.contraptions ?? []),
-    ...(currentDeck.schemes ?? []),
-    ...(currentDeck.planes ?? []),
-    ...(currentDeck.commanders ?? []),
-  ];
-
   const validation = validateDeckSections(
     {
-      deckList: serializeDeck(currentDeck),
-      availableCards: allCards,
+      deck: currentDeck,
       commanderName: currentDeck.commanders?.[0]?.name,
     },
     format,

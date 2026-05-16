@@ -123,7 +123,7 @@ pub fn offer_cast_or_alternative(
         Some("CastFromEffect"),
         &format!("{}: {} or {}?", card_name, cast_label, alt_label),
         &[cast_label.to_string(), alt_label.to_string()],
-        Some(&card_name),
+        Some(card_id),
         None,
     )
 }

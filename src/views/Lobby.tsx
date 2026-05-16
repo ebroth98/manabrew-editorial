@@ -12,9 +12,8 @@ import { useDeckStore } from "@/stores/useDeckStore";
 import { useGameStore } from "@/stores/useGameStore";
 import { getFormat } from "@/lib/formats";
 import { getPlatform } from "@/platform";
-import type { CardIdentity } from "@/types/server";
 import type { RoomMessagePayload } from "@/types/server";
-import type { GameView } from "@/types/manabrew";
+import type { Deck, GameView } from "@/types/manabrew";
 import {
   MANUAL_TABLETOP_RELAY_PROTOCOL,
   createRoomRelayEnvelope,
@@ -35,7 +34,7 @@ interface ManualTabletopLaunchPayload {
 
 interface SelectedAiDeck {
   name: string;
-  deckList: CardIdentity[];
+  deck: Deck;
   commanderName?: string;
 }
 
@@ -188,13 +187,9 @@ export default function Lobby() {
     }
   }
 
-  async function handleDeckSelection(
-    deckName: string,
-    deckList: CardIdentity[],
-    commanderName?: string,
-  ) {
+  async function handleDeckSelection(deckName: string, deck: Deck, commanderName?: string) {
     try {
-      await setDeckSelection(deckName, deckList, commanderName);
+      await setDeckSelection(deckName, deck, commanderName);
       toast.success(`Selected deck: ${deckName}`);
     } catch (error) {
       toast.error(`Failed to set deck: ${String(error)}`);
@@ -302,7 +297,7 @@ export default function Lobby() {
         roomId: room.room_id,
         username: botName,
         deckName: deck.name,
-        deckList: deck.deckList,
+        deck: deck.deck,
         commanderName: deck.commanderName ?? null,
       });
       setBotUsernames((prev) => [...prev, botName]);
@@ -468,8 +463,8 @@ export default function Lobby() {
         onOpenChange={setDeckDialogOpen}
         mode="lobby"
         forcedFormatId={currentRoom?.format ? currentRoom.format.toLowerCase() : "standard"}
-        onStart={(deckList, _formatId, commanderName, _playerCount, deckName) => {
-          void handleDeckSelection(deckName ?? "Selected Deck", deckList, commanderName);
+        onStart={(deck, _formatId, commanderName) => {
+          void handleDeckSelection(deck.name, deck, commanderName);
         }}
       />
       <CreateGameDialog
@@ -480,11 +475,11 @@ export default function Lobby() {
         }}
         mode="lobby"
         forcedFormatId={currentRoom?.format ? currentRoom.format.toLowerCase() : "standard"}
-        onStart={(deckList, _formatId, commanderName, _playerCount, deckName) => {
+        onStart={(deck, _formatId, commanderName) => {
           if (botDeckTarget) {
             void spawnBot(botDeckTarget, {
-              name: deckName ?? "Bot Deck",
-              deckList,
+              name: deck.name,
+              deck,
               commanderName,
             });
             setBotDeckTarget(null);

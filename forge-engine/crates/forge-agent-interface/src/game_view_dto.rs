@@ -26,12 +26,9 @@ pub struct GameViewDto {
     pub stack: Vec<StackObjectDto>,
     pub exile: Vec<CardDto>,
     pub graveyard: Vec<CardDto>,
-    pub opponent_graveyard: Vec<CardDto>,
-    pub opponent_exile: Vec<CardDto>,
     /// Cards in my command zone (typically just the commander).
     pub my_command_zone: Vec<CardDto>,
-    /// Cards in the opponent's command zone.
-    pub opponent_command_zone: Vec<CardDto>,
+    pub opponent_zones: HashMap<String, OpponentZonesDto>,
     pub game_over: bool,
     pub winner_id: Option<String>,
     /// The player who is the current monarch (issue #22).
@@ -55,16 +52,22 @@ impl GameViewDto {
             stack: vec![],
             exile: vec![],
             graveyard: vec![],
-            opponent_graveyard: vec![],
-            opponent_exile: vec![],
             my_command_zone: vec![],
-            opponent_command_zone: vec![],
+            opponent_zones: HashMap::new(),
             game_over: false,
             winner_id: None,
             monarch_id: None,
             initiative_holder_id: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct OpponentZonesDto {
+    pub graveyard: Vec<CardDto>,
+    pub exile: Vec<CardDto>,
+    pub command_zone: Vec<CardDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,16 +207,14 @@ pub struct StackObjectDto {
     pub name: String,
     pub text: String,
     /// MTG set code of the source card (e.g. "m14"). Sent so the frontend's
-    /// Scryfall image cache resolves the same printing the engine is using —
-    /// without it, a stack stub falls back to a name-only Scryfall lookup
-    /// which returns Scryfall's default printing and may not match the
-    /// player's deck choice.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub set_code: Option<String>,
+    /// Scryfall image cache resolves the same printing the engine is using.
+    /// Empty string for runtime-minted tokens whose print isn't pinned —
+    /// the UI's `asDeckCard` falls back to the deck pool / token archive on
+    /// name match in that case.
+    pub set_code: String,
     /// MTG collector number of the source card (e.g. "127"). Paired with
-    /// `set_code` so `set:xxx::cn:yyy` cache lookups hit on the frontend.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub card_number: Option<String>,
+    /// `set_code`. Empty string under the same conditions as `set_code`.
+    pub card_number: String,
     /// True when this stack entry is a permanent spell (creature, artifact,
     /// enchantment, planeswalker) that will resolve onto the battlefield.
     /// False for instants, sorceries, and activated/triggered abilities.
@@ -806,8 +807,12 @@ impl GameViewDto {
                 let name = source_card
                     .map(|c| c.card_name.clone())
                     .unwrap_or_else(|| "Ability".to_string());
-                let set_code = source_card.and_then(|c| c.set_code.clone());
-                let card_number = source_card.and_then(|c| c.card_number.clone());
+                let set_code = source_card
+                    .and_then(|c| c.set_code.clone())
+                    .unwrap_or_default();
+                let card_number = source_card
+                    .and_then(|c| c.card_number.clone())
+                    .unwrap_or_default();
                 StackObjectDto {
                     id: format!("stack-{}", entry.id),
                     source_id: entry
@@ -841,30 +846,41 @@ impl GameViewDto {
             .map(|&cid| card_to_dto(game, cid, playable_ids, choosable_ids, "exile"))
             .collect();
 
-        // Opponent graveyard and exile
-        let opponent_player = game
+        let opponent_zones: HashMap<String, OpponentZonesDto> = game
             .player_order
             .iter()
             .copied()
-            .find(|&pid| pid != human_player);
-        let opponent_graveyard: Vec<CardDto> = opponent_player
+            .filter(|&pid| pid != human_player)
             .map(|pid| {
-                game.cards_in_zone(ZoneType::Graveyard, pid)
+                let graveyard: Vec<CardDto> = game
+                    .cards_in_zone(ZoneType::Graveyard, pid)
                     .iter()
                     .map(|&cid| card_to_dto(game, cid, &[], &[], "graveyard"))
-                    .collect()
-            })
-            .unwrap_or_default();
-        let opponent_exile: Vec<CardDto> = opponent_player
-            .map(|pid| {
-                game.cards_in_zone(ZoneType::Exile, pid)
+                    .collect();
+                let exile: Vec<CardDto> = game
+                    .cards_in_zone(ZoneType::Exile, pid)
                     .iter()
                     .map(|&cid| card_to_dto(game, cid, &[], &[], "exile"))
-                    .collect()
+                    .collect();
+                let command_zone: Vec<CardDto> = game
+                    .cards_in_zone(ZoneType::Command, pid)
+                    .iter()
+                    .copied()
+                    .filter(|&cid| should_show_command_zone_card(game, cid))
+                    .map(|cid| card_to_dto(game, cid, &[], &[], "command"))
+                    .collect();
+                (
+                    player_id_str(pid),
+                    OpponentZonesDto {
+                        graveyard,
+                        exile,
+                        command_zone,
+                    },
+                )
             })
-            .unwrap_or_default();
+            .collect();
 
-        // Command zones
+        // Command zone — local player only (opponents' command zones are in opponent_zones).
         let my_command_zone: Vec<CardDto> = game
             .cards_in_zone(ZoneType::Command, human_player)
             .iter()
@@ -872,17 +888,6 @@ impl GameViewDto {
             .filter(|&cid| should_show_command_zone_card(game, cid))
             .map(|cid| card_to_dto(game, cid, playable_ids, choosable_ids, "command"))
             .collect();
-
-        let opponent_command_zone: Vec<CardDto> = opponent_player
-            .map(|pid| {
-                game.cards_in_zone(ZoneType::Command, pid)
-                    .iter()
-                    .copied()
-                    .filter(|&cid| should_show_command_zone_card(game, cid))
-                    .map(|cid| card_to_dto(game, cid, &[], &[], "command"))
-                    .collect()
-            })
-            .unwrap_or_default();
 
         GameViewDto {
             game_id: game_id.to_string(),
@@ -905,10 +910,8 @@ impl GameViewDto {
             stack,
             exile,
             graveyard,
-            opponent_graveyard,
-            opponent_exile,
             my_command_zone,
-            opponent_command_zone,
+            opponent_zones,
             game_over: game.game_over,
             winner_id: game.winner.map(player_id_str),
             monarch_id: game.monarch.map(player_id_str),

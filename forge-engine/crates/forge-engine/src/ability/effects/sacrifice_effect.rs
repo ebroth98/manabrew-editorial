@@ -144,7 +144,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 cost_kind.as_str()
             },
             &prompt,
-            Some(&source_name),
+            Some(source_id),
             sa.api,
             true,
         );
@@ -349,7 +349,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 None,
                 "Do you want to sacrifice?",
                 &[],
-                source_name,
+                sa.source,
                 Some(crate::ability::api_type::ApiType::Sacrifice),
             );
             if !accepted {

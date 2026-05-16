@@ -4,6 +4,8 @@
 // `forge-engine/crates/forge-agent-interface/`. The Rust crate is GPL by
 // virtue of being engine-coupled; these mirrors inherit the GPL.
 
+import type { ScryfallImageUris } from "@/types/scryfall";
+
 export type DeckFormatId =
   | "standard"
   | "pioneer"
@@ -17,24 +19,33 @@ export type DeckFormatId =
   | "draft"
   | "sealed";
 
-export interface Card {
+export interface CardIdentity {
   id: string; // UUID
   name: string;
   setCode: string;
   cardNumber: string;
+}
+
+export interface CardRulesSummary {
   color: string;
-  colorIdentity?: string[];
+  colorIdentity: string[];
   manaCost: string;
-  cmc?: number;
+  cmc: number;
   types: string[];
   subtypes: string[];
   supertypes: string[];
+  keywords?: string[];
   power?: string;
   toughness?: string;
+  text: string;
+  /** Scryfall's `layout` string. Drives sideways-frame rendering. */
+  layout?: string;
+  isDoubleFaced?: boolean;
+}
+
+export interface GameCard extends CardIdentity, CardRulesSummary {
   basePower?: number;
   baseToughness?: number;
-  text: string;
-  imageUrl?: string;
   isPlayable: boolean;
   isSelected: boolean;
   isChoosable: boolean;
@@ -48,15 +59,11 @@ export interface Card {
    *  when `isAttacking` is true. Drives the persistent painterly attack
    *  arrow shown throughout combat. */
   attackingPlayerId?: string;
-  keywords?: string[];
   counters?: Record<string, number>;
   damage?: number;
   summoningSick?: boolean;
   isToken?: boolean;
   isCopy?: boolean;
-  isDoubleFaced?: boolean;
-  /** Scryfall's `layout` string. Drives sideways-frame rendering. */
-  layout?: string;
   isTransformed?: boolean;
   isFaceDown?: boolean;
   foil?: boolean;
@@ -74,6 +81,11 @@ export interface Card {
   isWarpExiled?: boolean;
 }
 
+export interface DeckCard extends CardIdentity, CardRulesSummary {
+  uris: ScryfallImageUris;
+  foil?: boolean;
+}
+
 export interface DeckLabel {
   name: string;
   color?: string;
@@ -85,22 +97,22 @@ export interface Deck {
   description?: string;
   color?: string;
   format?: DeckFormatId;
-  cards: Card[];
-  sideboard: Card[];
+  cards: DeckCard[];
+  sideboard: DeckCard[];
   /** Supplementary Attraction deck, separate from the sideboard like Forge RegisteredPlayer.getAttractions(). */
-  attractions?: Card[];
+  attractions?: DeckCard[];
   /** Supplementary Contraption deck, separate from the sideboard like Forge RegisteredPlayer.getContraptions(). */
-  contraptions?: Card[];
+  contraptions?: DeckCard[];
   /** Supplementary Scheme deck, separate from the sideboard like Forge RegisteredPlayer.getSchemes(). */
-  schemes?: Card[];
+  schemes?: DeckCard[];
   /** Supplementary Planar deck, separate from the sideboard like Forge RegisteredPlayer.getPlanes(). */
-  planes?: Card[];
+  planes?: DeckCard[];
   /** Designated commander(s) (Commander format). Not included in cards[]. Supports Partner. */
-  commanders?: Card[];
+  commanders?: DeckCard[];
   /** Designated companion (any format). Not included in cards[] or sideboard[]. */
-  companion?: Card;
+  companion?: DeckCard;
   /** Cards being considered but not in the playable deck. */
-  maybeboard?: Card[];
+  maybeboard?: DeckCard[];
   /** When true, deck is a work-in-progress and not playable. */
   draft?: boolean;
   /** User-assigned labels for the deck (e.g. "Aggro", "Budget", "Competitive"). */
@@ -115,24 +127,8 @@ export interface Deck {
   coverCardFace?: 0 | 1;
   /** Saved stack-view section positions (section ID → {x, y} in pixels). */
   stackPositions?: Record<string, { x: number; y: number }>;
-  /** Cached token metadata for cards in this deck (persisted to avoid re-fetching). */
-  tokens?: DeckToken[];
-}
-
-/** Token metadata produced by a card in the deck. */
-export interface DeckToken {
-  /** Token name as it appears on Scryfall. */
-  name: string;
-  /** Type line, e.g. "Token Creature — Angel". */
-  typeLine: string;
-  /** Names of deck cards that produce this token. */
-  producers: string[];
-  /** User-selected printing set code (e.g. "thou"). */
-  setCode?: string;
-  /** Collector number within the set. */
-  cardNumber?: string;
-  /** Resolved image URL for the selected printing. */
-  imageUrl?: string;
+  /** Cached token cards referenced by cards in this deck. */
+  tokens?: DeckCard[];
 }
 
 export interface Player {
@@ -177,6 +173,12 @@ export interface PlayerInfo {
   flag: string; // Country code
 }
 
+export interface OpponentZones {
+  graveyard: GameCard[];
+  exile: GameCard[];
+  commandZone: GameCard[];
+}
+
 export interface GameView {
   gameId: string; // UUID
   turn: number;
@@ -185,17 +187,13 @@ export interface GameView {
   activePlayerId: string; // UUID
   priorityPlayerId: string; // UUID
   players: Player[];
-  myHand: Card[];
-  battlefield: Card[]; // Simplified for now, likely zoned
+  myHand: GameCard[];
+  battlefield: GameCard[];
   stack: StackObject[];
-  exile: Card[];
-  graveyard: Card[];
-  opponentGraveyard: Card[];
-  opponentExile: Card[];
-  /** Cards in the human player's command zone (typically just the commander). */
-  myCommandZone?: Card[];
-  /** Cards in the opponent's command zone. */
-  opponentCommandZone?: Card[];
+  exile: GameCard[];
+  graveyard: GameCard[];
+  myCommandZone?: GameCard[];
+  opponentZones: Record<string, OpponentZones>;
   gameOver?: boolean;
   winnerId?: string | null;
   /** The player who is the current monarch. */
@@ -216,12 +214,12 @@ export interface StackObject {
   controllerId: string;
   name: string;
   text: string;
-  /** Set code of the source card so the frontend's Scryfall image cache
-   *  can resolve the same printing the engine is using. Optional because
-   *  pure abilities (no source card) and legacy DTOs may omit it. */
-  setCode?: string;
+  /** Set code of the source card so the frontend can resolve the printing
+   *  the engine is using. Empty string for runtime-minted tokens whose
+   *  print isn't pinned. */
+  setCode: string;
   /** Collector number paired with `setCode`. */
-  cardNumber?: string;
+  cardNumber: string;
   /** True for permanent spells (creature/artifact/enchantment/planeswalker). */
   isPermanentSpell: boolean;
   /** True while the spell is announced but casting has not completed. */

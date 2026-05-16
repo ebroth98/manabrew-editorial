@@ -290,9 +290,9 @@ export function hasActiveCardOverride(o: DevCardOverrides): boolean {
   );
 }
 
-import type { Card as CardDto } from "@/types/manabrew";
+import type { GameCard } from "@/types/manabrew";
 
-export function applyCardOverrides(card: CardDto, o: DevCardOverrides): CardDto {
+export function applyCardOverrides(card: GameCard, o: DevCardOverrides): GameCard {
   if (!hasActiveCardOverride(o)) return card;
   const counters = { ...(card.counters ?? {}) };
   if (o.p1p1 != null) counters.P1P1 = o.p1p1;

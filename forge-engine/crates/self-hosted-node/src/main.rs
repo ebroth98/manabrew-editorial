@@ -9,13 +9,14 @@ mod engine_backend;
 
 use config::{workspace_root, Config, DeckSelection};
 use engine_backend::{java_backend, rust_backend, EngineBackendKind};
+use forge_agent_interface::deck_dto::Deck;
 use forge_agent_interface::ids_codec::{parse_player_slot, player_slot};
 use forge_agent_interface::java_prompt_normalizer::translate_java_action_value;
 use forge_agent_interface::prompt::{AgentPrompt, PlayerAction};
 use forge_agent_interface::simple_ai::choose_simple_ai_action;
 use forge_engine_core::game::TypeRegistry;
 use forge_server::protocol::{
-    CardIdentity, ClientMessage, PlayerDeckInfo, RoomInfo, RoomStatus, ServerMessage,
+    ClientMessage, PlayerDeckInfo, RoomInfo, RoomStatus, ServerMessage,
 };
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
@@ -75,7 +76,7 @@ struct SpawnBotPayload {
 #[serde(rename_all = "camelCase")]
 struct SpawnBotDeckPayload {
     deck_name: String,
-    deck_list: Vec<CardIdentity>,
+    deck: Deck,
     #[serde(default)]
     commander_name: Option<String>,
 }
@@ -329,7 +330,7 @@ async fn seat_client(
     client
         .send(&ClientMessage::SetDeckSelection {
             deck_name: deck.name.clone(),
-            deck_list: deck.cards.clone(),
+            deck: deck.deck.clone(),
             commander_name: deck.commander_name.clone(),
         })
         .await?;
@@ -339,7 +340,7 @@ async fn seat_client(
     info!(
         username = %client.username,
         deck = %deck.name,
-        cards = deck.cards.len(),
+        cards = deck.deck.cards.len(),
         "selected deck and marked ready"
     );
     Ok(())
@@ -714,13 +715,13 @@ fn config_for_spawn_bot(config: &Config, state: &Value) -> Config {
     if let Some(deck) = deck {
         info!(
             deck = %deck.deck_name,
-            cards = deck.deck_list.len(),
+            cards = deck.deck.cards.len(),
             commander = ?deck.commander_name,
             "using requested bot deck"
         );
         config.bot_deck = DeckSelection {
             name: deck.deck_name,
-            cards: deck.deck_list,
+            deck: deck.deck,
             commander_name: deck.commander_name,
         };
     }
@@ -839,7 +840,7 @@ fn maybe_start_hosted_engine(
             warn!(username, "missing deck for player; not starting engine");
             return;
         };
-        ordered_decks.push(deck.deck_list);
+        ordered_decks.push(deck.deck);
         commander_names.push(deck.commander_name);
     }
 

@@ -7,9 +7,8 @@ import { FormatBadge } from "@/components/game/FormatBadge";
 import { FormatPicker } from "./FormatPicker";
 import { DeckSelectionCard } from "./DeckSelectionCard";
 import { cn } from "@/lib/utils";
-import { getDeckFingerprint, serializeDeck } from "@/lib/decks";
+import { getDeckFingerprint } from "@/lib/decks";
 import { useDeckStore } from "@/stores/useDeckStore";
-import type { CardIdentity } from "@/types/server";
 import type { Deck } from "@/types/manabrew";
 import { ArrowLeft, Hand, Search, Shuffle, Swords, User, Bot, X } from "lucide-react";
 import { resolveCoverCard } from "../deck/deckCover.utils";
@@ -19,8 +18,7 @@ interface SelectedDeck {
   name: string;
   desc?: string;
   color?: string;
-  deckList: CardIdentity[];
-  sourceDeck?: Deck;
+  sourceDeck: Deck;
   formatId?: string;
   commanderName?: string;
   coverCardName?: string;
@@ -28,17 +26,12 @@ interface SelectedDeck {
 
 interface DeckVsSelectorProps {
   onStart: (
-    playerDeck: CardIdentity[],
-    opponentDeck: CardIdentity[],
+    playerDeck: Deck,
+    opponentDeck: Deck,
     formatId?: string,
     commanderName?: string,
   ) => void;
-  onStartTabletop?: (
-    deckList: CardIdentity[],
-    formatId?: string,
-    commanderName?: string,
-    sourceDeck?: Deck,
-  ) => void;
+  onStartTabletop?: (deck: Deck, formatId?: string, commanderName?: string) => void;
 }
 
 type PickingSide = "player" | "opponent";
@@ -93,7 +86,6 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
     return {
       id,
       name: deck.name,
-      deckList: serializeDeck(deck),
       sourceDeck: deck,
       formatId: deck.format ?? "standard",
       commanderName: deck.commanders?.[0]?.name,
@@ -133,7 +125,6 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
       name: deck.name,
       desc: deck.description,
       color: deck.color,
-      deckList: serializeDeck(deck),
       sourceDeck: deck,
       formatId: selectedFormat,
       commanderName: deck.commanders?.[0]?.name,
@@ -155,7 +146,6 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
       name: random.name,
       desc: random.description,
       color: random.color,
-      deckList: serializeDeck(random),
       sourceDeck: random,
       formatId: selectedFormat,
       commanderName: random.commanders?.[0]?.name,
@@ -166,25 +156,21 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
   function handleFight() {
     if (!playerDeck || !opponentDeck) return;
     onStart(
-      playerDeck.deckList,
-      opponentDeck.deckList,
+      playerDeck.sourceDeck,
+      opponentDeck.sourceDeck,
       playerDeck.formatId,
       playerDeck.commanderName,
     );
   }
 
   function handleTabletop() {
-    if (!playerDeck || playerDeck.deckList.length === 0) return;
-    onStartTabletop?.(
-      playerDeck.deckList,
-      playerDeck.formatId,
-      playerDeck.commanderName,
-      playerDeck.sourceDeck,
-    );
+    if (!playerDeck || playerDeck.sourceDeck.cards.length === 0) return;
+    onStartTabletop?.(playerDeck.sourceDeck, playerDeck.formatId, playerDeck.commanderName);
   }
 
   const isReady = !!playerDeck && !!opponentDeck;
-  const canStartTabletop = !!onStartTabletop && !!playerDeck && playerDeck.deckList.length > 0;
+  const canStartTabletop =
+    !!onStartTabletop && !!playerDeck && playerDeck.sourceDeck.cards.length > 0;
 
   if (stage === "format" || selectedFormat === null) {
     return (
@@ -259,7 +245,6 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
                     id={entry.id}
                     name={entry.name}
                     color={entry.color}
-                    deckList={entry.deckList}
                     cards={displayCards}
                     cover={cover}
                     labels={entry.sourceDeck?.labels}
@@ -293,7 +278,6 @@ export function DeckVsSelector({ onStart, onStartTabletop }: DeckVsSelectorProps
                   name={deck.name}
                   desc={deck.description}
                   color={deck.color}
-                  deckList={serializeDeck(deck)}
                   cards={deck.cards}
                   cover={resolveCoverCard(deck)}
                   coverFallbackClassName="absolute inset-0 bg-gradient-to-br from-muted-foreground/10 via-muted/40 to-muted-foreground/20"

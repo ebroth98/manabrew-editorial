@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use crate::error::ServerError;
-use crate::protocol::{CardIdentity, GameFormat, PlayerDeckInfo, RoomInfo, RoomStatus};
+use crate::protocol::{GameFormat, PlayerDeckInfo, RoomInfo, RoomStatus};
+use forge_agent_interface::deck_dto::Deck;
 use crate::room::Room;
 use crate::state::ServerState;
 
@@ -195,7 +196,7 @@ pub fn set_deck_selection_sync(
     state: &Arc<ServerState>,
     player_id: &str,
     deck_name: String,
-    deck_list: Vec<CardIdentity>,
+    deck: Deck,
     commander_name: Option<String>,
 ) -> Result<String, ServerError> {
     let room_id = {
@@ -216,7 +217,7 @@ pub fn set_deck_selection_sync(
             return Err(ServerError::GameAlreadyStarted);
         }
 
-        room.set_deck_selection(player_id, deck_name, deck_list, commander_name)
+        room.set_deck_selection(player_id, deck_name, deck, commander_name)
             .map_err(|_| ServerError::NotInRoom)?;
     }
 
@@ -256,7 +257,7 @@ pub fn start_game_sync(
         if room
             .players
             .iter()
-            .any(|p| p.selected_deck_name.is_none() || p.selected_deck_list.is_empty())
+            .any(|p| p.selected_deck_name.is_none() || p.selected_deck.is_none())
         {
             return Err(ServerError::DeckNotSelected);
         }

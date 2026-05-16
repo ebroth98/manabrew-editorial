@@ -1,14 +1,14 @@
 import { Modal } from "@/components/game/modals/Modal";
-import { useCard } from "@/stores/useScryfallStore";
 import { useTheme } from "@/hooks/useTheme";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL } from "@/components/game/game.styles";
 import { DieFaceStatic } from "../DieFaceStatic";
+import type { DeckCard } from "@/types/manabrew";
 
 interface ChooseRollToModifyModalProps {
   rolls: number[];
   sides?: number;
-  sourceCardName?: string;
+  sourceCard?: DeckCard;
   onConfirm: (roll: number | null) => void;
 }
 
@@ -19,11 +19,9 @@ interface ChooseRollToModifyModalProps {
 export function ChooseRollToModifyModal({
   rolls,
   sides = 6,
-  sourceCardName,
+  sourceCard,
   onConfirm,
 }: ChooseRollToModifyModalProps) {
-  const cardData = useCard({ name: sourceCardName ?? "" });
-  const imageUrl = cardData?.uris.normal;
   const accentColor = useTheme().gameTheme.playerColors.self;
 
   return (
@@ -31,20 +29,12 @@ export function ChooseRollToModifyModal({
       <div role="dialog" aria-modal="true" aria-labelledby="choose-roll-modify-title">
         <Modal.Header>
           <div className="flex items-center gap-3">
-            {imageUrl && (
-              <CardImageThumbnail
-                imageUrl={imageUrl}
-                cardName={sourceCardName ?? "Source card"}
-                className={MODAL_CARD_THUMBNAIL}
-              />
-            )}
+            {sourceCard && <CardImageThumbnail card={sourceCard} className={MODAL_CARD_THUMBNAIL} />}
             <div>
               <h2 id="choose-roll-modify-title" className="font-semibold text-base">
                 Choose a roll to modify
               </h2>
-              {sourceCardName && (
-                <p className="text-xs text-muted-foreground font-medium">{sourceCardName}</p>
-              )}
+              <p className="text-xs text-muted-foreground font-medium">{sourceCard?.name}</p>
             </div>
           </div>
         </Modal.Header>

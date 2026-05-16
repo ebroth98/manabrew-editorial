@@ -257,7 +257,7 @@ impl GameLoop {
                         active,
                         "Exert",
                         &format!("Pay Exert cost for {}?", card_name),
-                        Some(&card_name),
+                        Some(attacker),
                         None,
                     );
                     if !confirmed {
@@ -1098,7 +1098,7 @@ impl GameLoop {
             if agents[controller.index()].choose_optional_trigger(
                 controller,
                 &desc,
-                Some(&attacker.card_name),
+                Some(attacker_id),
                 None,
             ) {
                 choices.insert(attacker_id);

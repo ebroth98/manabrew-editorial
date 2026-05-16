@@ -1,4 +1,4 @@
-import type { Card as CardType } from "@/types/manabrew";
+import type { GameCard } from "@/types/manabrew";
 import { cn } from "@/lib/utils";
 import { memo, useState, useMemo, type CSSProperties } from "react";
 import { CounterDisplay } from "@/components/game/CounterBadge";
@@ -6,16 +6,13 @@ import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { KeywordChips } from "@/components/game/CardKeywords";
 import { withAlpha } from "@/themes/gameTheme";
 import { useTheme } from "@/hooks/useTheme";
-import {
-  isCreature,
-  isLethalDamage,
-  upgradeScryfallUrl,
-  type ScryfallImageSize,
-} from "./game.utils";
+import { isCreature, isLethalDamage, type ScryfallImageSize } from "./game.utils";
 import { isHorizontalCard } from "@/lib/cardLayout";
 import { CARD_BADGES } from "./game.constants";
 import { CARD_BANNER_CONTAINER, CARD_BANNER_TEXT } from "./game.styles";
-import { useCard } from "@/stores/useScryfallStore";
+import { useGameStore } from "@/stores/useGameStore";
+import { asDeckCard } from "@/lib/decks";
+import { ScryfallImg } from "@/components/ScryfallImg";
 
 /** Special token types that get a more descriptive badge label. */
 const TOKEN_LABELS: Record<string, string> = {
@@ -41,7 +38,7 @@ function CardBadge({ label, style }: { label: string; style: string }) {
 }
 
 interface CardProps {
-  card: CardType;
+  card: GameCard;
   className?: string;
   style?: CSSProperties;
   isTapped?: boolean;
@@ -58,33 +55,14 @@ function CardComponent({
   style,
   isTapped,
   onClick,
-  isHovered,
-  onFlip,
-  showBackFace,
-  resolution = "normal",
+  resolution = "border_crop",
 }: CardProps) {
   const [hasError, setHasError] = useState(false);
-  // Fallback so the flip button works when no parent drives showBackFace.
-  const [internalShowBack, setInternalShowBack] = useState(false);
-  const effectiveShowBack = showBackFace ?? internalShowBack;
-  const handleFlip = onFlip ?? (() => setInternalShowBack((v) => !v));
-  const cardD = useCard(card);
-  const frontFace = cardD?.info?.card_faces?.[0];
-  const backFace = cardD?.info?.card_faces?.[1];
-  const doubleFacedData = {
-    frontImageUrl: frontFace?.image_uris?.[resolution] ?? frontFace?.image_uris?.normal ?? null,
-    backImageUrl: backFace?.image_uris?.[resolution] ?? backFace?.image_uris?.normal ?? null,
-    backName: backFace?.name,
-  };
+  const deck = useGameStore((s) => s.gameDecks[card.ownerId]);
+  const deckCard = asDeckCard(deck, card);
 
-  const imageUrl = upgradeScryfallUrl(
-    effectiveShowBack && doubleFacedData?.backImageUrl
-      ? doubleFacedData.backImageUrl
-      : card.imageUrl || cardD?.uris[resolution],
-    resolution,
-  );
-  const displayName =
-    effectiveShowBack && doubleFacedData?.backName ? doubleFacedData.backName : card.name;
+  const imageUrl = deckCard.uris[resolution];
+  const displayName = card.name;
   const themeColors = useTheme().gameTheme;
 
   const creature = isCreature(card);
@@ -114,15 +92,10 @@ function CardComponent({
     };
   }, [lethal, card.basePower, card.power, card.toughness, card.baseToughness, themeColors]);
 
-  // Back face orientation is driven by its own type line, not the parent layout.
-  const visibleFace = effectiveShowBack ? backFace : frontFace;
-  const horizontal = visibleFace
-    ? isHorizontalCard({ typeLine: visibleFace.type_line })
-    : isHorizontalCard({
-        layout: card.layout ?? cardD?.info?.layout,
-        types: card.types,
-        typeLine: cardD?.info?.type_line,
-      });
+  const horizontal = isHorizontalCard({
+    layout: card.layout,
+    types: card.types,
+  });
 
   return (
     <div
@@ -147,7 +120,7 @@ function CardComponent({
       {imageUrl && !hasError ? (
         <>
           {horizontal ? (
-            <img
+            <ScryfallImg
               src={imageUrl}
               alt={displayName}
               title=""
@@ -156,7 +129,7 @@ function CardComponent({
               style={{ imageRendering: "auto" }}
             />
           ) : (
-            <img
+            <ScryfallImg
               src={imageUrl}
               alt={displayName}
               title=""
@@ -287,44 +260,6 @@ function CardComponent({
           </div>
         </div>
       )}
-
-      {/* Flip button for double-faced cards - appears on hover */}
-      {(card.isDoubleFaced || !!doubleFacedData.backImageUrl) && (
-        <div
-          className={cn(
-            "absolute left-1/2 -translate-x-1/2 bottom-0 z-50",
-            isHovered ? "flex" : "hidden group-hover:flex",
-          )}
-        >
-          <button
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleFlip();
-            }}
-            className="bg-black/90 hover:bg-black text-white px-2.5 py-1 rounded shadow-lg border border-white/20 transition-colors pointer-events-auto flex items-center gap-1.5 whitespace-nowrap text-xs backdrop-blur-sm"
-            title={effectiveShowBack ? "Show Front Face" : "Show Back Face"}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-              <path d="M16 3h3a2 2 0 0 1 2 2v3" />
-              <path d="M12 20v-18" />
-              <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
-              <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-            </svg>
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -389,7 +324,6 @@ export const Card = memo(CardComponent, (prev, next) => {
     pc.isDoubleFaced !== nc.isDoubleFaced ||
     pc.isPlayable !== nc.isPlayable ||
     pc.isChoosable !== nc.isChoosable ||
-    pc.imageUrl !== nc.imageUrl ||
     pc.color !== nc.color ||
     pc.setCode !== nc.setCode ||
     pc.cardNumber !== nc.cardNumber ||

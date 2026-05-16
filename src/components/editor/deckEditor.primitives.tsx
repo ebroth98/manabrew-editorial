@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FoilBadge } from "@/components/limited/FoilBadge";
+import { ScryfallImg } from "@/components/ScryfallImg";
 import type { OverlayAction } from "./deckEditor.utils";
-import type { Card } from "@/types/manabrew";
-import { useCard } from "@/stores/useScryfallStore";
+import type { DeckCard } from "@/types/manabrew";
 export type { OverlayAction } from "./deckEditor.utils";
 
 // ─── Card Count Badge ────────────────────────────────────────────────────────
@@ -31,35 +31,11 @@ export function CardCountBadge({ count, className }: { count: number; className?
 
 // ─── Card Thumbnail (image or fallback) ──────────────────────────────────────
 
-export function CardThumbnail({
-  card,
-  fallbackClassName,
-  fallbackStyle,
-}: {
-  card: Card;
-  fallbackClassName?: string;
-  fallbackStyle?: React.CSSProperties;
-}) {
-  const cardData = useCard(card);
-  if (!cardData) {
-    return (
-      <div
-        className={cn(
-          "w-full aspect-[2.5/3.5] rounded-lg border border-border bg-muted flex items-center justify-center p-2",
-          fallbackClassName,
-        )}
-        style={fallbackStyle}
-      >
-        <span className="text-[9px] text-muted-foreground leading-tight text-center">
-          {card.name}
-        </span>
-      </div>
-    );
-  }
+export function CardThumbnail({ card }: { card: DeckCard }) {
   return (
     <div className={cn("relative w-full", card.foil && "draft-tile-foil")}>
-      <img
-        src={cardData.uris.normal}
+      <ScryfallImg
+        src={card.uris.normal}
         alt={card.name}
         className={cn("w-full rounded-lg border border-border/50 shadow-sm")}
         draggable={false}

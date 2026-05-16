@@ -409,7 +409,7 @@ impl CombatState {
                             game.card(attacker_id).card_name
                         ),
                         &[],
-                        Some(&game.card(attacker_id).card_name),
+                        Some(attacker_id),
                         None,
                     )
                 {
@@ -503,7 +503,7 @@ impl CombatState {
                             game.card(attacker_id).card_name
                         ),
                         &[],
-                        Some(&game.card(attacker_id).card_name),
+                        Some(attacker_id),
                         None,
                     )
                 {
@@ -653,7 +653,7 @@ impl CombatState {
                             game.card(attacker_id).card_name
                         ),
                         &[],
-                        Some(&game.card(attacker_id).card_name),
+                        Some(attacker_id),
                         None,
                     );
                 if use_divide_as_choose {

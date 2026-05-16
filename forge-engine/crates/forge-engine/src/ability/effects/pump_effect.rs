@@ -75,7 +75,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             Some("OptionalPump"),
             prompt,
             &[],
-            card_name.as_deref(),
+            sa.source,
             sa.api,
         ) {
             return;
@@ -120,14 +120,8 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             .collect();
         if !options.is_empty() {
             let activator = sa.activating_player;
-            let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
-            let picks = ctx.agents[activator.index()].choose_mode(
-                activator,
-                &options,
-                1,
-                1,
-                card_name.as_deref(),
-            );
+            let picks =
+                ctx.agents[activator.index()].choose_mode(activator, &options, 1, 1, sa.source);
             if let Some(&idx) = picks.first() {
                 if let Some(kw) = options.get(idx) {
                     keywords.push(kw.clone());

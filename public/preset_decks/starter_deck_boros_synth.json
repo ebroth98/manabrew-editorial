@@ -14,14 +14,26 @@
       "cardNumber": "308",
       "manaCost": "",
       "colors": [],
-      "colorIdentity": ["R", "W"],
+      "colorIdentity": [
+        "R",
+        "W"
+      ],
       "cmc": 0,
-      "types": ["Land"],
+      "types": [
+        "Land"
+      ],
       "subtypes": [],
       "supertypes": [],
       "text": "This land enters tapped.\nWhen this land enters, you gain 1 life.\n{T}: Add {R} or {W}.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/7/5/75f5875e-487f-4586-95f3-3627050a6744.jpg?1572482730",
-      "layout": "normal"
+      "layout": "normal",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/7/5/75f5875e-487f-4586-95f3-3627050a6744.jpg?1572482730",
+        "normal": "https://cards.scryfall.io/normal/front/7/5/75f5875e-487f-4586-95f3-3627050a6744.jpg?1572482730",
+        "large": "https://cards.scryfall.io/large/front/7/5/75f5875e-487f-4586-95f3-3627050a6744.jpg?1572482730",
+        "png": "https://cards.scryfall.io/png/front/7/5/75f5875e-487f-4586-95f3-3627050a6744.png?1572482730",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/7/5/75f5875e-487f-4586-95f3-3627050a6744.jpg?1572482730",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/7/5/75f5875e-487f-4586-95f3-3627050a6744.jpg?1572482730"
+      }
     },
     {
       "name": "Boros Garrison",
@@ -30,14 +42,26 @@
       "cardNumber": "239",
       "manaCost": "",
       "colors": [],
-      "colorIdentity": ["R", "W"],
+      "colorIdentity": [
+        "R",
+        "W"
+      ],
       "cmc": 0,
-      "types": ["Land"],
+      "types": [
+        "Land"
+      ],
       "subtypes": [],
       "supertypes": [],
       "text": "This land enters tapped.\nWhen this land enters, return a land you control to its owner's hand.\n{T}: Add {R}{W}.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/a/e/ae4966ae-3d40-4227-bd4b-54a6c67230b6.jpg?1562275517",
-      "layout": "normal"
+      "layout": "normal",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/a/e/ae4966ae-3d40-4227-bd4b-54a6c67230b6.jpg?1562275517",
+        "normal": "https://cards.scryfall.io/normal/front/a/e/ae4966ae-3d40-4227-bd4b-54a6c67230b6.jpg?1562275517",
+        "large": "https://cards.scryfall.io/large/front/a/e/ae4966ae-3d40-4227-bd4b-54a6c67230b6.jpg?1562275517",
+        "png": "https://cards.scryfall.io/png/front/a/e/ae4966ae-3d40-4227-bd4b-54a6c67230b6.png?1562275517",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/a/e/ae4966ae-3d40-4227-bd4b-54a6c67230b6.jpg?1562275517",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/a/e/ae4966ae-3d40-4227-bd4b-54a6c67230b6.jpg?1562275517"
+      }
     },
     {
       "name": "Prismatic Strands",
@@ -45,15 +69,28 @@
       "set": "jud",
       "cardNumber": "18",
       "manaCost": "{2}{W}",
-      "colors": ["W"],
-      "colorIdentity": ["W"],
+      "colors": [
+        "W"
+      ],
+      "colorIdentity": [
+        "W"
+      ],
       "cmc": 3,
-      "types": ["Instant"],
+      "types": [
+        "Instant"
+      ],
       "subtypes": [],
       "supertypes": [],
       "text": "Prevent all damage that sources of the color of your choice would deal this turn.\nFlashback—Tap an untapped white creature you control. (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
-      "imageUrl": "https://cards.scryfall.io/normal/front/3/4/3454ef42-2e0b-4ce4-945f-e4ec3e83c39d.jpg?1562629309",
-      "layout": "normal"
+      "layout": "normal",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/3/4/3454ef42-2e0b-4ce4-945f-e4ec3e83c39d.jpg?1562629309",
+        "normal": "https://cards.scryfall.io/normal/front/3/4/3454ef42-2e0b-4ce4-945f-e4ec3e83c39d.jpg?1562629309",
+        "large": "https://cards.scryfall.io/large/front/3/4/3454ef42-2e0b-4ce4-945f-e4ec3e83c39d.jpg?1562629309",
+        "png": "https://cards.scryfall.io/png/front/3/4/3454ef42-2e0b-4ce4-945f-e4ec3e83c39d.png?1562629309",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/3/4/3454ef42-2e0b-4ce4-945f-e4ec3e83c39d.jpg?1562629309",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/3/4/3454ef42-2e0b-4ce4-945f-e4ec3e83c39d.jpg?1562629309"
+      }
     },
     {
       "name": "Rustvale Bridge",
@@ -62,14 +99,27 @@
       "cardNumber": "253",
       "manaCost": "",
       "colors": [],
-      "colorIdentity": ["R", "W"],
+      "colorIdentity": [
+        "R",
+        "W"
+      ],
       "cmc": 0,
-      "types": ["Artifact", "Land"],
+      "types": [
+        "Artifact",
+        "Land"
+      ],
       "subtypes": [],
       "supertypes": [],
       "text": "This land enters tapped.\nIndestructible\n{T}: Add {R} or {W}.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/2/2/2207467a-b82a-47ae-8867-15a859328fe9.jpg?1659047940",
-      "layout": "normal"
+      "layout": "normal",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/2/2/2207467a-b82a-47ae-8867-15a859328fe9.jpg?1659047940",
+        "normal": "https://cards.scryfall.io/normal/front/2/2/2207467a-b82a-47ae-8867-15a859328fe9.jpg?1659047940",
+        "large": "https://cards.scryfall.io/large/front/2/2/2207467a-b82a-47ae-8867-15a859328fe9.jpg?1659047940",
+        "png": "https://cards.scryfall.io/png/front/2/2/2207467a-b82a-47ae-8867-15a859328fe9.png?1659047940",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/2/2/2207467a-b82a-47ae-8867-15a859328fe9.jpg?1659047940",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/2/2/2207467a-b82a-47ae-8867-15a859328fe9.jpg?1659047940"
+      }
     },
     {
       "name": "Dawnbringer Cleric",
@@ -77,17 +127,33 @@
       "set": "afr",
       "cardNumber": "9",
       "manaCost": "{1}{W}",
-      "colors": ["W"],
-      "colorIdentity": ["W"],
+      "colors": [
+        "W"
+      ],
+      "colorIdentity": [
+        "W"
+      ],
       "cmc": 2,
-      "types": ["Creature"],
-      "subtypes": ["Human", "Cleric"],
+      "types": [
+        "Creature"
+      ],
+      "subtypes": [
+        "Human",
+        "Cleric"
+      ],
       "supertypes": [],
       "text": "When this creature enters, choose one —\n• Cure Wounds — You gain 2 life.\n• Dispel Magic — Destroy target enchantment.\n• Gentle Repose — Exile target card from a graveyard.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/c/0/c00856f7-fef5-4ba5-9079-59a81d452c82.jpg?1627701517",
       "layout": "normal",
       "power": "1",
-      "toughness": "3"
+      "toughness": "3",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/c/0/c00856f7-fef5-4ba5-9079-59a81d452c82.jpg?1627701517",
+        "normal": "https://cards.scryfall.io/normal/front/c/0/c00856f7-fef5-4ba5-9079-59a81d452c82.jpg?1627701517",
+        "large": "https://cards.scryfall.io/large/front/c/0/c00856f7-fef5-4ba5-9079-59a81d452c82.jpg?1627701517",
+        "png": "https://cards.scryfall.io/png/front/c/0/c00856f7-fef5-4ba5-9079-59a81d452c82.png?1627701517",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/c/0/c00856f7-fef5-4ba5-9079-59a81d452c82.jpg?1627701517",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/c/0/c00856f7-fef5-4ba5-9079-59a81d452c82.jpg?1627701517"
+      }
     },
     {
       "name": "Thraben Charm",
@@ -95,21 +161,42 @@
       "set": "mh3",
       "cardNumber": "45",
       "manaCost": "{1}{W}",
-      "colors": ["W"],
-      "colorIdentity": ["W"],
+      "colors": [
+        "W"
+      ],
+      "colorIdentity": [
+        "W"
+      ],
       "cmc": 2,
-      "types": ["Instant"],
+      "types": [
+        "Instant"
+      ],
       "subtypes": [],
       "supertypes": [],
       "text": "Choose one —\n• Thraben Charm deals damage equal to twice the number of creatures you control to target creature.\n• Destroy target enchantment.\n• Exile any number of target players' graveyards.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/d/d/dd28a646-f38f-4cdf-948c-969cd979e5e6.jpg?1717011565",
-      "layout": "normal"
+      "layout": "normal",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/d/d/dd28a646-f38f-4cdf-948c-969cd979e5e6.jpg?1717011565",
+        "normal": "https://cards.scryfall.io/normal/front/d/d/dd28a646-f38f-4cdf-948c-969cd979e5e6.jpg?1717011565",
+        "large": "https://cards.scryfall.io/large/front/d/d/dd28a646-f38f-4cdf-948c-969cd979e5e6.jpg?1717011565",
+        "png": "https://cards.scryfall.io/png/front/d/d/dd28a646-f38f-4cdf-948c-969cd979e5e6.png?1717011565",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/d/d/dd28a646-f38f-4cdf-948c-969cd979e5e6.jpg?1717011565",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/d/d/dd28a646-f38f-4cdf-948c-969cd979e5e6.jpg?1717011565"
+      }
     },
     {
       "name": "Galvanic Blast",
       "count": 4,
       "set": "plst",
-      "cardNumber": "DDU-45"
+      "cardNumber": "DDU-45",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/c/f/cf528b2b-fb72-4751-9a1c-ad3f9015a1a1.jpg?1573511749",
+        "normal": "https://cards.scryfall.io/normal/front/c/f/cf528b2b-fb72-4751-9a1c-ad3f9015a1a1.jpg?1573511749",
+        "large": "https://cards.scryfall.io/large/front/c/f/cf528b2b-fb72-4751-9a1c-ad3f9015a1a1.jpg?1573511749",
+        "png": "https://cards.scryfall.io/png/front/c/f/cf528b2b-fb72-4751-9a1c-ad3f9015a1a1.png?1573511749",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/c/f/cf528b2b-fb72-4751-9a1c-ad3f9015a1a1.jpg?1573511749",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/c/f/cf528b2b-fb72-4751-9a1c-ad3f9015a1a1.jpg?1573511749"
+      }
     },
     {
       "name": "Kor Skyfisher",
@@ -117,17 +204,33 @@
       "set": "mm3",
       "cardNumber": "11",
       "manaCost": "{1}{W}",
-      "colors": ["W"],
-      "colorIdentity": ["W"],
+      "colors": [
+        "W"
+      ],
+      "colorIdentity": [
+        "W"
+      ],
       "cmc": 2,
-      "types": ["Creature"],
-      "subtypes": ["Kor", "Soldier"],
+      "types": [
+        "Creature"
+      ],
+      "subtypes": [
+        "Kor",
+        "Soldier"
+      ],
       "supertypes": [],
       "text": "Flying\nWhen this creature enters, return a permanent you control to its owner's hand.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/d/7/d7501662-1216-4e08-bd2b-e0a459057942.jpg?1593812836",
       "layout": "normal",
       "power": "2",
-      "toughness": "3"
+      "toughness": "3",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/d/7/d7501662-1216-4e08-bd2b-e0a459057942.jpg?1593812836",
+        "normal": "https://cards.scryfall.io/normal/front/d/7/d7501662-1216-4e08-bd2b-e0a459057942.jpg?1593812836",
+        "large": "https://cards.scryfall.io/large/front/d/7/d7501662-1216-4e08-bd2b-e0a459057942.jpg?1593812836",
+        "png": "https://cards.scryfall.io/png/front/d/7/d7501662-1216-4e08-bd2b-e0a459057942.png?1593812836",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/d/7/d7501662-1216-4e08-bd2b-e0a459057942.jpg?1593812836",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/d/7/d7501662-1216-4e08-bd2b-e0a459057942.jpg?1593812836"
+      }
     },
     {
       "name": "Glint Hawk",
@@ -135,17 +238,32 @@
       "set": "som",
       "cardNumber": "10",
       "manaCost": "{W}",
-      "colors": ["W"],
-      "colorIdentity": ["W"],
+      "colors": [
+        "W"
+      ],
+      "colorIdentity": [
+        "W"
+      ],
       "cmc": 1,
-      "types": ["Creature"],
-      "subtypes": ["Bird"],
+      "types": [
+        "Creature"
+      ],
+      "subtypes": [
+        "Bird"
+      ],
       "supertypes": [],
       "text": "Flying\nWhen this creature enters, sacrifice it unless you return an artifact you control to its owner's hand.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/2/8/284c4710-4183-4743-9c8b-515cc98cbbb8.jpg?1562815728",
       "layout": "normal",
       "power": "2",
-      "toughness": "2"
+      "toughness": "2",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/2/8/284c4710-4183-4743-9c8b-515cc98cbbb8.jpg?1562815728",
+        "normal": "https://cards.scryfall.io/normal/front/2/8/284c4710-4183-4743-9c8b-515cc98cbbb8.jpg?1562815728",
+        "large": "https://cards.scryfall.io/large/front/2/8/284c4710-4183-4743-9c8b-515cc98cbbb8.jpg?1562815728",
+        "png": "https://cards.scryfall.io/png/front/2/8/284c4710-4183-4743-9c8b-515cc98cbbb8.png?1562815728",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/2/8/284c4710-4183-4743-9c8b-515cc98cbbb8.jpg?1562815728",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/2/8/284c4710-4183-4743-9c8b-515cc98cbbb8.jpg?1562815728"
+      }
     },
     {
       "name": "Lightning Bolt",
@@ -153,15 +271,28 @@
       "set": "clb",
       "cardNumber": "187",
       "manaCost": "{R}",
-      "colors": ["R"],
-      "colorIdentity": ["R"],
+      "colors": [
+        "R"
+      ],
+      "colorIdentity": [
+        "R"
+      ],
       "cmc": 1,
-      "types": ["Instant"],
+      "types": [
+        "Instant"
+      ],
       "subtypes": [],
       "supertypes": [],
       "text": "Lightning Bolt deals 3 damage to any target.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/a/e/ae5f9fb1-5a55-4db3-98a1-2628e3598c18.jpg?1674136663",
-      "layout": "normal"
+      "layout": "normal",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/a/e/ae5f9fb1-5a55-4db3-98a1-2628e3598c18.jpg?1674136663",
+        "normal": "https://cards.scryfall.io/normal/front/a/e/ae5f9fb1-5a55-4db3-98a1-2628e3598c18.jpg?1674136663",
+        "large": "https://cards.scryfall.io/large/front/a/e/ae5f9fb1-5a55-4db3-98a1-2628e3598c18.jpg?1674136663",
+        "png": "https://cards.scryfall.io/png/front/a/e/ae5f9fb1-5a55-4db3-98a1-2628e3598c18.png?1674136663",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/a/e/ae5f9fb1-5a55-4db3-98a1-2628e3598c18.jpg?1674136663",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/a/e/ae5f9fb1-5a55-4db3-98a1-2628e3598c18.jpg?1674136663"
+      }
     },
     {
       "name": "Lembas",
@@ -172,18 +303,37 @@
       "colors": [],
       "colorIdentity": [],
       "cmc": 2,
-      "types": ["Artifact"],
-      "subtypes": ["Food"],
+      "types": [
+        "Artifact"
+      ],
+      "subtypes": [
+        "Food"
+      ],
       "supertypes": [],
       "text": "When this artifact enters, scry 1, then draw a card.\n{2}, {T}, Sacrifice this artifact: You gain 3 life.\nWhen this artifact is put into a graveyard from the battlefield, its owner shuffles it into their library.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/3/b/3b46aacf-b31a-4380-9e4b-82795fbaba3b.jpg?1686970202",
-      "layout": "normal"
+      "layout": "normal",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/3/b/3b46aacf-b31a-4380-9e4b-82795fbaba3b.jpg?1686970202",
+        "normal": "https://cards.scryfall.io/normal/front/3/b/3b46aacf-b31a-4380-9e4b-82795fbaba3b.jpg?1686970202",
+        "large": "https://cards.scryfall.io/large/front/3/b/3b46aacf-b31a-4380-9e4b-82795fbaba3b.jpg?1686970202",
+        "png": "https://cards.scryfall.io/png/front/3/b/3b46aacf-b31a-4380-9e4b-82795fbaba3b.png?1686970202",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/3/b/3b46aacf-b31a-4380-9e4b-82795fbaba3b.jpg?1686970202",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/3/b/3b46aacf-b31a-4380-9e4b-82795fbaba3b.jpg?1686970202"
+      }
     },
     {
       "name": "Experimental Synthesizer",
       "count": 4,
       "set": "plst",
-      "cardNumber": "NEO-138"
+      "cardNumber": "NEO-138",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/3/6/3638828e-66f7-42e9-ba61-0ba06bce7a59.jpg?1723440709",
+        "normal": "https://cards.scryfall.io/normal/front/3/6/3638828e-66f7-42e9-ba61-0ba06bce7a59.jpg?1723440709",
+        "large": "https://cards.scryfall.io/large/front/3/6/3638828e-66f7-42e9-ba61-0ba06bce7a59.jpg?1723440709",
+        "png": "https://cards.scryfall.io/png/front/3/6/3638828e-66f7-42e9-ba61-0ba06bce7a59.png?1723440709",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/3/6/3638828e-66f7-42e9-ba61-0ba06bce7a59.jpg?1723440709",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/3/6/3638828e-66f7-42e9-ba61-0ba06bce7a59.jpg?1723440709"
+      }
     },
     {
       "name": "Radiant Fountain",
@@ -194,12 +344,21 @@
       "colors": [],
       "colorIdentity": [],
       "cmc": 0,
-      "types": ["Land"],
+      "types": [
+        "Land"
+      ],
       "subtypes": [],
       "supertypes": [],
       "text": "When this land enters, you gain 2 life.\n{T}: Add {C}.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/0/2/0296c34b-120b-483e-8b49-6d432c04f9a4.jpg?1594737654",
-      "layout": "normal"
+      "layout": "normal",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/0/2/0296c34b-120b-483e-8b49-6d432c04f9a4.jpg?1594737654",
+        "normal": "https://cards.scryfall.io/normal/front/0/2/0296c34b-120b-483e-8b49-6d432c04f9a4.jpg?1594737654",
+        "large": "https://cards.scryfall.io/large/front/0/2/0296c34b-120b-483e-8b49-6d432c04f9a4.jpg?1594737654",
+        "png": "https://cards.scryfall.io/png/front/0/2/0296c34b-120b-483e-8b49-6d432c04f9a4.png?1594737654",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/0/2/0296c34b-120b-483e-8b49-6d432c04f9a4.jpg?1594737654",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/0/2/0296c34b-120b-483e-8b49-6d432c04f9a4.jpg?1594737654"
+      }
     },
     {
       "name": "Makeshift Munitions",
@@ -207,15 +366,28 @@
       "set": "xln",
       "cardNumber": "151",
       "manaCost": "{1}{R}",
-      "colors": ["R"],
-      "colorIdentity": ["R"],
+      "colors": [
+        "R"
+      ],
+      "colorIdentity": [
+        "R"
+      ],
       "cmc": 2,
-      "types": ["Enchantment"],
+      "types": [
+        "Enchantment"
+      ],
       "subtypes": [],
       "supertypes": [],
       "text": "{1}, Sacrifice an artifact or creature: This enchantment deals 1 damage to any target.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/6/5/65689442-e679-4844-91a8-f6a39a7c1f9b.jpg?1562556667",
-      "layout": "normal"
+      "layout": "normal",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/6/5/65689442-e679-4844-91a8-f6a39a7c1f9b.jpg?1562556667",
+        "normal": "https://cards.scryfall.io/normal/front/6/5/65689442-e679-4844-91a8-f6a39a7c1f9b.jpg?1562556667",
+        "large": "https://cards.scryfall.io/large/front/6/5/65689442-e679-4844-91a8-f6a39a7c1f9b.jpg?1562556667",
+        "png": "https://cards.scryfall.io/png/front/6/5/65689442-e679-4844-91a8-f6a39a7c1f9b.png?1562556667",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/6/5/65689442-e679-4844-91a8-f6a39a7c1f9b.jpg?1562556667",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/6/5/65689442-e679-4844-91a8-f6a39a7c1f9b.jpg?1562556667"
+      }
     },
     {
       "name": "Bojuka Bog",
@@ -224,14 +396,25 @@
       "cardNumber": "294",
       "manaCost": "",
       "colors": [],
-      "colorIdentity": ["B"],
+      "colorIdentity": [
+        "B"
+      ],
       "cmc": 0,
-      "types": ["Land"],
+      "types": [
+        "Land"
+      ],
       "subtypes": [],
       "supertypes": [],
       "text": "This land enters tapped.\nWhen this land enters, exile target player's graveyard.\n{T}: Add {B}.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/7/5/7519b793-8fcb-40ea-bed9-285c390ded64.jpg?1721429679",
-      "layout": "normal"
+      "layout": "normal",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/7/5/7519b793-8fcb-40ea-bed9-285c390ded64.jpg?1721429679",
+        "normal": "https://cards.scryfall.io/normal/front/7/5/7519b793-8fcb-40ea-bed9-285c390ded64.jpg?1721429679",
+        "large": "https://cards.scryfall.io/large/front/7/5/7519b793-8fcb-40ea-bed9-285c390ded64.jpg?1721429679",
+        "png": "https://cards.scryfall.io/png/front/7/5/7519b793-8fcb-40ea-bed9-285c390ded64.png?1721429679",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/7/5/7519b793-8fcb-40ea-bed9-285c390ded64.jpg?1721429679",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/7/5/7519b793-8fcb-40ea-bed9-285c390ded64.jpg?1721429679"
+      }
     },
     {
       "name": "Thraben Inspector",
@@ -239,17 +422,33 @@
       "set": "soi",
       "cardNumber": "44",
       "manaCost": "{W}",
-      "colors": ["W"],
-      "colorIdentity": ["W"],
+      "colors": [
+        "W"
+      ],
+      "colorIdentity": [
+        "W"
+      ],
       "cmc": 1,
-      "types": ["Creature"],
-      "subtypes": ["Human", "Soldier"],
+      "types": [
+        "Creature"
+      ],
+      "subtypes": [
+        "Human",
+        "Soldier"
+      ],
       "supertypes": [],
       "text": "When this creature enters, investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")",
-      "imageUrl": "https://cards.scryfall.io/normal/front/d/1/d140c3b7-ca78-483d-baeb-307b624fea8b.jpg?1576383936",
       "layout": "normal",
       "power": "1",
-      "toughness": "2"
+      "toughness": "2",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/d/1/d140c3b7-ca78-483d-baeb-307b624fea8b.jpg?1576383936",
+        "normal": "https://cards.scryfall.io/normal/front/d/1/d140c3b7-ca78-483d-baeb-307b624fea8b.jpg?1576383936",
+        "large": "https://cards.scryfall.io/large/front/d/1/d140c3b7-ca78-483d-baeb-307b624fea8b.jpg?1576383936",
+        "png": "https://cards.scryfall.io/png/front/d/1/d140c3b7-ca78-483d-baeb-307b624fea8b.png?1576383936",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/d/1/d140c3b7-ca78-483d-baeb-307b624fea8b.jpg?1576383936",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/d/1/d140c3b7-ca78-483d-baeb-307b624fea8b.jpg?1576383936"
+      }
     },
     {
       "name": "Ancient Den",
@@ -258,20 +457,40 @@
       "cardNumber": "MRD-278",
       "manaCost": "",
       "colors": [],
-      "colorIdentity": ["W"],
+      "colorIdentity": [
+        "W"
+      ],
       "cmc": 0,
-      "types": ["Artifact", "Land"],
+      "types": [
+        "Artifact",
+        "Land"
+      ],
       "subtypes": [],
       "supertypes": [],
       "text": "{T}: Add {W}.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/d/9/d9a7b0f6-97f9-4937-865c-e25c142c3ed7.jpg?1752945227",
-      "layout": "normal"
+      "layout": "normal",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/d/9/d9a7b0f6-97f9-4937-865c-e25c142c3ed7.jpg?1752945227",
+        "normal": "https://cards.scryfall.io/normal/front/d/9/d9a7b0f6-97f9-4937-865c-e25c142c3ed7.jpg?1752945227",
+        "large": "https://cards.scryfall.io/large/front/d/9/d9a7b0f6-97f9-4937-865c-e25c142c3ed7.jpg?1752945227",
+        "png": "https://cards.scryfall.io/png/front/d/9/d9a7b0f6-97f9-4937-865c-e25c142c3ed7.png?1752945227",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/d/9/d9a7b0f6-97f9-4937-865c-e25c142c3ed7.jpg?1752945227",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/d/9/d9a7b0f6-97f9-4937-865c-e25c142c3ed7.jpg?1752945227"
+      }
     },
     {
       "name": "Great Furnace",
       "count": 3,
       "set": "plst",
-      "cardNumber": "MRD-282"
+      "cardNumber": "MRD-282",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/5/f/5ff05a43-b5fe-4fc5-aeb3-ddd9b49dc8a6.jpg?1706662164",
+        "normal": "https://cards.scryfall.io/normal/front/5/f/5ff05a43-b5fe-4fc5-aeb3-ddd9b49dc8a6.jpg?1706662164",
+        "large": "https://cards.scryfall.io/large/front/5/f/5ff05a43-b5fe-4fc5-aeb3-ddd9b49dc8a6.jpg?1706662164",
+        "png": "https://cards.scryfall.io/png/front/5/f/5ff05a43-b5fe-4fc5-aeb3-ddd9b49dc8a6.png?1706662164",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/5/f/5ff05a43-b5fe-4fc5-aeb3-ddd9b49dc8a6.jpg?1706662164",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/5/f/5ff05a43-b5fe-4fc5-aeb3-ddd9b49dc8a6.jpg?1706662164"
+      }
     },
     {
       "name": "Novice Inspector",
@@ -279,17 +498,33 @@
       "set": "mkm",
       "cardNumber": "29",
       "manaCost": "{W}",
-      "colors": ["W"],
-      "colorIdentity": ["W"],
+      "colors": [
+        "W"
+      ],
+      "colorIdentity": [
+        "W"
+      ],
       "cmc": 1,
-      "types": ["Creature"],
-      "subtypes": ["Human", "Detective"],
+      "types": [
+        "Creature"
+      ],
+      "subtypes": [
+        "Human",
+        "Detective"
+      ],
       "supertypes": [],
       "text": "When this creature enters, investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")",
-      "imageUrl": "https://cards.scryfall.io/normal/front/0/a/0ad38866-fc5f-4f62-89c1-afc0f50765aa.jpg?1706241527",
       "layout": "normal",
       "power": "1",
-      "toughness": "2"
+      "toughness": "2",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/0/a/0ad38866-fc5f-4f62-89c1-afc0f50765aa.jpg?1706241527",
+        "normal": "https://cards.scryfall.io/normal/front/0/a/0ad38866-fc5f-4f62-89c1-afc0f50765aa.jpg?1706241527",
+        "large": "https://cards.scryfall.io/large/front/0/a/0ad38866-fc5f-4f62-89c1-afc0f50765aa.jpg?1706241527",
+        "png": "https://cards.scryfall.io/png/front/0/a/0ad38866-fc5f-4f62-89c1-afc0f50765aa.png?1706241527",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/0/a/0ad38866-fc5f-4f62-89c1-afc0f50765aa.jpg?1706241527",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/0/a/0ad38866-fc5f-4f62-89c1-afc0f50765aa.jpg?1706241527"
+      }
     },
     {
       "name": "Journey to Nowhere",
@@ -297,15 +532,28 @@
       "set": "otp",
       "cardNumber": "3",
       "manaCost": "{1}{W}",
-      "colors": ["W"],
-      "colorIdentity": ["W"],
+      "colors": [
+        "W"
+      ],
+      "colorIdentity": [
+        "W"
+      ],
       "cmc": 2,
-      "types": ["Enchantment"],
+      "types": [
+        "Enchantment"
+      ],
       "subtypes": [],
       "supertypes": [],
       "text": "When this enchantment enters, exile target creature.\nWhen this enchantment leaves the battlefield, return the exiled card to the battlefield under its owner's control.",
-      "imageUrl": "https://cards.scryfall.io/normal/front/4/4/442bb671-8b23-4e3b-bf39-18152a68887e.jpg?1712353397",
-      "layout": "normal"
+      "layout": "normal",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/4/4/442bb671-8b23-4e3b-bf39-18152a68887e.jpg?1712353397",
+        "normal": "https://cards.scryfall.io/normal/front/4/4/442bb671-8b23-4e3b-bf39-18152a68887e.jpg?1712353397",
+        "large": "https://cards.scryfall.io/large/front/4/4/442bb671-8b23-4e3b-bf39-18152a68887e.jpg?1712353397",
+        "png": "https://cards.scryfall.io/png/front/4/4/442bb671-8b23-4e3b-bf39-18152a68887e.png?1712353397",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/4/4/442bb671-8b23-4e3b-bf39-18152a68887e.jpg?1712353397",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/4/4/442bb671-8b23-4e3b-bf39-18152a68887e.jpg?1712353397"
+      }
     },
     {
       "name": "Mountain",
@@ -314,14 +562,29 @@
       "cardNumber": "90",
       "manaCost": "",
       "colors": [],
-      "colorIdentity": ["R"],
+      "colorIdentity": [
+        "R"
+      ],
       "cmc": 0,
-      "types": ["Land"],
-      "subtypes": ["Mountain"],
-      "supertypes": ["Basic"],
+      "types": [
+        "Land"
+      ],
+      "subtypes": [
+        "Mountain"
+      ],
+      "supertypes": [
+        "Basic"
+      ],
       "text": "({T}: Add {R}.)",
-      "imageUrl": "https://cards.scryfall.io/normal/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.jpg?1730486024",
-      "layout": "normal"
+      "layout": "normal",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.jpg?1730486024",
+        "normal": "https://cards.scryfall.io/normal/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.jpg?1730486024",
+        "large": "https://cards.scryfall.io/large/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.jpg?1730486024",
+        "png": "https://cards.scryfall.io/png/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.png?1730486024",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.jpg?1730486024",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.jpg?1730486024"
+      }
     },
     {
       "name": "Plains",
@@ -330,14 +593,29 @@
       "cardNumber": "81",
       "manaCost": "",
       "colors": [],
-      "colorIdentity": ["W"],
+      "colorIdentity": [
+        "W"
+      ],
       "cmc": 0,
-      "types": ["Land"],
-      "subtypes": ["Plains"],
-      "supertypes": ["Basic"],
+      "types": [
+        "Land"
+      ],
+      "subtypes": [
+        "Plains"
+      ],
+      "supertypes": [
+        "Basic"
+      ],
       "text": "({T}: Add {W}.)",
-      "imageUrl": "https://cards.scryfall.io/normal/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.jpg?1730485996",
-      "layout": "normal"
+      "layout": "normal",
+      "uris": {
+        "small": "https://cards.scryfall.io/small/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.jpg?1730485996",
+        "normal": "https://cards.scryfall.io/normal/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.jpg?1730485996",
+        "large": "https://cards.scryfall.io/large/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.jpg?1730485996",
+        "png": "https://cards.scryfall.io/png/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.png?1730485996",
+        "art_crop": "https://cards.scryfall.io/art_crop/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.jpg?1730485996",
+        "border_crop": "https://cards.scryfall.io/border_crop/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.jpg?1730485996"
+      }
     }
   ]
 }

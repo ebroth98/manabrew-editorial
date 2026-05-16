@@ -1,36 +1,24 @@
 import { Modal } from "../modals/Modal";
 import { Button } from "@/components/ui/button";
-import { useCard } from "@/stores/useScryfallStore";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { TextWithMana } from "@/components/game/TextWithMana";
 import { MODAL_CARD_IMAGE } from "../game.styles";
+import type { DeckCard } from "@/types/manabrew";
 
 interface AlternativeCostModalProps {
   options: string[];
-  sourceCardName?: string;
+  sourceCard?: DeckCard;
   onDecide: (chosenIndex: number) => void;
 }
 
-export function AlternativeCostModal({
-  options,
-  sourceCardName,
-  onDecide,
-}: AlternativeCostModalProps) {
-  const cardData = useCard({ name: sourceCardName ?? "" });
-  const imageUrl = cardData?.uris.normal;
+export function AlternativeCostModal({ options, sourceCard, onDecide }: AlternativeCostModalProps) {
   return (
     <Modal maxWidth="max-w-md" maxHeight="">
       <Modal.Header>
         <h2 className="font-semibold text-base">Choose Casting Option</h2>
       </Modal.Header>
       <div className="px-4 py-4 flex gap-3">
-        {imageUrl && (
-          <CardImageThumbnail
-            imageUrl={imageUrl}
-            cardName={sourceCardName ?? "Spell"}
-            className={MODAL_CARD_IMAGE}
-          />
-        )}
+        {sourceCard && <CardImageThumbnail card={sourceCard} className={MODAL_CARD_IMAGE} />}
         <div className="flex flex-col gap-2 flex-1">
           {options.map((opt, idx) => (
             <Button

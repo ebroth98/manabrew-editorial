@@ -30,18 +30,19 @@ export default function Play() {
     const { playerOrder, playerDecks, isHost, startingLife, myPlayerSlot } = mpState;
     const engineIndex = parseInt(myPlayerSlot.replace("player-", ""), 10);
     if (Number.isNaN(engineIndex) || engineIndex < 0) return;
-    const deckListsByPlayer = playerOrder.map((playerName) => {
+    const decksByPlayer = playerOrder.flatMap((playerName) => {
       const selected = (playerDecks ?? []).find((entry) => entry.username === playerName);
-      return selected?.deck_list ?? [];
+      return selected ? [selected.deck] : [];
     });
     const commanderNamesByPlayer = playerOrder.map((playerName) => {
       const selected = (playerDecks ?? []).find((entry) => entry.username === playerName);
       return selected?.commander_name ?? null;
     });
+    if (decksByPlayer.length !== playerOrder.length) return;
     setMultiplayerState(true, isHost, myPlayerSlot);
     startMultiplayerGame(
       playerOrder,
-      deckListsByPlayer,
+      decksByPlayer,
       commanderNamesByPlayer,
       engineIndex,
       isHost,

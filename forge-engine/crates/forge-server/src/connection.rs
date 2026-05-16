@@ -658,20 +658,20 @@ fn handle_client_message(
 
         ClientMessage::SetDeckSelection {
             deck_name,
-            deck_list,
+            deck,
             commander_name,
         } => {
             info!(
                 "[lobby] '{}' selected deck '{}' ({} cards)",
                 username,
                 deck_name,
-                deck_list.len()
+                deck.cards.len()
             );
             match lobby::set_deck_selection_sync(
                 state,
                 player_id,
                 deck_name,
-                deck_list,
+                deck,
                 commander_name,
             ) {
                 Ok(room_id) => {

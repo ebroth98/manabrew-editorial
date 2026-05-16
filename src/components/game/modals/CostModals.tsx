@@ -13,11 +13,13 @@ import {
 } from "@/components/game/cost-modals";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { PromptType } from "@/types/promptType";
+import type { DeckCard } from "@/types/manabrew";
 import { PromptType as PT } from "@/types/promptType";
 
 interface CostModalsProps {
   promptType?: PromptType;
   currentPrompt: AgentPrompt | null;
+  sourceDeckCard?: DeckCard;
   // Cost decision callbacks
   onPhyrexianDecision: (payLife: boolean) => void;
   onKickerDecision: (kicked: boolean) => void;
@@ -35,6 +37,7 @@ interface CostModalsProps {
 export function CostModals({
   promptType,
   currentPrompt,
+  sourceDeckCard,
   onPhyrexianDecision,
   onKickerDecision,
   onBuybackDecision,
@@ -61,18 +64,19 @@ export function CostModals({
 
   return (
     <PromptModalController isActive={isActiveCostModal} promptStateKey={currentPrompt}>
-      {promptType === PT.ChoosePhyrexian && currentPrompt?.phyrexianColor != null && (
-        <PhyrexianModal
-          phyrexianColor={currentPrompt.phyrexianColor}
-          sourceCardName={currentPrompt.sourceCardName}
-          onDecide={onPhyrexianDecision}
-        />
-      )}
+      {promptType === PT.ChoosePhyrexian &&
+        currentPrompt?.phyrexianColor != null && (
+          <PhyrexianModal
+            phyrexianColor={currentPrompt.phyrexianColor}
+            sourceCard={sourceDeckCard}
+            onDecide={onPhyrexianDecision}
+          />
+        )}
 
       {promptType === PT.ChooseKicker && currentPrompt?.kickerCost != null && (
         <KickerModal
           kickerCost={currentPrompt.kickerCost}
-          sourceCardName={currentPrompt.sourceCardName}
+          sourceCard={sourceDeckCard}
           onDecide={onKickerDecision}
         />
       )}
@@ -80,7 +84,7 @@ export function CostModals({
       {promptType === PT.ChooseBuyback && currentPrompt?.buybackCost != null && (
         <BuybackModal
           buybackCost={currentPrompt.buybackCost}
-          sourceCardName={currentPrompt.sourceCardName}
+          sourceCard={sourceDeckCard}
           onDecide={onBuybackDecision}
         />
       )}
@@ -89,7 +93,7 @@ export function CostModals({
         <MultikickerModal
           cost={currentPrompt.cost}
           maxKicks={currentPrompt.maxKicks ?? 0}
-          sourceCardName={currentPrompt.sourceCardName}
+          sourceCard={sourceDeckCard}
           onDecide={onMultikickerDecision}
         />
       )}
@@ -98,18 +102,19 @@ export function CostModals({
         <ReplicateModal
           cost={currentPrompt.cost}
           maxReplicates={currentPrompt.maxReplicates ?? 0}
-          sourceCardName={currentPrompt.sourceCardName}
+          sourceCard={sourceDeckCard}
           onDecide={onReplicateDecision}
         />
       )}
 
-      {promptType === PT.ChooseAlternativeCost && currentPrompt?.options != null && (
-        <AlternativeCostModal
-          options={currentPrompt.options}
-          sourceCardName={currentPrompt.sourceCardName}
-          onDecide={onAlternativeCostDecision}
-        />
-      )}
+      {promptType === PT.ChooseAlternativeCost &&
+        currentPrompt?.options != null && (
+          <AlternativeCostModal
+            options={currentPrompt.options}
+            sourceCard={sourceDeckCard}
+            onDecide={onAlternativeCostDecision}
+          />
+        )}
 
       {promptType === PT.PayCombatCost && currentPrompt?.description != null && (
         <PayCombatCostModal

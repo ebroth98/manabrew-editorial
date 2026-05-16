@@ -58,7 +58,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             Some("ProduceMana"),
             "Produce mana?",
             &[],
-            Some(&card_name),
+            Some(source_id),
             sa.api,
         ) {
             return;
@@ -241,7 +241,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             chooser,
             &per_unit,
             amount as usize,
-            Some(&card_name),
+            Some(source_id),
         );
         final_mana = per_unit.join(" ");
     } else if amount > 1 {

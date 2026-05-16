@@ -93,79 +93,86 @@ jobs:
             existing-entries.json
           retention-days: 7
 
-  rust-vs-rust:
-    # Fast path: for entries that are byte-identical to main, run rust-branch and
-    # rust-main over the same seeds and diff the emitted GameTrace JSONs. No JVM.
-    needs: classify
-    if: needs.classify.outputs.existing_count != '0' && needs.classify.outputs.force_full_java != 'true'
-    runs-on: [self-hosted, Linux]
-    timeout-minutes: 45
-    steps:
-      - name: Checkout branch
-        uses: actions/checkout@v4
-        with:
-          clean: true
-          path: branch
-          fetch-depth: 0
-
-      - name: Checkout main
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          clean: true
-          path: main-ref
-
-      - name: Build forge-parity (branch)
-        working-directory: branch
-        run: cargo build -p forge-parity --release
-
-      - name: Build cardset archive (branch)
-        working-directory: branch
-        run: |
-          cargo run -p forge-cardset-archive --features build --release \
-            --bin build-cardset-archive
-
-      - name: Build forge-parity (main)
-        working-directory: main-ref
-        run: cargo build -p forge-parity --release
-
-      - name: Build cardset archive (main)
-        working-directory: main-ref
-        run: |
-          cargo run -p forge-cardset-archive --features build --release \
-            --bin build-cardset-archive
-
-      - name: Download partitioned entries
-        uses: actions/download-artifact@v4
-        with:
-          name: regression-partitions
-          path: partitions
-
-      - name: Diff traces
-        working-directory: branch
-        run: |
-          node scripts/parity-rust-vs-rust.mjs \
-            --branch-bin ../branch/target/release/forge-parity \
-            --main-bin   ../main-ref/target/release/forge-parity \
-            --entries    ../partitions/existing-entries.json \
-            --cards-dir  ../branch/forge/forge-gui/res/cardsfolder \
-            --decks-dir  ../branch/public/preset_decks \
-            --out-dir    ../rust-vs-rust-out
-
-      - name: Upload rust-vs-rust artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rust-vs-rust-out
-          path: rust-vs-rust-out
-          if-no-files-found: ignore
-          retention-days: 7
+  # TEMPORARILY DISABLED: the rust-vs-rust fast path is commented out so
+  # every PR runs the full Java parity sweep below. Re-enable by
+  # uncommenting this job AND restoring `parity-regression.if` to the
+  # original condition (`new_count != '0' || force_full_java == 'true'`).
+  #
+  # rust-vs-rust:
+  #   # Fast path: for entries that are byte-identical to main, run rust-branch and
+  #   # rust-main over the same seeds and diff the emitted GameTrace JSONs. No JVM.
+  #   needs: classify
+  #   if: needs.classify.outputs.existing_count != '0' && needs.classify.outputs.force_full_java != 'true'
+  #   runs-on: [self-hosted, Linux]
+  #   timeout-minutes: 45
+  #   steps:
+  #     - name: Checkout branch
+  #       uses: actions/checkout@v4
+  #       with:
+  #         clean: true
+  #         path: branch
+  #         fetch-depth: 0
+  #
+  #     - name: Checkout main
+  #       uses: actions/checkout@v4
+  #       with:
+  #         ref: main
+  #         clean: true
+  #         path: main-ref
+  #
+  #     - name: Build forge-parity (branch)
+  #       working-directory: branch
+  #       run: cargo build -p forge-parity --release
+  #
+  #     - name: Build cardset archive (branch)
+  #       working-directory: branch
+  #       run: |
+  #         cargo run -p forge-cardset-archive --features build --release \
+  #           --bin build-cardset-archive
+  #
+  #     - name: Build forge-parity (main)
+  #       working-directory: main-ref
+  #       run: cargo build -p forge-parity --release
+  #
+  #     - name: Build cardset archive (main)
+  #       working-directory: main-ref
+  #       run: |
+  #         cargo run -p forge-cardset-archive --features build --release \
+  #           --bin build-cardset-archive
+  #
+  #     - name: Download partitioned entries
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: regression-partitions
+  #         path: partitions
+  #
+  #     - name: Diff traces
+  #       working-directory: branch
+  #       run: |
+  #         node scripts/parity-rust-vs-rust.mjs \
+  #           --branch-bin ../branch/target/release/forge-parity \
+  #           --main-bin   ../main-ref/target/release/forge-parity \
+  #           --entries    ../partitions/existing-entries.json \
+  #           --cards-dir  ../branch/forge/forge-gui/res/cardsfolder \
+  #           --decks-dir  ../branch/public/preset_decks \
+  #           --out-dir    ../rust-vs-rust-out
+  #
+  #     - name: Upload rust-vs-rust artifacts
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: rust-vs-rust-out
+  #         path: rust-vs-rust-out
+  #         if-no-files-found: ignore
+  #         retention-days: 7
 
   parity-regression:
-    # Java path: runs on the `new` entries only (or the full list if the reverify
-    # label is set). Unchanged entries are validated by the rust-vs-rust job.
+    # TEMPORARILY: always runs the full Java parity sweep (the rust-vs-rust
+    # fast path is disabled above). Restore the original conditional when
+    # re-enabling rust-vs-rust:
+    #   if: needs.classify.outputs.new_count != '0' || needs.classify.outputs.force_full_java == 'true'
     needs: classify
-    if: needs.classify.outputs.new_count != '0' || needs.classify.outputs.force_full_java == 'true'
+    if: always()
     runs-on: [self-hosted, Linux, run_parity]
     timeout-minutes: 90
     steps:
@@ -182,14 +189,12 @@ jobs:
 
       - name: Pick entries for Java run
         id: pick
+        # TEMPORARILY: always run the full regression set (rust-vs-rust is
+        # disabled above). Restore the if/else branching on
+        # `force_full_java` when re-enabling the fast path.
         run: |
-          if [ "${{ needs.classify.outputs.force_full_java }}" = "true" ]; then
-            cp forge-engine/crates/forge-parity/regression.json java-entries.json
-            echo "source=full" >> "$GITHUB_OUTPUT"
-          else
-            cp partitions/new-entries.json java-entries.json
-            echo "source=new-only" >> "$GITHUB_OUTPUT"
-          fi
+          cp forge-engine/crates/forge-parity/regression.json java-entries.json
+          echo "source=full" >> "$GITHUB_OUTPUT"
           echo "Java harness will process $(jq 'length' java-entries.json) entries"
 
       - name: Restore Java cache

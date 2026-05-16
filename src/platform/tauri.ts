@@ -8,7 +8,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Deck } from "@/types/manabrew";
-import { presetDeckPayloadsToDecks, type PresetDeckPayload } from "@/lib/presetDecks";
+import { expandPresetDeckDefinitions, type PresetDeckDefinition } from "@/lib/presetDecks";
 
 import type {
   IPlatformApi,
@@ -37,17 +37,17 @@ import type { RoomRelayEnvelope } from "@/types/server";
 class TauriGameApi implements IGameApi {
   async startGame(params: StartGameParams): Promise<string> {
     return invoke<string>("start_game", {
-      deckList: params.deckList,
+      deck: params.deck,
       startingLife: params.startingLife,
       commanderName: params.commanderName,
-      opponentDeckList: params.opponentDeckList,
+      opponentDeck: params.opponentDeck,
     });
   }
 
   async startMultiplayerGame(params: StartMultiplayerGameParams): Promise<void> {
     return invoke<void>("start_multiplayer_game", {
       playerNames: params.playerNames,
-      deckLists: params.deckLists,
+      decks: params.decks,
       commanderNames: params.commanderNames,
       enginePlayerIndex: params.enginePlayerIndex,
       localIsHost: params.localIsHost,
@@ -73,7 +73,7 @@ class TauriGameApi implements IGameApi {
   }
 
   async getPresetDecks(): Promise<Deck[]> {
-    return presetDeckPayloadsToDecks(await invoke<PresetDeckPayload[]>("get_preset_decks"));
+    return expandPresetDeckDefinitions(await invoke<PresetDeckDefinition[]>("get_preset_decks"));
   }
 
   async getPrompt(): Promise<unknown> {
@@ -139,7 +139,7 @@ class TauriServerApi implements IServerApi {
       roomId: params.roomId,
       username: params.username,
       deckName: params.deckName,
-      deckList: params.deckList,
+      deck: params.deck,
       commanderName: params.commanderName,
     });
   }

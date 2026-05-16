@@ -1,3 +1,4 @@
+use forge_agent_interface::deck_dto::{Deck, DeckCard as WireDeckCard};
 use forge_carddb::{CardDatabase, CardRules};
 use forge_engine_core::card::{Card, CardInstance};
 use forge_engine_core::game::GameState;
@@ -10,6 +11,37 @@ pub struct DeckCardIdentity {
     pub name: String,
     pub set_code: String,
     pub section: Option<String>,
+}
+
+pub fn deck_to_identities(deck: &Deck) -> Vec<DeckCardIdentity> {
+    let mut out: Vec<DeckCardIdentity> = Vec::new();
+    let push_pile = |out: &mut Vec<DeckCardIdentity>, list: &[WireDeckCard], section: &str| {
+        for c in list {
+            out.push(DeckCardIdentity {
+                name: c.identity.name.clone(),
+                set_code: c.identity.set_code.clone(),
+                section: Some(section.to_string()),
+            });
+        }
+    };
+    push_pile(&mut out, &deck.cards, "main");
+    push_pile(&mut out, &deck.sideboard, "sideboard");
+    if let Some(list) = &deck.commanders {
+        push_pile(&mut out, list, "commander");
+    }
+    if let Some(list) = &deck.attractions {
+        push_pile(&mut out, list, "attractions");
+    }
+    if let Some(list) = &deck.contraptions {
+        push_pile(&mut out, list, "contraptions");
+    }
+    if let Some(list) = &deck.schemes {
+        push_pile(&mut out, list, "schemes");
+    }
+    if let Some(list) = &deck.planes {
+        push_pile(&mut out, list, "planes");
+    }
+    out
 }
 
 #[derive(Debug, Clone)]

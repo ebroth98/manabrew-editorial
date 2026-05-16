@@ -46,7 +46,7 @@ Use the exported hook helpers, not the raw store:
 
 | Need                                       | Use                                                |
 | ------------------------------------------ | -------------------------------------------------- |
-| Card metadata by name / set+collector / id | `useCard({ name, setCode?, cardNumber? })`         |
+| Card metadata by name / set+collector / id | `useCard({ name, setCode?, collectorNumber? })`    |
 | Pixi `Texture` for a card image            | `useCardTexture(...)`                              |
 | Card rulings                               | `useCardRulings(card)`                             |
 | Set list as a `Map`                        | `useSetLookup()`                                   |
@@ -54,7 +54,7 @@ Use the exported hook helpers, not the raw store:
 | Force a refresh of a single card           | `useScryfallStore.getState().invalidateCard(name)` |
 | Promote a chosen printing                  | `useScryfallStore.getState().updatePrinting(card)` |
 
-Lookup keys are normalized internally (`id:` / `set:…::cn:…` / `name:…[::set:…]`); always pass structured args, never assemble keys yourself.
+Lookup keys are normalized internally (`id:` / `set:…::cn:…` / `name:…[::set:…]`); always pass structured args, never assemble keys yourself. Token cards resolve through the same store from `public/token_archive.json`; do not add per-component token fetch/discovery hooks.
 
 ## Engine ↔ UI DTOs
 

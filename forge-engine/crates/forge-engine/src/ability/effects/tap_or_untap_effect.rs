@@ -41,7 +41,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 &prompt,
                 BinaryChoiceKind::TapOrUntap,
                 None,
-                Some(&source_name),
+                sa.source,
                 sa.api,
             )
         };

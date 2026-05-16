@@ -1412,7 +1412,7 @@ impl PlayerAgent for DeterministicAgent {
         &mut self,
         _player: PlayerId,
         _description: &str,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
         _api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let accept = choice_space::pick_bool(&mut self.rng.borrow_mut());
@@ -1425,7 +1425,7 @@ impl PlayerAgent for DeterministicAgent {
         _mode: Option<&str>,
         _message: &str,
         _options: &[String],
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
         _api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let accept = choice_space::pick_bool(&mut self.rng.borrow_mut());
@@ -1437,7 +1437,7 @@ impl PlayerAgent for DeterministicAgent {
         _player: PlayerId,
         _question: &str,
         _effect_description: &str,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> bool {
         let accept = choice_space::pick_bool(&mut self.rng.borrow_mut());
         accept
@@ -1448,7 +1448,7 @@ impl PlayerAgent for DeterministicAgent {
         _player: PlayerId,
         _cost_kind: &str,
         _message: &str,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
         _api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let accept = choice_space::pick_bool(&mut self.rng.borrow_mut());
@@ -1460,7 +1460,7 @@ impl PlayerAgent for DeterministicAgent {
         _player: PlayerId,
         _cost_kind: &str,
         _message: &str,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
         _api: Option<forge_engine_core::ability::api_type::ApiType>,
         can_pay: bool,
     ) -> bool {
@@ -1477,7 +1477,7 @@ impl PlayerAgent for DeterministicAgent {
         _question: &str,
         _kind: BinaryChoiceKind,
         _default_choice: Option<bool>,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
         _api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let chosen_left = choice_space::pick_bool(&mut self.rng.borrow_mut());
@@ -1663,12 +1663,12 @@ impl PlayerAgent for DeterministicAgent {
         _player: PlayerId,
         max: i32,
         _prompt: &str,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> i32 {
         gui_repro::choose_number(0, max, &mut self.rng.borrow_mut())
     }
 
-    fn choose_x_value(&mut self, _player: PlayerId, max_x: u32, _card_name: Option<&str>) -> u32 {
+    fn choose_x_value(&mut self, _player: PlayerId, max_x: u32, _source: Option<CardId>) -> u32 {
         max_x
     }
 
@@ -1679,7 +1679,7 @@ impl PlayerAgent for DeterministicAgent {
         &mut self,
         _player: PlayerId,
         _color: &str,
-        _card_name: Option<&str>,
+        _source: Option<CardId>,
     ) -> bool {
         true
     }
@@ -1811,7 +1811,7 @@ impl PlayerAgent for DeterministicAgent {
         descriptions: &[String],
         min: usize,
         max: usize,
-        _card_name: Option<&str>,
+        _source_card_id: Option<CardId>,
     ) -> Vec<usize> {
         if descriptions.is_empty() {
             return vec![];

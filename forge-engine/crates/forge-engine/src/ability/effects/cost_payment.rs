@@ -415,13 +415,8 @@ fn try_pay_effect_cost(
                 kind,
                 card_name.as_deref().unwrap_or("unknown")
             );
-            if !ctx.agents[payer.index()].confirm_payment(
-                payer,
-                kind,
-                &message,
-                card_name.as_deref(),
-                sa.api,
-            ) {
+            if !ctx.agents[payer.index()].confirm_payment(payer, kind, &message, sa.source, sa.api)
+            {
                 return false;
             }
         }
@@ -433,13 +428,12 @@ fn try_pay_effect_cost(
                 let resolved_amount =
                     crate::cost::resolve_dynamic_amount(ctx.game, source, payer, *amount);
                 for _ in 0..resolved_amount {
-                    let source_name = ctx.game.card(source).card_name.clone();
                     let called_heads = ctx.agents[payer.index()].choose_binary(
                         payer,
                         "Call the coin flip",
                         crate::agent::BinaryChoiceKind::HeadsOrTails,
                         None,
-                        Some(&source_name),
+                        Some(source),
                         None,
                     );
                     let is_heads = ctx.rng.next_int(2) == 0;
@@ -719,7 +713,7 @@ pub(super) fn resolve_effect_with_unless_cost(
         if pay_life_unless {
             let kind = effect_cost_part_kind(&cost.parts[0]);
             let message = format!("Pay {} cost for {}?", kind, card_name.unwrap_or("unknown"));
-            if !ctx.agents[payer.index()].confirm_payment(payer, kind, &message, card_name, sa.api)
+            if !ctx.agents[payer.index()].confirm_payment(payer, kind, &message, sa.source, sa.api)
             {
                 continue;
             }
@@ -732,7 +726,7 @@ pub(super) fn resolve_effect_with_unless_cost(
                 cost_kind.as_str()
             },
             &prompt,
-            card_name,
+            sa.source,
             sa.api,
             true,
         ) {
@@ -778,7 +772,7 @@ pub(super) fn resolve_effect_with_unless_cost(
                 Some("OptionalEffect"),
                 prompt,
                 &[],
-                card_name.as_deref(),
+                sa.source,
                 sa.api,
             ) {
                 return;

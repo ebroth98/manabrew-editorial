@@ -1055,12 +1055,7 @@ fn apply_delve_reduction(
     }
     let max_delve = (generic as usize).min(graveyard.len());
     agents[player.index()].snapshot_state(game, mana_pools);
-    let chosen = agents[player.index()].choose_delve(
-        player,
-        &graveyard,
-        max_delve,
-        Some(&game.card(source).card_name),
-    );
+    let chosen = agents[player.index()].choose_delve(player, &graveyard, max_delve, Some(source));
     game.card_mut(source).clear_delved();
     match cards_to_delve_out {
         Some(out) => {
@@ -1126,9 +1121,9 @@ fn apply_convoke_or_improvise_reduction(
     let card_name = game.card(source).card_name.clone();
     agents[payer.index()].snapshot_state(game, mana_pools);
     let chosen = if artifacts && !creatures {
-        agents[payer.index()].choose_improvise(payer, &untapped, &remaining_cost, Some(&card_name))
+        agents[payer.index()].choose_improvise(payer, &untapped, &remaining_cost, Some(source))
     } else {
-        agents[payer.index()].choose_convoke(payer, &untapped, &remaining_cost, Some(&card_name))
+        agents[payer.index()].choose_convoke(payer, &untapped, &remaining_cost, Some(source))
     };
     let mut reduced = 0i32;
     for &cid in &chosen {

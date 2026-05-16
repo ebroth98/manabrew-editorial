@@ -48,7 +48,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             "Call the coin flip",
             BinaryChoiceKind::HeadsOrTails,
             None,
-            Some(&card_name),
+            Some(source_id),
             sa.api,
         );
         let won = called_heads == is_heads;

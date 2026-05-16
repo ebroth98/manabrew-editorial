@@ -74,7 +74,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                     cost_kind.as_str()
                 },
                 &prompt,
-                card_name.as_deref(),
+                sa.source,
                 sa.api,
                 can_pay,
             );

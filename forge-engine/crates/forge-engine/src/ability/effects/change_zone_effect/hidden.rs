@@ -156,7 +156,7 @@ pub(super) fn resolve_hidden_origin(
                             None,
                             &prompt,
                             &[],
-                            source_name.as_deref(),
+                            sa.source,
                             Some(crate::ability::api_type::ApiType::ChangeZone),
                         )
                     })
@@ -236,7 +236,6 @@ pub(super) fn resolve_hidden_origin(
             };
 
             if optional_confirm {
-                let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
                 let origin_label = origin_zone.to_string().to_lowercase();
                 let message = format!(
                     "Search {}'s {}?",
@@ -249,7 +248,7 @@ pub(super) fn resolve_hidden_origin(
                     Some("ChangeZoneGeneral"),
                     &message,
                     &[],
-                    source_name,
+                    sa.source,
                     Some(crate::ability::api_type::ApiType::ChangeZone),
                 );
                 if !accepted {
@@ -381,7 +380,7 @@ pub(super) fn resolve_hidden_origin(
             Some("ChangeZoneGeneral"),
             &message,
             &[],
-            source_name,
+            sa.source,
             Some(crate::ability::api_type::ApiType::ChangeZone),
         );
         if !accepted {
@@ -564,7 +563,7 @@ fn offer_panglacial_cast(
             Some("PanglacialCast"),
             &format!("Cast {} from library while searching?", name),
             &[],
-            Some(&name),
+            Some(pg_id),
             None,
         );
         if cast {

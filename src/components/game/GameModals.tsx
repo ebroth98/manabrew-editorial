@@ -2,7 +2,7 @@ import { PromptModals } from "@/components/game/modals/PromptModals";
 import { CostModals } from "@/components/game/modals/CostModals";
 import { TargetModals } from "@/components/game/modals/TargetModals";
 import type { LibraryPeekMode } from "@/components/game/modals";
-import type { Card as ManaBrewCard, StackObject } from "@/types/manabrew";
+import type { DeckCard, GameCard, StackObject } from "@/types/manabrew";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { AbilityPickerState, HandActionOption } from "@/stores/useGameUIStore";
 import type { PromptType } from "@/types/promptType";
@@ -10,18 +10,20 @@ import type { PromptType } from "@/types/promptType";
 interface GameModalsProps {
   promptType?: PromptType;
   currentPrompt: AgentPrompt | null;
+  sourceDeckCard?: DeckCard;
+  revealedDeckCard?: DeckCard;
   viewingZone: {
     title: string;
-    cards: ManaBrewCard[];
+    cards: GameCard[];
     onClickCard?: (cardId: string) => void;
   } | null;
   onCloseZone: () => void;
-  zoneTargetSelector: { title: string; cards: ManaBrewCard[]; validCardIds: string[] } | null;
+  zoneTargetSelector: { title: string; cards: GameCard[]; validCardIds: string[] } | null;
   onSelectZoneTarget: (cardId: string) => void;
   onCancelZoneTarget: () => void;
   libraryPeekModal: {
     mode: LibraryPeekMode;
-    cards: ManaBrewCard[];
+    cards: GameCard[];
     numToTake?: number;
     optional?: boolean;
   } | null;
@@ -80,6 +82,8 @@ interface GameModalsProps {
 export function GameModals({
   promptType,
   currentPrompt,
+  sourceDeckCard,
+  revealedDeckCard,
   viewingZone,
   onCloseZone,
   zoneTargetSelector,
@@ -141,6 +145,8 @@ export function GameModals({
       <PromptModals
         promptType={promptType}
         currentPrompt={currentPrompt}
+        sourceDeckCard={sourceDeckCard}
+        revealedDeckCard={revealedDeckCard}
         onModeDecision={onModeDecision}
         onRevealCardsAcknowledged={onRevealCardsAcknowledged}
         onPayCostToPreventEffectDecision={onPayCostToPreventEffectDecision}
@@ -170,6 +176,7 @@ export function GameModals({
       <CostModals
         promptType={promptType}
         currentPrompt={currentPrompt}
+        sourceDeckCard={sourceDeckCard}
         onPhyrexianDecision={onPhyrexianDecision}
         onKickerDecision={onKickerDecision}
         onBuybackDecision={onBuybackDecision}
@@ -185,6 +192,7 @@ export function GameModals({
       <TargetModals
         promptType={promptType}
         currentPrompt={currentPrompt}
+        sourceDeckCard={sourceDeckCard}
         viewingZone={viewingZone}
         onCloseZone={onCloseZone}
         zoneTargetSelector={zoneTargetSelector}

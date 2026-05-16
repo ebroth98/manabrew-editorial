@@ -6,15 +6,15 @@ import { useTheme } from "@/hooks/useTheme";
 import { LibraryZoneTile } from "@/components/game/zones";
 import { CommandZoneTile } from "@/components/game/panels/CommandZoneTile";
 import { Card as CardComponent } from "@/components/game/Card";
-import type { Card } from "@/types/manabrew";
+import type { GameCard } from "@/types/manabrew";
 import type { ZonePanelItem } from "@/stores/usePreferencesStore";
 
 export interface ZoneActionColumnProps {
   libraryCount: number;
   /** Full graveyard cards — top card (last element) renders as the tile's art. */
-  graveyard?: Card[];
+  graveyard?: GameCard[];
   /** Full exile cards — top card (last element) renders as the tile's art. */
-  exile?: Card[];
+  exile?: GameCard[];
   order?: ZonePanelItem[];
   onOpenLibrary?: () => void;
   onOpenGraveyard?: () => void;
@@ -22,18 +22,18 @@ export interface ZoneActionColumnProps {
   hasPlayableInGraveyard?: boolean;
   hasPlayableInExile?: boolean;
   /** Commander cards to render in a leading tile. When absent or empty, no command zone tile is shown. */
-  commanders?: Card[];
+  commanders?: GameCard[];
   onOpenCommandZone?: () => void;
   /** Cast the commander on tap (only meaningful for the local player). */
   onCastCommander?: (cardId: string) => void;
   /** Begin a drag-to-cast gesture on the commander card (mirrors the
    *  hand-card drag flow). Local player only. */
-  onCommanderDragStart?: (card: Card, e: React.MouseEvent) => void;
+  onCommanderDragStart?: (card: GameCard, e: React.MouseEvent) => void;
   /** Id of the card currently being drag-cast — passed through to the
    *  command zone tile so it can render empty while the drag is live. */
   draggingCardId?: string | null;
   /** Hover preview for the commander card. */
-  onHoverCard?: (card: Card | null, e?: React.MouseEvent) => void;
+  onHoverCard?: (card: GameCard | null, e?: React.MouseEvent) => void;
   /** Layout direction. Defaults to "vertical" for backwards compatibility. */
   orientation?: "vertical" | "horizontal";
   /** Horizontal-only: rendered as the first flex item so it wraps
@@ -59,9 +59,9 @@ function ZoneCardTile({
   count: number;
   label: string;
   title: string;
-  topCard?: Card;
+  topCard?: GameCard;
   onClick?: () => void;
-  onHoverCard?: (card: Card | null, e?: React.MouseEvent) => void;
+  onHoverCard?: (card: GameCard | null, e?: React.MouseEvent) => void;
   highlighted?: boolean;
   highlightColor: string;
   fontSizes: GameFontSizes;

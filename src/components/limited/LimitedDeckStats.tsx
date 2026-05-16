@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import { ManaSymbols } from "@/components/game/ManaSymbols";
-import { useScryfallStore } from "@/stores/useScryfallStore";
+import { peekCard, useScryfallStore } from "@/stores/useScryfallStore";
 import { countManaPips } from "@/lib/limited.utils";
 import { cn } from "@/lib/utils";
 import type { DraftCard } from "@/types/limited";
@@ -27,7 +27,11 @@ export function LimitedDeckStats({ cards, className }: Props) {
     let curveSampleSize = 0;
 
     for (const card of cards) {
-      const cached = lookupFromCache(cacheBucket as Record<string, ScryfallCacheEntry>, card);
+      const cached = peekCard(cacheBucket, {
+        name: card.name,
+        setCode: card.setCode,
+        collectorNumber: card.collectorNumber,
+      });
       if (!cached) continue;
       const types = cached.type_line ?? "";
       const isLand = /\bLand\b/i.test(types);
@@ -140,34 +144,3 @@ function StatRow({ label, value, total }: { label: string; value: number; total:
   );
 }
 
-type ScryfallCardLike = import("@/types/scryfall").ScryfallCard;
-type ScryfallCacheEntry = { card?: { info: ScryfallCardLike } };
-
-function lookupFromCache(
-  bucket: Record<string, ScryfallCacheEntry>,
-  card: DraftCard,
-): ScryfallCardLike | null {
-  const set = card.setCode?.toLowerCase();
-  if (set && card.collectorNumber) {
-    const key = `set:${set}::cn:${card.collectorNumber.toLowerCase()}`;
-    const found = bucket[key]?.card?.info;
-    if (found) return found;
-  }
-  if (card.name && set) {
-    const found = bucket[`name:${card.name.toLowerCase()}::set:${set}`]?.card?.info;
-    if (found) return found;
-  }
-  if (card.name) {
-    const found = bucket[`name:${card.name.toLowerCase()}`]?.card?.info;
-    if (found) return found;
-  }
-  if (card.name) {
-    for (const value of Object.values(bucket)) {
-      const info = value.card?.info;
-      if (info && info.name.toLowerCase() === card.name.toLowerCase()) {
-        return info;
-      }
-    }
-  }
-  return null;
-}

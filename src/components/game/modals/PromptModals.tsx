@@ -24,12 +24,14 @@ import {
 } from "@/components/game/dice";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { PromptType } from "@/types/promptType";
-import type { Card as ManaBrewCard } from "@/types/manabrew";
+import type { DeckCard, GameCard } from "@/types/manabrew";
 import { PromptType as PT } from "@/types/promptType";
 
 interface PromptModalsProps {
   promptType?: PromptType;
   currentPrompt: AgentPrompt | null;
+  sourceDeckCard?: DeckCard;
+  revealedDeckCard?: DeckCard;
   // Decision callbacks
   onModeDecision: (indices: number[]) => void;
   onRevealCardsAcknowledged: () => void;
@@ -62,6 +64,8 @@ interface PromptModalsProps {
 export function PromptModals({
   promptType,
   currentPrompt,
+  sourceDeckCard,
+  revealedDeckCard,
   onModeDecision,
   onRevealCardsAcknowledged,
   onPayCostToPreventEffectDecision,
@@ -151,7 +155,8 @@ export function PromptModals({
           options={currentPrompt.options}
           minChoices={currentPrompt.minChoices ?? 1}
           maxChoices={currentPrompt.maxChoices ?? 1}
-          cardName={currentPrompt.sourceCardName}
+          sourceCard={sourceDeckCard}
+          sourceLabel={currentPrompt.sourceCardName}
           onConfirm={onModeDecision}
         />
       )}
@@ -159,7 +164,7 @@ export function PromptModals({
       {promptType === PT.ChooseOptionalTrigger && currentPrompt?.description != null && (
         <ChooseOptionalTriggerModal
           description={currentPrompt.description}
-          cardName={currentPrompt.sourceCardName}
+          sourceCard={sourceDeckCard}
           sourceCardId={currentPrompt.sourceCardId}
           cards={currentPrompt.cards}
           promptKind={currentPrompt.promptKind}
@@ -173,7 +178,7 @@ export function PromptModals({
       {promptType === PT.PayCostToPreventEffect && currentPrompt?.description != null && (
         <ChooseOptionalTriggerModal
           description={currentPrompt.description}
-          cardName={currentPrompt.sourceCardName}
+          sourceCard={sourceDeckCard}
           promptKind="confirm_payment"
           optionLabels={["Decline", "Accept"]}
           mode={currentPrompt.costKind}
@@ -194,7 +199,7 @@ export function PromptModals({
         <ChooseTypeModal
           typeCategory={currentPrompt.typeCategory ?? "Creature"}
           validTypes={currentPrompt.validTypes}
-          cardName={currentPrompt.sourceCardName}
+          sourceCard={sourceDeckCard}
           onConfirm={onTypeDecision}
         />
       )}
@@ -205,18 +210,19 @@ export function PromptModals({
           <ChooseNumberModal
             min={currentPrompt.min}
             max={currentPrompt.max}
-            cardName={currentPrompt.sourceCardName}
+            sourceCard={sourceDeckCard}
             onConfirm={onNumberDecision}
           />
         )}
 
-      {promptType === PT.ChooseCardName && currentPrompt?.validNames != null && (
-        <ChooseCardNameModal
-          validNames={currentPrompt.validNames}
-          cardName={currentPrompt.sourceCardName}
-          onConfirm={onCardNameDecision}
-        />
-      )}
+      {promptType === PT.ChooseCardName &&
+        currentPrompt?.validNames != null && (
+          <ChooseCardNameModal
+            validNames={currentPrompt.validNames}
+            sourceCard={sourceDeckCard}
+            onConfirm={onCardNameDecision}
+          />
+        )}
 
       {promptType === PT.Scry && currentPrompt?.cards != null && (
         <LibraryPeekModal mode="scry" cards={currentPrompt.cards} onConfirm={onScryDecision} />
@@ -247,7 +253,7 @@ export function PromptModals({
             mode="discard"
             cards={currentPrompt.handCardIds
               .map((id) => currentPrompt.gameView.myHand.find((card) => card.id === id))
-              .filter((card): card is ManaBrewCard => card != null)}
+              .filter((card): card is GameCard => card != null)}
             numToTake={currentPrompt.numToDiscard}
             onConfirm={onDiscardDecision}
           />
@@ -282,7 +288,7 @@ export function PromptModals({
       {promptType === PT.ReorderLibrary && currentPrompt?.cards != null && (
         <ReorderLibraryModal
           cards={currentPrompt.cards}
-          cardName={currentPrompt.sourceCardName}
+          sourceCard={sourceDeckCard}
           onConfirm={onReorderLibraryDecision}
         />
       )}
@@ -298,21 +304,23 @@ export function PromptModals({
           />
         )}
 
-      {promptType === PT.ExploreDecision && currentPrompt?.revealedCardName != null && (
-        <ChooseOptionalTriggerModal
-          description={`Exploring revealed ${currentPrompt.revealedCardName} (nonland). Put it in graveyard or leave on top of library?`}
-          cardName={currentPrompt.revealedCardName}
-          promptKind="explore_decision"
-          optionLabels={["Put on top of library", "Put in graveyard"]}
-          onConfirm={(accept) => onExploreDecision(accept)}
-        />
-      )}
+      {promptType === PT.ExploreDecision &&
+        currentPrompt?.revealedCardName != null &&
+        revealedDeckCard && (
+          <ChooseOptionalTriggerModal
+            description={`Exploring revealed ${currentPrompt.revealedCardName} (nonland). Put it in graveyard or leave on top of library?`}
+            sourceCard={revealedDeckCard}
+            promptKind="explore_decision"
+            optionLabels={["Put on top of library", "Put in graveyard"]}
+            onConfirm={(accept) => onExploreDecision(accept)}
+          />
+        )}
 
       {promptType === PT.HelpPayAssist && currentPrompt?.maxGeneric != null && (
         <ChooseNumberModal
           min={0}
           max={currentPrompt.maxGeneric}
-          cardName={currentPrompt.cardName ?? currentPrompt.sourceCardName}
+          sourceCard={sourceDeckCard}
           onConfirm={(n) => onAssistDecision(n ?? 0)}
         />
       )}
@@ -350,7 +358,7 @@ export function PromptModals({
                 isHuman: p.isHuman,
               })) ?? []
             }
-            sourceCardName={currentPrompt.sourceCardName}
+            sourceCard={sourceDeckCard}
             onAcknowledge={onDiceRolledAcknowledged}
           />
         )}
@@ -359,7 +367,7 @@ export function PromptModals({
         <ChooseRollToIgnoreModal
           rolls={currentPrompt.rolls}
           sides={currentPrompt.sides}
-          sourceCardName={currentPrompt.sourceCardName}
+          sourceCard={sourceDeckCard}
           onConfirm={onRollToIgnoreDecision}
         />
       )}
@@ -368,7 +376,7 @@ export function PromptModals({
         <ChooseRollToSwapModal
           rolls={currentPrompt.rolls}
           sides={currentPrompt.sides}
-          sourceCardName={currentPrompt.sourceCardName}
+          sourceCard={sourceDeckCard}
           onConfirm={onRollToSwapDecision}
         />
       )}
@@ -377,7 +385,7 @@ export function PromptModals({
         <ChooseRollToModifyModal
           rolls={currentPrompt.rolls}
           sides={currentPrompt.sides}
-          sourceCardName={currentPrompt.sourceCardName}
+          sourceCard={sourceDeckCard}
           onConfirm={onRollToModifyDecision}
         />
       )}
@@ -386,7 +394,7 @@ export function PromptModals({
         <ChooseDiceToRerollModal
           rolls={currentPrompt.rolls}
           sides={currentPrompt.sides}
-          sourceCardName={currentPrompt.sourceCardName}
+          sourceCard={sourceDeckCard}
           onConfirm={onDiceToRerollDecision}
         />
       )}
@@ -399,7 +407,7 @@ export function PromptModals({
             currentResult={currentPrompt.currentResult}
             power={currentPrompt.power}
             toughness={currentPrompt.toughness}
-            sourceCardName={currentPrompt.sourceCardName}
+            sourceCard={sourceDeckCard}
             onConfirm={onRollSwapValueDecision}
           />
         )}

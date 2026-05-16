@@ -20,8 +20,12 @@ fn card_name<T: AgentTransport>(agent: &PromptAgent<T>, card_id: CardId) -> Stri
                 .chain(view.my_hand.iter())
                 .chain(view.graveyard.iter())
                 .chain(view.exile.iter())
-                .chain(view.opponent_graveyard.iter())
-                .chain(view.opponent_exile.iter())
+                .chain(
+                    view.opponent_zones
+                        .values()
+                        .flat_map(|z| z.graveyard.iter()),
+                )
+                .chain(view.opponent_zones.values().flat_map(|z| z.exile.iter()))
                 .chain(view.my_command_zone.iter())
                 .find(|card| card.id == id)
                 .map(|card| card.name.clone())
@@ -51,7 +55,7 @@ fn ability_label<T: AgentTransport>(
     ability: &SpellAbility,
     index: usize,
 ) -> String {
-    let source_name = ability.source.map(|source| card_name(agent, source));
+    let source_name = ability.source.map(|cid| card_name(agent, cid));
     let description = ability
         .ir
         .spell_description_text
@@ -94,11 +98,14 @@ pub(super) fn mulligan_decision_send<T: AgentTransport>(
     mulligan_count: u32,
 ) {
     let hand_card_ids = PromptAgent::<T>::card_ids(hand);
-    agent.send_prompt(AgentPromptInner::Mulligan {
-        game_view: agent.view(),
-        hand_card_ids,
-        mulligan_count,
-    });
+    agent.send_prompt(
+        AgentPromptInner::Mulligan {
+            game_view: agent.view(),
+            hand_card_ids,
+            mulligan_count,
+        },
+        None,
+    );
 }
 
 pub(super) fn mulligan_decision_recv<T: AgentTransport>(
@@ -142,12 +149,15 @@ pub(super) fn choose_cards_to_bottom_send<T: AgentTransport>(
             view.my_hand.iter().find(|c| c.id == id_str).cloned()
         })
         .collect();
-    agent.send_prompt(AgentPromptInner::MulliganPutBack {
-        game_view: view,
-        hand_card_ids,
-        cards,
-        count,
-    });
+    agent.send_prompt(
+        AgentPromptInner::MulliganPutBack {
+            game_view: view,
+            hand_card_ids,
+            cards,
+            count,
+        },
+        None,
+    );
 }
 
 pub(super) fn choose_cards_to_bottom_recv<T: AgentTransport>(
@@ -170,15 +180,18 @@ pub(super) fn choose_mode<T: AgentTransport>(
     descriptions: &[String],
     min: usize,
     max: usize,
-    card_name: Option<&str>,
+    source_card_id: Option<CardId>,
 ) -> Vec<usize> {
-    agent.send_prompt(AgentPromptInner::ChooseMode {
-        game_view: agent.view(),
-        options: descriptions.to_vec(),
-        min_choices: min,
-        max_choices: max,
-        source_card_name: card_name.map(String::from),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseMode {
+            game_view: agent.view(),
+            options: descriptions.to_vec(),
+            min_choices: min,
+            max_choices: max,
+            source_card_name: None,
+        },
+        source_card_id,
+    );
     match agent.recv_action() {
         PlayerAction::ModeDecision { chosen_indices } => chosen_indices,
         _ => (0..min.min(descriptions.len())).collect(),
@@ -199,17 +212,17 @@ pub(super) fn choose_spell_abilities_for_effect<T: AgentTransport>(
         .enumerate()
         .map(|(index, ability)| ability_label(agent, ability, index))
         .collect();
-    let source_card_name = abilities
-        .first()
-        .and_then(|ability| ability.source)
-        .map(|source| card_name(agent, source));
-    agent.send_prompt(AgentPromptInner::ChooseMode {
-        game_view: agent.view(),
-        options,
-        min_choices: num.min(abilities.len()),
-        max_choices: num.min(abilities.len()),
-        source_card_name,
-    });
+    let source_card_id = abilities.first().and_then(|ability| ability.source);
+    agent.send_prompt(
+        AgentPromptInner::ChooseMode {
+            game_view: agent.view(),
+            options,
+            min_choices: num.min(abilities.len()),
+            max_choices: num.min(abilities.len()),
+            source_card_name: None,
+        },
+        source_card_id,
+    );
     match agent.recv_action() {
         PlayerAction::ModeDecision { chosen_indices } => chosen_indices
             .into_iter()
@@ -290,13 +303,16 @@ pub(super) fn choose_single_entity_for_effect<T: AgentTransport>(
         .iter()
         .map(|entity| entity_label(agent, *entity))
         .collect();
-    agent.send_prompt(AgentPromptInner::ChooseMode {
-        game_view: agent.view(),
-        options,
-        min_choices: usize::from(!is_optional),
-        max_choices: 1,
-        source_card_name: Some("Choose entity".to_string()),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseMode {
+            game_view: agent.view(),
+            options,
+            min_choices: usize::from(!is_optional),
+            max_choices: 1,
+            source_card_name: Some("Choose entity".to_string()),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::ModeDecision { chosen_indices } => chosen_indices
             .first()
@@ -342,13 +358,16 @@ pub(super) fn choose_entities_for_effect<T: AgentTransport>(
         .iter()
         .map(|entity| entity_label(agent, *entity))
         .collect();
-    agent.send_prompt(AgentPromptInner::ChooseMode {
-        game_view: agent.view(),
-        options,
-        min_choices: min.min(valid.len()),
-        max_choices: max.min(valid.len()),
-        source_card_name: Some("Choose entities".to_string()),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseMode {
+            game_view: agent.view(),
+            options,
+            min_choices: min.min(valid.len()),
+            max_choices: max.min(valid.len()),
+            source_card_name: Some("Choose entities".to_string()),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::ModeDecision { chosen_indices } => chosen_indices
             .into_iter()
@@ -363,19 +382,21 @@ pub(super) fn choose_optional_trigger<T: AgentTransport>(
     agent: &mut PromptAgent<T>,
     _player: PlayerId,
     description: &str,
-    card_name: Option<&str>,
+    source: Option<CardId>,
     _api: Option<forge_engine_core::ability::api_type::ApiType>,
 ) -> bool {
-    agent.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
-        game_view: agent.view(),
-        description: description.to_string(),
-        cards: Vec::new(),
-        source_card_name: card_name.map(String::from),
-        prompt_kind: Some("optional_trigger".to_string()),
-        option_labels: Some(vec!["Decline".to_string(), "Accept".to_string()]),
-        mode: None,
-        api: None,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseOptionalTrigger {
+            game_view: agent.view(),
+            description: description.to_string(),
+            cards: Vec::new(),
+            prompt_kind: Some("optional_trigger".to_string()),
+            option_labels: Some(vec!["Decline".to_string(), "Accept".to_string()]),
+            mode: None,
+            api: None,
+        },
+        source,
+    );
     match agent.recv_action() {
         PlayerAction::OptionalTriggerDecision { accept } => accept,
         _ => true,
@@ -390,7 +411,7 @@ pub(super) fn confirm_replacement_effect<T: AgentTransport>(
     _player: PlayerId,
     question: &str,
     effect_description: &str,
-    card_name: Option<&str>,
+    source: Option<CardId>,
 ) -> bool {
     let message = if effect_description.is_empty() {
         question.to_string()
@@ -399,16 +420,18 @@ pub(super) fn confirm_replacement_effect<T: AgentTransport>(
     } else {
         format!("{question}\n{effect_description}")
     };
-    agent.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
-        game_view: agent.view(),
-        description: message,
-        cards: Vec::new(),
-        source_card_name: card_name.map(String::from),
-        prompt_kind: Some("confirm_replacement_effect".to_string()),
-        option_labels: Some(vec!["Decline".to_string(), "Accept".to_string()]),
-        mode: None,
-        api: None,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseOptionalTrigger {
+            game_view: agent.view(),
+            description: message,
+            cards: Vec::new(),
+            prompt_kind: Some("confirm_replacement_effect".to_string()),
+            option_labels: Some(vec!["Decline".to_string(), "Accept".to_string()]),
+            mode: None,
+            api: None,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::OptionalTriggerDecision { accept } => accept,
         _ => true,
@@ -421,7 +444,7 @@ pub(super) fn confirm_action<T: AgentTransport>(
     mode: Option<&str>,
     message: &str,
     options: &[String],
-    card_name: Option<&str>,
+    source: Option<CardId>,
     api: Option<forge_engine_core::ability::api_type::ApiType>,
 ) -> bool {
     // Reuse the existing optional-trigger modal plumbing for generic confirms.
@@ -430,16 +453,18 @@ pub(super) fn confirm_action<T: AgentTransport>(
     } else {
         options.to_vec()
     };
-    agent.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
-        game_view: agent.view(),
-        description: message.to_string(),
-        cards: Vec::new(),
-        source_card_name: card_name.map(String::from),
-        prompt_kind: Some("confirm_action".to_string()),
-        option_labels: Some(option_labels),
-        mode: mode.map(String::from),
-        api: api.map(|a| a.name().to_string()),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseOptionalTrigger {
+            game_view: agent.view(),
+            description: message.to_string(),
+            cards: Vec::new(),
+            prompt_kind: Some("confirm_action".to_string()),
+            option_labels: Some(option_labels),
+            mode: mode.map(String::from),
+            api: api.map(|a| a.name().to_string()),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::OptionalTriggerDecision { accept } => accept,
         _ => false,
@@ -451,19 +476,21 @@ pub(super) fn confirm_payment<T: AgentTransport>(
     _player: PlayerId,
     cost_kind: &str,
     message: &str,
-    card_name: Option<&str>,
+    source: Option<CardId>,
     api: Option<forge_engine_core::ability::api_type::ApiType>,
 ) -> bool {
-    agent.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
-        game_view: agent.view(),
-        description: message.to_string(),
-        cards: Vec::new(),
-        source_card_name: card_name.map(String::from),
-        prompt_kind: Some("confirm_payment".to_string()),
-        option_labels: Some(vec!["Decline".to_string(), "Accept".to_string()]),
-        mode: Some(cost_kind.to_string()),
-        api: api.map(|a| a.name().to_string()),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseOptionalTrigger {
+            game_view: agent.view(),
+            description: message.to_string(),
+            cards: Vec::new(),
+            prompt_kind: Some("confirm_payment".to_string()),
+            option_labels: Some(vec!["Decline".to_string(), "Accept".to_string()]),
+            mode: Some(cost_kind.to_string()),
+            api: api.map(|a| a.name().to_string()),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::OptionalTriggerDecision { accept } => accept,
         _ => false,
@@ -486,13 +513,16 @@ pub(super) fn reveal_cards<T: AgentTransport>(
         .map(|&id| crate::game_view_dto::card_to_dto(game, id, &[], &[], &zone.to_string()))
         .collect();
     let message = message_prefix.unwrap_or("Look at these cards").to_string();
-    agent.send_prompt(AgentPromptInner::RevealCards {
-        game_view: agent.view(),
-        cards,
-        zone: zone.to_string(),
-        owner_player_id: crate::ids_codec::player_id_str(owner),
-        message,
-    });
+    agent.send_prompt(
+        AgentPromptInner::RevealCards {
+            game_view: agent.view(),
+            cards,
+            zone: zone.to_string(),
+            owner_player_id: crate::ids_codec::player_id_str(owner),
+            message,
+        },
+        None,
+    );
     let _ = agent.recv_action();
 }
 
@@ -501,20 +531,22 @@ pub(super) fn pay_cost_to_prevent_effect<T: AgentTransport>(
     _player: PlayerId,
     cost_kind: &str,
     message: &str,
-    card_name: Option<&str>,
+    source: Option<CardId>,
     api: Option<forge_engine_core::ability::api_type::ApiType>,
     can_pay: bool,
 ) -> bool {
     if !can_pay {
         return false;
     }
-    agent.send_prompt(AgentPromptInner::PayCostToPreventEffect {
-        game_view: agent.view(),
-        description: message.to_string(),
-        cost_kind: cost_kind.to_string(),
-        source_card_name: card_name.map(String::from),
-        api: api.map(|a| a.name().to_string()),
-    });
+    agent.send_prompt(
+        AgentPromptInner::PayCostToPreventEffect {
+            game_view: agent.view(),
+            description: message.to_string(),
+            cost_kind: cost_kind.to_string(),
+            api: api.map(|a| a.name().to_string()),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::PayCostToPreventEffectDecision { accept } => accept,
         _ => false,
@@ -527,22 +559,24 @@ pub(super) fn choose_binary<T: AgentTransport>(
     question: &str,
     kind: BinaryChoiceKind,
     _default_choice: Option<bool>,
-    card_name: Option<&str>,
+    source: Option<CardId>,
     api: Option<forge_engine_core::ability::api_type::ApiType>,
 ) -> bool {
     let (left, right) = kind.labels();
     // In this modal pipeline, `accept=true` means "second button";
     // reverse labels so `true` still maps to Java's first (left) choice.
-    agent.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
-        game_view: agent.view(),
-        description: question.to_string(),
-        cards: Vec::new(),
-        source_card_name: card_name.map(String::from),
-        prompt_kind: Some("choose_binary".to_string()),
-        option_labels: Some(vec![right.to_string(), left.to_string()]),
-        mode: Some(kind.as_str().to_string()),
-        api: api.map(|a| a.name().to_string()),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseOptionalTrigger {
+            game_view: agent.view(),
+            description: question.to_string(),
+            cards: Vec::new(),
+            prompt_kind: Some("choose_binary".to_string()),
+            option_labels: Some(vec![right.to_string(), left.to_string()]),
+            mode: Some(kind.as_str().to_string()),
+            api: api.map(|a| a.name().to_string()),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::OptionalTriggerDecision { accept } => accept,
         _ => false,
@@ -560,11 +594,13 @@ pub(super) fn choose_color<T: AgentTransport>(
         }
     }
 
-    agent.send_prompt(AgentPromptInner::ChooseColor {
-        game_view: agent.view(),
-        valid_colors: valid_colors.to_vec(),
-        source_card_name: None,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseColor {
+            game_view: agent.view(),
+            valid_colors: valid_colors.to_vec(),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::ColorDecision { color } => color,
         _ => valid_colors.first().cloned(),
@@ -581,13 +617,16 @@ pub(super) fn choose_colors<T: AgentTransport>(
     if valid_colors.is_empty() || max == 0 {
         return Vec::new();
     }
-    agent.send_prompt(AgentPromptInner::ChooseMode {
-        game_view: agent.view(),
-        options: valid_colors.to_vec(),
-        min_choices: min.min(valid_colors.len()),
-        max_choices: max.min(valid_colors.len()),
-        source_card_name: Some("Choose colors".to_string()),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseMode {
+            game_view: agent.view(),
+            options: valid_colors.to_vec(),
+            min_choices: min.min(valid_colors.len()),
+            max_choices: max.min(valid_colors.len()),
+            source_card_name: Some("Choose colors".to_string()),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::ModeDecision { chosen_indices } => chosen_indices
             .into_iter()
@@ -608,12 +647,14 @@ pub(super) fn choose_type<T: AgentTransport>(
     type_category: &str,
     valid_types: &[String],
 ) -> Option<String> {
-    agent.send_prompt(AgentPromptInner::ChooseType {
-        game_view: agent.view(),
-        type_category: type_category.to_string(),
-        valid_types: valid_types.to_vec(),
-        source_card_name: None,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseType {
+            game_view: agent.view(),
+            type_category: type_category.to_string(),
+            valid_types: valid_types.to_vec(),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::TypeDecision { chosen_type } => chosen_type,
         _ => valid_types.first().cloned(),
@@ -625,11 +666,13 @@ pub(super) fn choose_card_name<T: AgentTransport>(
     _player: PlayerId,
     valid_names: &[String],
 ) -> Option<String> {
-    agent.send_prompt(AgentPromptInner::ChooseCardName {
-        game_view: agent.view(),
-        valid_names: valid_names.to_vec(),
-        source_card_name: None,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseCardName {
+            game_view: agent.view(),
+            valid_names: valid_names.to_vec(),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::CardNameDecision { chosen_name } => chosen_name,
         _ => valid_names.first().cloned(),
@@ -641,24 +684,25 @@ pub(super) fn choose_number_from_list<T: AgentTransport>(
     _player: PlayerId,
     choices: &[i32],
     message: &str,
-    card_name: Option<&str>,
+    source_card_id: Option<CardId>,
 ) -> Option<i32> {
     if choices.is_empty() {
         return None;
     }
-    agent.send_prompt(AgentPromptInner::ChooseMode {
-        game_view: agent.view(),
-        options: choices.iter().map(i32::to_string).collect(),
-        min_choices: 1,
-        max_choices: 1,
-        source_card_name: card_name.map(String::from).or_else(|| {
-            if message.is_empty() {
+    agent.send_prompt(
+        AgentPromptInner::ChooseMode {
+            game_view: agent.view(),
+            options: choices.iter().map(i32::to_string).collect(),
+            min_choices: 1,
+            max_choices: 1,
+            source_card_name: if source_card_id.is_some() || message.is_empty() {
                 None
             } else {
                 Some(message.to_string())
-            }
-        }),
-    });
+            },
+        },
+        source_card_id,
+    );
     match agent.recv_action() {
         PlayerAction::ModeDecision { chosen_indices } => chosen_indices
             .first()
@@ -688,16 +732,18 @@ pub(super) fn choose_roll_to_ignore<T: AgentTransport>(
     agent: &mut PromptAgent<T>,
     _player: PlayerId,
     rolls: &[i32],
-    card_name: Option<&str>,
+    source: Option<CardId>,
 ) -> Option<i32> {
     if rolls.is_empty() {
         return None;
     }
-    agent.send_prompt(AgentPromptInner::ChooseRollToIgnore {
-        game_view: agent.view(),
-        rolls: rolls.to_vec(),
-        source_card_name: card_name.map(String::from),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseRollToIgnore {
+            game_view: agent.view(),
+            rolls: rolls.to_vec(),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::RollToIgnoreDecision { roll } => roll.filter(|r| rolls.contains(r)),
         _ => rolls.first().copied(),
@@ -708,16 +754,18 @@ pub(super) fn choose_roll_to_swap<T: AgentTransport>(
     agent: &mut PromptAgent<T>,
     _player: PlayerId,
     rolls: &[i32],
-    card_name: Option<&str>,
+    source: Option<CardId>,
 ) -> Option<i32> {
     if rolls.is_empty() {
         return None;
     }
-    agent.send_prompt(AgentPromptInner::ChooseRollToSwap {
-        game_view: agent.view(),
-        rolls: rolls.to_vec(),
-        source_card_name: card_name.map(String::from),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseRollToSwap {
+            game_view: agent.view(),
+            rolls: rolls.to_vec(),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::RollToSwapDecision { roll } => roll.filter(|r| rolls.contains(r)),
         _ => rolls.first().copied(),
@@ -728,16 +776,18 @@ pub(super) fn choose_roll_to_modify<T: AgentTransport>(
     agent: &mut PromptAgent<T>,
     _player: PlayerId,
     rolls: &[i32],
-    card_name: Option<&str>,
+    source: Option<CardId>,
 ) -> Option<i32> {
     if rolls.is_empty() {
         return None;
     }
-    agent.send_prompt(AgentPromptInner::ChooseRollToModify {
-        game_view: agent.view(),
-        rolls: rolls.to_vec(),
-        source_card_name: card_name.map(String::from),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseRollToModify {
+            game_view: agent.view(),
+            rolls: rolls.to_vec(),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::RollToModifyDecision { roll } => roll.filter(|r| rolls.contains(r)),
         _ => rolls.first().copied(),
@@ -748,16 +798,18 @@ pub(super) fn choose_dice_to_reroll<T: AgentTransport>(
     agent: &mut PromptAgent<T>,
     _player: PlayerId,
     rolls: &[i32],
-    card_name: Option<&str>,
+    source: Option<CardId>,
 ) -> Vec<i32> {
     if rolls.is_empty() {
         return Vec::new();
     }
-    agent.send_prompt(AgentPromptInner::ChooseDiceToReroll {
-        game_view: agent.view(),
-        rolls: rolls.to_vec(),
-        source_card_name: card_name.map(String::from),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseDiceToReroll {
+            game_view: agent.view(),
+            rolls: rolls.to_vec(),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::DiceToRerollDecision { rolls: chosen } => {
             chosen.into_iter().filter(|r| rolls.contains(r)).collect()
@@ -772,15 +824,17 @@ pub(super) fn choose_roll_swap_value<T: AgentTransport>(
     current_result: i32,
     power: i32,
     toughness: i32,
-    card_name: Option<&str>,
+    source: Option<CardId>,
 ) -> Option<RollSwapChoice> {
-    agent.send_prompt(AgentPromptInner::ChooseRollSwapValue {
-        game_view: agent.view(),
-        current_result,
-        power,
-        toughness,
-        source_card_name: card_name.map(String::from),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseRollSwapValue {
+            game_view: agent.view(),
+            current_result,
+            power,
+            toughness,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::RollSwapValueDecision { choice } => match choice.as_deref() {
             Some("toughness") => Some(RollSwapChoice::Toughness),
@@ -810,14 +864,16 @@ pub(super) fn choose_x_value<T: AgentTransport>(
     agent: &mut PromptAgent<T>,
     _player: PlayerId,
     max_x: u32,
-    card_name: Option<&str>,
+    source: Option<CardId>,
 ) -> u32 {
-    agent.send_prompt(AgentPromptInner::ChooseNumber {
-        game_view: agent.view(),
-        min: 0,
-        max: max_x as i32,
-        source_card_name: card_name.map(String::from),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseNumber {
+            game_view: agent.view(),
+            min: 0,
+            max: max_x as i32,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::NumberDecision { chosen_number } => {
             chosen_number.unwrap_or(max_x as i32).max(0) as u32
@@ -832,12 +888,14 @@ pub(super) fn choose_number<T: AgentTransport>(
     min: i32,
     max: i32,
 ) -> Option<i32> {
-    agent.send_prompt(AgentPromptInner::ChooseNumber {
-        game_view: agent.view(),
-        min,
-        max,
-        source_card_name: None,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseNumber {
+            game_view: agent.view(),
+            min,
+            max,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::NumberDecision { chosen_number } => chosen_number,
         _ => Some(min),
@@ -851,11 +909,14 @@ pub(super) fn choose_discard<T: AgentTransport>(
     num: usize,
 ) -> Vec<CardId> {
     let hand_card_ids = PromptAgent::<T>::card_ids(hand);
-    agent.send_prompt(AgentPromptInner::ChooseDiscard {
-        game_view: agent.view(),
-        hand_card_ids,
-        num_to_discard: num,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseDiscard {
+            game_view: agent.view(),
+            hand_card_ids,
+            num_to_discard: num,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::DiscardDecision { discarded_card_ids } => discarded_card_ids
             .iter()
@@ -903,22 +964,29 @@ pub(super) fn choose_cards_for_effect<T: AgentTransport>(
         .chain(view.my_hand.iter())
         .chain(view.graveyard.iter())
         .chain(view.exile.iter())
-        .chain(view.opponent_graveyard.iter())
-        .chain(view.opponent_exile.iter())
+        .chain(
+            view.opponent_zones
+                .values()
+                .flat_map(|z| z.graveyard.iter()),
+        )
+        .chain(view.opponent_zones.values().flat_map(|z| z.exile.iter()))
         .collect();
     let zone_cards: Vec<CardDto> = valid_card_ids
         .iter()
         .filter_map(|id| all_cards.iter().find(|c| c.id == *id).map(|c| (*c).clone()))
         .collect();
 
-    agent.send_prompt(AgentPromptInner::ChooseCardsForEffect {
-        game_view: view,
-        valid_card_ids,
-        zone_cards,
-        min_choices: min,
-        max_choices: max,
-        source_card_name: None,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseCardsForEffect {
+            game_view: view,
+            valid_card_ids,
+            zone_cards,
+            min_choices: min,
+            max_choices: max,
+            source_card_name: None,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::ChooseCardsDecision { chosen_card_ids } => chosen_card_ids
             .iter()
@@ -946,8 +1014,12 @@ pub(super) fn choose_single_card_for_zone_change<T: AgentTransport>(
         .chain(view.my_hand.iter())
         .chain(view.graveyard.iter())
         .chain(view.exile.iter())
-        .chain(view.opponent_graveyard.iter())
-        .chain(view.opponent_exile.iter())
+        .chain(
+            view.opponent_zones
+                .values()
+                .flat_map(|z| z.graveyard.iter()),
+        )
+        .chain(view.opponent_zones.values().flat_map(|z| z.exile.iter()))
         .chain(view.my_command_zone.iter())
         .collect();
     let mut zone_cards: Vec<CardDto> = valid_card_ids
@@ -965,14 +1037,17 @@ pub(super) fn choose_single_card_for_zone_change<T: AgentTransport>(
     zone_cards.retain(|c| seen.insert(c.id.clone()));
 
     let min_choices = if is_optional { 0 } else { 1 };
-    agent.send_prompt(AgentPromptInner::ChooseCardsForEffect {
-        game_view: view,
-        valid_card_ids,
-        zone_cards,
-        min_choices,
-        max_choices: 1,
-        source_card_name: Some(select_prompt.to_string()),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseCardsForEffect {
+            game_view: view,
+            valid_card_ids,
+            zone_cards,
+            min_choices,
+            max_choices: 1,
+            source_card_name: Some(select_prompt.to_string()),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::ChooseCardsDecision { chosen_card_ids } => {
             chosen_card_ids.first().and_then(|id| parse_card_id(id))
@@ -1006,8 +1081,12 @@ pub(super) fn choose_cards_for_zone_change<T: AgentTransport>(
         .chain(view.my_hand.iter())
         .chain(view.graveyard.iter())
         .chain(view.exile.iter())
-        .chain(view.opponent_graveyard.iter())
-        .chain(view.opponent_exile.iter())
+        .chain(
+            view.opponent_zones
+                .values()
+                .flat_map(|z| z.graveyard.iter()),
+        )
+        .chain(view.opponent_zones.values().flat_map(|z| z.exile.iter()))
         .chain(view.my_command_zone.iter())
         .collect();
     let mut zone_cards: Vec<CardDto> = valid_card_ids
@@ -1023,14 +1102,17 @@ pub(super) fn choose_cards_for_zone_change<T: AgentTransport>(
     let mut seen = std::collections::HashSet::new();
     zone_cards.retain(|c| seen.insert(c.id.clone()));
 
-    agent.send_prompt(AgentPromptInner::ChooseCardsForEffect {
-        game_view: view,
-        valid_card_ids,
-        zone_cards,
-        min_choices: min,
-        max_choices: max,
-        source_card_name: Some(select_prompt.to_string()),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseCardsForEffect {
+            game_view: view,
+            valid_card_ids,
+            zone_cards,
+            min_choices: min,
+            max_choices: max,
+            source_card_name: Some(select_prompt.to_string()),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::ChooseCardsDecision { chosen_card_ids } => chosen_card_ids
             .iter()
@@ -1051,12 +1133,14 @@ pub(super) fn choose_explore_put_in_graveyard<T: AgentTransport>(
 ) -> bool {
     let peeked = std::mem::take(&mut agent.peeked_library_cards);
     let revealed_card = peeked.into_iter().next();
-    agent.send_prompt(AgentPromptInner::ExploreDecision {
-        game_view: agent.view(),
-        revealed_card_name: revealed_card_name.to_string(),
-        revealed_card,
-        source_card_name: None,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ExploreDecision {
+            game_view: agent.view(),
+            revealed_card_name: revealed_card_name.to_string(),
+            revealed_card,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::ExploreResponse { put_in_graveyard } => put_in_graveyard,
         _ => false,
@@ -1069,11 +1153,14 @@ pub(super) fn help_pay_assist<T: AgentTransport>(
     card_name: &str,
     max_generic: u32,
 ) -> u32 {
-    agent.send_prompt(AgentPromptInner::HelpPayAssist {
-        game_view: agent.view(),
-        card_name: card_name.to_string(),
-        max_generic,
-    });
+    agent.send_prompt(
+        AgentPromptInner::HelpPayAssist {
+            game_view: agent.view(),
+            card_name: card_name.to_string(),
+            max_generic,
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::AssistDecision { amount_to_pay } => amount_to_pay.min(max_generic),
         _ => 0,
@@ -1097,13 +1184,16 @@ pub(super) fn choose_land_or_spell<T: AgentTransport>(
     agent: &mut PromptAgent<T>,
     _player: PlayerId,
 ) -> Option<bool> {
-    agent.send_prompt(AgentPromptInner::ChooseMode {
-        game_view: agent.view(),
-        options: vec!["Land".to_string(), "Spell".to_string()],
-        min_choices: 1,
-        max_choices: 1,
-        source_card_name: Some("Choose land or spell".to_string()),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseMode {
+            game_view: agent.view(),
+            options: vec!["Land".to_string(), "Spell".to_string()],
+            min_choices: 1,
+            max_choices: 1,
+            source_card_name: Some("Choose land or spell".to_string()),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::ModeDecision { chosen_indices } => match chosen_indices.first().copied() {
             Some(0) => Some(true),
@@ -1124,13 +1214,16 @@ pub(super) fn choose_single_replacement_effect<T: AgentTransport>(
     if descriptions.is_empty() {
         return 0;
     }
-    agent.send_prompt(AgentPromptInner::ChooseMode {
-        game_view: agent.view(),
-        options: descriptions.to_vec(),
-        min_choices: 1,
-        max_choices: 1,
-        source_card_name: Some("Replacement Effect".to_string()),
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseMode {
+            game_view: agent.view(),
+            options: descriptions.to_vec(),
+            min_choices: 1,
+            max_choices: 1,
+            source_card_name: Some("Replacement Effect".to_string()),
+        },
+        None,
+    );
     match agent.recv_action() {
         PlayerAction::ModeDecision { chosen_indices } => {
             chosen_indices.first().copied().unwrap_or(0)

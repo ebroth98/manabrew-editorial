@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
-import type { Card } from "@/types/manabrew";
+import type { DeckCard, GameCard } from "@/types/manabrew";
 
 // ── State Shapes ──────────────────────────────────────────────────────────────
 
@@ -18,19 +18,19 @@ export interface HandActionOption {
 
 export interface AbilityPickerState {
   cardId: string;
-  cardName: string;
+  card?: DeckCard;
   abilities: HandActionOption[];
 }
 
 interface PlayModePickerState {
   cardId: string;
-  cardName: string;
+  card: DeckCard;
   options: { cardId: string; mode: string; modeLabel: string }[];
 }
 
 interface ViewingZoneState {
   title: string;
-  cards: Card[];
+  cards: GameCard[];
   onClickCard?: (cardId: string) => void;
 }
 

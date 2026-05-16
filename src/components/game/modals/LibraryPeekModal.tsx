@@ -4,7 +4,7 @@ import { useCardPreview } from "@/hooks/useCardPreview";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "./Modal";
-import type { Card as CardType } from "@/types/manabrew";
+import type { GameCard } from "@/types/manabrew";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
@@ -16,7 +16,7 @@ export type LibraryPeekMode = "scry" | "surveil" | "dig" | "discard";
 
 interface LibraryPeekModalProps {
   mode: LibraryPeekMode;
-  cards: CardType[];
+  cards: GameCard[];
   /** dig: maximum number of cards the player may take */
   numToTake?: number;
   /** dig: whether taking 0 cards is a valid choice */

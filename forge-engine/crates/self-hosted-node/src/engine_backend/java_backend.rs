@@ -10,13 +10,13 @@ use std::sync::mpsc::TryRecvError;
 #[cfg(feature = "java-forge")]
 use std::time::Duration;
 
+use forge_agent_interface::deck_dto::{CardIdentity, Deck};
 #[cfg(feature = "java-forge")]
 use forge_agent_interface::java_prompt_normalizer::{
     normalize_java_prompt, translate_java_action_value,
 };
 #[cfg(feature = "java-forge")]
 use forge_agent_interface::prompt::PlayerAction;
-use forge_server::protocol::CardIdentity;
 #[cfg(feature = "java-forge")]
 use j4rs::{Instance, InvocationArg, JavaOpt, Jvm, JvmBuilder};
 use serde::Serialize;
@@ -201,7 +201,7 @@ impl JavaRuntimeConfig {
 pub fn run_hosted_engine_game(
     game_id: String,
     player_names: Vec<String>,
-    deck_lists: Vec<Vec<CardIdentity>>,
+    decks: Vec<Deck>,
     commander_names: Vec<Option<String>>,
     local_player_index: Option<usize>,
     starting_life: i32,
@@ -211,7 +211,7 @@ pub fn run_hosted_engine_game(
     if let Err(error) = run_hosted_engine_game_inner(
         game_id,
         player_names,
-        deck_lists,
+        decks,
         commander_names,
         local_player_index,
         starting_life,
@@ -226,7 +226,7 @@ pub fn run_hosted_engine_game(
 pub fn run_hosted_engine_game(
     _game_id: String,
     _player_names: Vec<String>,
-    _deck_lists: Vec<Vec<CardIdentity>>,
+    _decks: Vec<Deck>,
     _commander_names: Vec<Option<String>>,
     _local_player_index: Option<usize>,
     _starting_life: i32,
@@ -243,7 +243,7 @@ pub fn run_hosted_engine_game(
 fn run_hosted_engine_game_inner(
     game_id: String,
     player_names: Vec<String>,
-    deck_lists: Vec<Vec<CardIdentity>>,
+    decks: Vec<Deck>,
     commander_names: Vec<Option<String>>,
     local_player_index: Option<usize>,
     starting_life: i32,
@@ -260,7 +260,7 @@ fn run_hosted_engine_game_inner(
     for (index, name) in player_names.iter().enumerate() {
         players.push(PlayerConfig::new(
             name.clone(),
-            &deck_lists[index],
+            &decks[index],
             commander_names[index].clone(),
         ));
     }

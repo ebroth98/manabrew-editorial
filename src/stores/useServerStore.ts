@@ -5,7 +5,6 @@ import type {
   RoomInfo,
   PlayerInfo,
   GameFormat,
-  CardIdentity,
   PlayerDeckInfo,
   AuthResultPayload,
   RoomListPayload,
@@ -19,6 +18,7 @@ import type {
   GameStartedPayload,
   ServerErrorPayload,
 } from "@/types/server";
+import type { Deck } from "@/types/manabrew";
 
 interface ServerState {
   connected: boolean;
@@ -44,11 +44,7 @@ interface ServerState {
   joinRoom(roomId: string): Promise<void>;
   leaveRoom(): Promise<void>;
   setReady(ready: boolean): Promise<void>;
-  setDeckSelection(
-    deckName: string,
-    deckList: CardIdentity[],
-    commanderName?: string,
-  ): Promise<void>;
+  setDeckSelection(deckName: string, deck: Deck, commanderName?: string): Promise<void>;
   startGame(): Promise<void>;
 
   setupListeners(): () => void;
@@ -140,12 +136,12 @@ export const useServerStore = create<ServerState>()(
         await platform.server.setReady({ ready });
       },
 
-      async setDeckSelection(deckName, deckList, commanderName) {
+      async setDeckSelection(deckName, deck, commanderName) {
         const platform = getPlatform();
         if (!platform.server) return;
         await platform.server.setDeckSelection({
           deckName,
-          deckList,
+          deck,
           commanderName: commanderName ?? null,
         });
       },

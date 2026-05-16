@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { MAIN_SET_TYPES } from "@/lib/constants";
 import { useScryfallStore } from "@/stores/useScryfallStore";
+import { ScryfallImg } from "@/components/ScryfallImg";
 
 const SET_ICON_CLASS = "brightness-0 dark:invert";
 
@@ -84,7 +85,7 @@ export function SetSelect({
       >
         {selected ? (
           <>
-            <img
+            <ScryfallImg
               src={selected.icon_svg_uri}
               alt=""
               className={cn("h-3.5 w-3.5 shrink-0", SET_ICON_CLASS)}
@@ -140,7 +141,7 @@ export function SetSelect({
                     setIsOpen(false);
                   }}
                 >
-                  <img
+                  <ScryfallImg
                     src={s.icon_svg_uri}
                     alt=""
                     className={cn("h-3.5 w-3.5 shrink-0", SET_ICON_CLASS)}
@@ -168,7 +169,11 @@ export function SetName({ code, className }: { code: string; className?: string 
 
   return (
     <span className={cn("inline-flex items-center gap-1", className)}>
-      <img src={set.icon_svg_uri} alt="" className={cn("h-3.5 w-3.5 shrink-0", SET_ICON_CLASS)} />
+      <ScryfallImg
+        src={set.icon_svg_uri}
+        alt=""
+        className={cn("h-3.5 w-3.5 shrink-0", SET_ICON_CLASS)}
+      />
       <span>{set.name}</span>
     </span>
   );

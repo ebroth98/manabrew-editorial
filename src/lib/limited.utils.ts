@@ -1,5 +1,6 @@
 import type { DraftCard } from "@/types/limited";
-import type { Card } from "@/types/manabrew";
+import type { Deck, DeckCard } from "@/types/manabrew";
+import { frontFaceName } from "@/lib/scryfall.utils";
 
 export type LimitedZone = "pool" | "main" | "sideboard";
 
@@ -53,28 +54,43 @@ export function rarityToken(rarity: DraftCard["rarity"]): RarityToken | null {
   return RARITY_TOKEN[rarity] ?? null;
 }
 
-export function draftCardToManaBrew(dc: DraftCard, idx: number): Card {
-  const realPrinting = dc.setCode && dc.setCode.length > 0 && dc.setCode !== "DEMO";
+/** Reverse of `draftCardToManaBrew` — used by the limited compare dialog to
+ *  re-interpret a saved `Deck` as a draft pool for visualization. Rarity is
+ *  unknown because saved decks don't carry it. */
+export function deckCardToDraftCard(card: DeckCard): DraftCard {
+  return {
+    name: card.name,
+    setCode: card.setCode,
+    collectorNumber: card.cardNumber,
+    rarity: "unknown",
+    colors: card.colorIdentity,
+    isDoubleFaced: card.isDoubleFaced,
+    foil: card.foil,
+  };
+}
+
+export function deckMainAsDraftCards(deck: Deck): DraftCard[] {
+  return deck.cards.map(deckCardToDraftCard);
+}
+
+export function draftCardToManaBrew(dc: DraftCard, idx: number): DeckCard {
+  if (!dc.uris) throw new Error(`Draft card has no image uris: ${dc.name}`);
   return {
     id: `pool-${idx}-${dc.setCode}-${dc.collectorNumber}`,
-    name: dc.name,
-    setCode: realPrinting ? dc.setCode : "",
-    cardNumber: realPrinting ? dc.collectorNumber : "",
+    name: frontFaceName(dc.name),
+    setCode: dc.setCode,
+    cardNumber: dc.collectorNumber,
     color: "",
     manaCost: "",
+    cmc: 0,
     types: [],
     subtypes: [],
     supertypes: [],
     text: "",
-    isPlayable: false,
-    isSelected: false,
-    isChoosable: false,
-    controllerId: "",
-    ownerId: "",
-    zoneId: "",
     isDoubleFaced: dc.isDoubleFaced,
     foil: dc.foil,
-    colorIdentity: dc.colors,
+    colorIdentity: dc.colors ?? [],
+    uris: dc.uris,
   };
 }
 

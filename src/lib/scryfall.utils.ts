@@ -1,4 +1,4 @@
-import type { Card } from "@/types/manabrew";
+import type { DeckCard } from "@/types/manabrew";
 import type { ScryfallCard } from "@/types/scryfall";
 import { getScryfallManaCost } from "@/api/scryfall";
 import { chooseImageUrisForCard } from "@/stores/useScryfallStore";
@@ -25,19 +25,16 @@ export function parseTypeLine(typeLine: string): ParsedTypeLine {
   };
 }
 
-// ─── ScryfallCard → ManaBrew Card (full) ────────────────────────────────────────
+// ─── ScryfallCard → DeckCard ─────────────────────────────────────────────────
 
-const DEFAULT_CARD_FIELDS: Pick<
-  Card,
-  "isPlayable" | "isSelected" | "isChoosable" | "controllerId" | "ownerId" | "zoneId"
-> = {
-  isPlayable: true,
-  isSelected: false,
-  isChoosable: true,
-  controllerId: "",
-  ownerId: "",
-  zoneId: "",
-};
+/** Strip the back face from a DFC name: `"Kazuul's Fury // Kazuul's Cliffs"` → `"Kazuul's Fury"`.
+ *  The engine emits only the front-face name (Forge's card DB indexes
+ *  DFCs by front face), so `asDeckCard`'s exact-name match needs the
+ *  deck side to be the same shape. */
+export function frontFaceName(name: string): string {
+  const i = name.indexOf(" // ");
+  return i >= 0 ? name.slice(0, i) : name;
+}
 
 /** Get the front-face type line, handling DFCs where type_line lives on card_faces. */
 function getFrontTypeLine(sc: ScryfallCard): string {
@@ -56,12 +53,14 @@ function detectIsDoubleFaced(sc: ScryfallCard): boolean {
   return !!(sc.card_faces && sc.card_faces.length >= 2 && sc.card_faces[1]?.image_uris);
 }
 
-export function scryfallToManaBrew(sc: ScryfallCard, id?: string): Card {
+export function scryfallToDeckCard(sc: ScryfallCard): DeckCard {
+  const id = sc.id;
   const { supertypes, types, subtypes } = parseTypeLine(getFrontTypeLine(sc));
+  const uris = chooseImageUrisForCard(sc, { frontOnly: true });
+  if (!uris) throw new Error(`Scryfall card has no image uris: ${sc.name}`);
   return {
-    ...DEFAULT_CARD_FIELDS,
     id: id ?? crypto.randomUUID(),
-    name: sc.name,
+    name: frontFaceName(sc.name),
     setCode: sc.set,
     cardNumber: sc.collector_number,
     color: sc.colors ? sc.colors.join("") : "",
@@ -74,26 +73,8 @@ export function scryfallToManaBrew(sc: ScryfallCard, id?: string): Card {
     power: sc.power,
     toughness: sc.toughness,
     text: getFrontOracleText(sc),
-    imageUrl: chooseImageUrisForCard(sc, { frontOnly: true })?.normal,
+    uris,
     isDoubleFaced: detectIsDoubleFaced(sc) || undefined,
     layout: sc.layout || undefined,
-  };
-}
-
-// ─── Default empty Card ──────────────────────────────────────────────────────
-
-export function createEmptyCard(name: string): Card {
-  return {
-    ...DEFAULT_CARD_FIELDS,
-    id: crypto.randomUUID(),
-    name,
-    setCode: "",
-    cardNumber: "",
-    color: "",
-    manaCost: "",
-    types: [],
-    subtypes: [],
-    supertypes: [],
-    text: "",
   };
 }

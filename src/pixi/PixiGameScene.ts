@@ -7,7 +7,7 @@ import {
   Sprite,
   type Texture,
 } from "pixi.js";
-import type { Card } from "@/types/manabrew";
+import type { GameCard } from "@/types/manabrew";
 import type {
   ArrowSpec,
   ArrowEndpoint,
@@ -253,7 +253,7 @@ export class PixiGameScene {
   /** While a drag is in progress, the cell the dragged card is pointing at
    *  (for the skeleton highlight). Null when not dragging or out of range. */
   private hoveredCell: GridCell | null = null;
-  /** Card id the dragged sprite would stack onto if released now. */
+  /** GameCard id the dragged sprite would stack onto if released now. */
   private stackTargetId: string | null = null;
   private gridSkeletonGfx: Graphics;
   private cardScale = BATTLEFIELD_CARD_SCALE_DEFAULT;
@@ -609,7 +609,7 @@ export class PixiGameScene {
   updateBattlefield(state: BattlefieldState): void {
     if (this.destroyed || !state || !Array.isArray(state.cards)) return;
     this.lastState = state;
-    const cardMap = new Map<string, Card>(state.cards.map((c) => [c.id, c]));
+    const cardMap = new Map<string, GameCard>(state.cards.map((c) => [c.id, c]));
     const currentIds = new Set(state.cards.map((c) => c.id));
 
     for (const childId of this.nameGroupChildren) {
@@ -688,7 +688,7 @@ export class PixiGameScene {
       const childIds = effectiveChildren.get(card.id) ?? [];
       const attachments = childIds
         .map((id) => cardMap.get(id))
-        .filter((c): c is Card => c !== undefined);
+        .filter((c): c is GameCard => c !== undefined);
       const totalOffset = attachments.length * ATTACH_OFFSET_Y;
       const topLeftY = center.y - (CARD_H * this.cardScale) / 2;
 
@@ -1002,11 +1002,11 @@ export class PixiGameScene {
   // Battlefield layout
   // ═══════════════════════════════════════════════════════════════
 
-  private applyNameGrouping(topLevel: Card[]): void {
+  private applyNameGrouping(topLevel: GameCard[]): void {
     this.stackCounts.clear();
     if (topLevel.length < 2) return;
 
-    const isStackable = (c: Card): boolean =>
+    const isStackable = (c: GameCard): boolean =>
       !c.tapped &&
       !c.isAttacking &&
       !c.attachedTo &&
@@ -1016,7 +1016,7 @@ export class PixiGameScene {
       (!c.attachmentIds || c.attachmentIds.length === 0) &&
       !this.userPlacedCards.has(c.id);
 
-    const byName = new Map<string, Card[]>();
+    const byName = new Map<string, GameCard[]>();
     for (const c of topLevel) {
       if (!isStackable(c)) continue;
       const list = byName.get(c.name);
@@ -1043,7 +1043,7 @@ export class PixiGameScene {
    * render identically to manually-stacked cards instead of piling up at
    * a single anchor point.
    */
-  private applyOverflowStacking(topLevelCandidates: Card[]): void {
+  private applyOverflowStacking(topLevelCandidates: GameCard[]): void {
     if (topLevelCandidates.length === 0) return;
     const zone = this.getPlayZone();
     const blockers = [...this.collectOverlayBlockers(), ...this.collectHandBlockers()];
@@ -1111,7 +1111,7 @@ export class PixiGameScene {
    * remaining cards by picking the nearest free cell to a preferred anchor
    * (center for non-lands, bottom-center for lands).
    */
-  private computeBattlefieldGrid(cards: Card[]): Map<string, Point> {
+  private computeBattlefieldGrid(cards: GameCard[]): Map<string, Point> {
     const positions = new Map<string, Point>();
     const zone = this.getPlayZone();
     const handBlocker = this.collectHandBlockers();
@@ -1120,7 +1120,7 @@ export class PixiGameScene {
     this.gridInfo = grid;
 
     const occupied = new Set<string>();
-    const unplaced: Card[] = [];
+    const unplaced: GameCard[] = [];
 
     // Pass 1: honor user-dragged slots. A slot pointing at a temporarily
     // blocked cell (e.g. the stack panel just appeared) is kept in the map
@@ -1220,7 +1220,7 @@ export class PixiGameScene {
 
     // Classify each permanent into a category.
     type CardCategory = "creature" | "land" | "other";
-    const classify = (c: Card): CardCategory => {
+    const classify = (c: GameCard): CardCategory => {
       if (c.types.includes("Creature")) return "creature";
       if (c.types.includes("Land")) return "land";
       return "other";
@@ -1385,7 +1385,7 @@ export class PixiGameScene {
   }
 
   private placeBattlefieldCard(
-    card: Card,
+    card: GameCard,
     centerX: number,
     centerY: number,
     zIndex: number,
@@ -1407,7 +1407,7 @@ export class PixiGameScene {
     this.rebuildBattlefieldOverlay(entry, state);
   }
 
-  private ensureBattlefieldEntry(card: Card): void {
+  private ensureBattlefieldEntry(card: GameCard): void {
     if (this.entries.has(card.id)) return;
     const isEntering = this.entries.size > 0;
     const sprite = new CardSprite(card);
@@ -1506,7 +1506,7 @@ export class PixiGameScene {
     }
   }
 
-  private onBattlefieldCardTap(card: Card): void {
+  private onBattlefieldCardTap(card: GameCard): void {
     if (this.destroyed) return;
     const state = this.lastState;
     if (!state) {
@@ -1575,7 +1575,7 @@ export class PixiGameScene {
     }
   }
 
-  private isCreatureCard(card: Card): boolean {
+  private isCreatureCard(card: GameCard): boolean {
     return card.types?.some((t) => t.toLowerCase() === "creature") ?? false;
   }
 
@@ -1625,7 +1625,7 @@ export class PixiGameScene {
 
   private drawManaAbilityGrid(
     overlay: Container,
-    card: Card,
+    card: GameCard,
     abilities: ReturnType<typeof getExpandedManaAbilities>,
   ): void {
     const cols = abilities.length > 2 ? 2 : abilities.length;
@@ -1684,7 +1684,7 @@ export class PixiGameScene {
 
   private drawSingleActionButton(
     overlay: Container,
-    card: Card,
+    card: GameCard,
     state: BattlefieldState,
     kind: ActionKind,
   ): void {
@@ -1833,7 +1833,11 @@ export class PixiGameScene {
     }
   }
 
-  private dispatchBattlefieldAction(card: Card, state: BattlefieldState, kind: ActionKind): void {
+  private dispatchBattlefieldAction(
+    card: GameCard,
+    state: BattlefieldState,
+    kind: ActionKind,
+  ): void {
     if (kind.isTappable) {
       const batch = this.selectedBatch(state.tappableLandIds, card.id);
       if (batch.length > 1) this.callbacks.onTapLands?.(batch);
@@ -2252,7 +2256,7 @@ export class PixiGameScene {
     };
   }
 
-  private createHandSprite(card: Card): CardSprite {
+  private createHandSprite(card: GameCard): CardSprite {
     const sprite = new CardSprite(card);
     sprite.eventMode = "static";
     sprite.cursor = card.isPlayable ? "grab" : "default";
@@ -2369,7 +2373,7 @@ export class PixiGameScene {
 
   private applyHandCardHighlight(
     sprite: CardSprite,
-    card: Card,
+    card: GameCard,
     isHovered: boolean,
     selectionMode = false,
     isSelected = false,

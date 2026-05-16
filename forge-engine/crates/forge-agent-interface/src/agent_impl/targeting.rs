@@ -3,7 +3,6 @@ use forge_engine_core::ids::{CardId, PlayerId};
 use forge_foundation::ZoneType;
 
 use crate::game_view_dto::{CardDto, TargetingIntent};
-use crate::ids_codec::card_id_str;
 use crate::ids_codec::parse_card_id;
 use crate::ids_codec::parse_player_id;
 use crate::ids_codec::stack_id_str;
@@ -20,14 +19,15 @@ pub(super) fn choose_target_player<T: AgentTransport>(
     intent: TargetingIntent,
 ) -> Option<PlayerId> {
     let valid_player_ids = PromptAgent::<T>::player_ids(valid);
-    let source_card_id = source.map(card_id_str);
-    agent.send_prompt(AgentPromptInner::ChooseTargetPlayer {
-        game_view: agent.view(),
-        valid_player_ids,
-        source_card_id,
-        hostile,
-        intent,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseTargetPlayer {
+            game_view: agent.view(),
+            valid_player_ids,
+            hostile,
+            intent,
+        },
+        source,
+    );
     agent.recv_player_choice_or_first(valid)
 }
 
@@ -42,14 +42,15 @@ pub(super) fn choose_target_card<T: AgentTransport>(
     let valid_card_ids = PromptAgent::<T>::card_ids(valid);
     let mut view = agent.view();
     PromptAgent::<T>::mark_battlefield_choosable(&mut view, &valid_card_ids);
-    let source_card_id = source.map(card_id_str);
-    agent.send_prompt(AgentPromptInner::ChooseTargetCard {
-        game_view: view,
-        valid_card_ids,
-        source_card_id,
-        hostile,
-        intent,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseTargetCard {
+            game_view: view,
+            valid_card_ids,
+            hostile,
+            intent,
+        },
+        source,
+    );
     agent.recv_card_choice_or_first(valid)
 }
 
@@ -89,15 +90,16 @@ pub(super) fn choose_target_card_from_zone<T: AgentTransport>(
         _ => vec![],
     };
 
-    let source_card_id = source.map(card_id_str);
-    agent.send_prompt(AgentPromptInner::ChooseTargetCardFromZone {
-        game_view: view,
-        valid_card_ids,
-        zone: format!("{:?}", zone),
-        zone_cards,
-        source_card_id,
-        intent,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseTargetCardFromZone {
+            game_view: view,
+            valid_card_ids,
+            zone: format!("{:?}", zone),
+            zone_cards,
+            intent,
+        },
+        source,
+    );
     agent.recv_card_choice_or_first(valid)
 }
 
@@ -114,15 +116,16 @@ pub(super) fn choose_target_any<T: AgentTransport>(
     let valid_card_ids = PromptAgent::<T>::card_ids(valid_cards);
     let mut view = agent.view();
     PromptAgent::<T>::mark_battlefield_choosable(&mut view, &valid_card_ids);
-    let source_card_id = source.map(card_id_str);
-    agent.send_prompt(AgentPromptInner::ChooseTargetAny {
-        game_view: view,
-        valid_player_ids,
-        valid_card_ids,
-        source_card_id,
-        hostile,
-        intent,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseTargetAny {
+            game_view: view,
+            valid_player_ids,
+            valid_card_ids,
+            hostile,
+            intent,
+        },
+        source,
+    );
     match agent.recv_action() {
         PlayerAction::TargetAny { target } => match target {
             TargetAnyChoice::Player { player_id } => parse_player_id(&player_id)
@@ -152,13 +155,14 @@ pub(super) fn choose_target_spell<T: AgentTransport>(
     source: Option<CardId>,
 ) -> Option<u32> {
     let valid_spell_ids: Vec<String> = valid.iter().map(|&id| stack_id_str(id)).collect();
-    let source_card_id = source.map(card_id_str);
-    agent.send_prompt(AgentPromptInner::ChooseTargetSpell {
-        game_view: agent.view(),
-        valid_spell_ids,
-        source_card_id,
-        intent: TargetingIntent::Counter,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseTargetSpell {
+            game_view: agent.view(),
+            valid_spell_ids,
+            intent: TargetingIntent::Counter,
+        },
+        source,
+    );
     agent.recv_spell_choice_or_first(valid)
 }
 
@@ -171,13 +175,14 @@ pub(super) fn choose_sacrifice<T: AgentTransport>(
     let valid_card_ids = PromptAgent::<T>::card_ids(valid);
     let mut view = agent.view();
     PromptAgent::<T>::mark_battlefield_choosable(&mut view, &valid_card_ids);
-    let source_card_id = source.map(card_id_str);
-    agent.send_prompt(AgentPromptInner::ChooseTargetCard {
-        game_view: view,
-        valid_card_ids,
-        source_card_id,
-        hostile: true,
-        intent: TargetingIntent::Sacrifice,
-    });
+    agent.send_prompt(
+        AgentPromptInner::ChooseTargetCard {
+            game_view: view,
+            valid_card_ids,
+            hostile: true,
+            intent: TargetingIntent::Sacrifice,
+        },
+        source,
+    );
     agent.recv_card_choice_or_first(valid)
 }

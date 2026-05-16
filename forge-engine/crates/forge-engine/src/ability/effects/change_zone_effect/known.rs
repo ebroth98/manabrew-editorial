@@ -172,7 +172,7 @@ pub(super) fn resolve_known_origin(
                     None,
                     &prompt,
                     &[],
-                    source_name.as_deref(),
+                    sa.source,
                     Some(crate::ability::api_type::ApiType::ChangeZone),
                 )
             })

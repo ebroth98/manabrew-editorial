@@ -31,7 +31,7 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
                 Some("ChangeCombatants"),
                 &format!("Reselect the defender of {card_name}?"),
                 &[],
-                Some(card_name.as_str()),
+                Some(card_id),
                 Some(ApiType::ChangeCombatants),
             );
             if !accepted {
