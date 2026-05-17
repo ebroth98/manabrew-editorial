@@ -31,8 +31,10 @@ pub fn pay_cost_from_source(part: &CostPart) -> bool {
     }
 }
 
-/// Mirrors Java's `CostPart.convertAmount()`.
-pub fn convert_amount(part: &CostPart) -> Option<i32> {
+/// Mirrors Java's `CostPart.convertAmount()`. Returns the raw amount slot
+/// without resolving — callers that need an `i32` should pair this with
+/// [`AmountSpec::resolve`].
+pub fn convert_amount(part: &CostPart) -> Option<&crate::cost::AmountSpec> {
     match part {
         CostPart::PayLife(v)
         | CostPart::PayEnergy(v)
@@ -45,7 +47,7 @@ pub fn convert_amount(part: &CostPart) -> Option<i32> {
         | CostPart::ChooseColor(v)
         | CostPart::ChooseCreatureType(v)
         | CostPart::FlipCoin(v)
-        | CostPart::Blight(v) => Some(*v),
+        | CostPart::Blight(v) => Some(v),
         CostPart::SubCounter { amount, .. }
         | CostPart::AddCounter { amount, .. }
         | CostPart::Sacrifice { amount, .. }
@@ -64,32 +66,48 @@ pub fn convert_amount(part: &CostPart) -> Option<i32> {
         | CostPart::PutCardToLib { amount, .. }
         | CostPart::Enlist { amount, .. }
         | CostPart::Behold { amount, .. }
-        | CostPart::ExileCtrlOrGrave { amount, .. } => Some(*amount),
-        CostPart::Waterbend { amount } => Some(*amount),
-        CostPart::Reveal { amount, .. } => Some(*amount),
-        CostPart::Exert { amount, .. } => Some(*amount),
-        CostPart::RollDice { amount, .. } => Some(*amount),
+        | CostPart::ExileCtrlOrGrave { amount, .. } => Some(amount),
+        CostPart::Waterbend { amount } => Some(amount),
+        CostPart::Reveal { amount, .. } => Some(amount),
+        CostPart::Exert { amount, .. } => Some(amount),
+        CostPart::RollDice { amount, .. } => Some(amount),
         _ => None,
     }
 }
 
 /// Mirrors Java's `CostPart.refund(Card source)` dispatch.
 pub fn refund(game: &mut GameState, source: CardId, player: PlayerId, part: &CostPart) {
+    let resolve = |a: &crate::cost::AmountSpec, g: &GameState| a.resolve(g, source, player);
     match part {
         CostPart::Tap => crate::cost::cost_tap::refund(game, source),
         CostPart::Untap => crate::cost::cost_untap::refund(game, source),
-        CostPart::PayLife(amount) => crate::cost::cost_pay_life::refund(game, player, *amount),
-        CostPart::PayEnergy(amount) => crate::cost::cost_pay_energy::refund(game, player, *amount),
-        CostPart::PayShards(amount) => crate::cost::cost_pay_shards::refund(game, player, *amount),
+        CostPart::PayLife(amount) => {
+            let n = resolve(amount, game);
+            crate::cost::cost_pay_life::refund(game, player, n);
+        }
+        CostPart::PayEnergy(amount) => {
+            let n = resolve(amount, game);
+            crate::cost::cost_pay_energy::refund(game, player, n);
+        }
+        CostPart::PayShards(amount) => {
+            let n = resolve(amount, game);
+            crate::cost::cost_pay_shards::refund(game, player, n);
+        }
         CostPart::SubCounter {
             amount,
             counter_type,
             ..
-        } => crate::cost::cost_remove_counter::refund(game, source, *amount, counter_type),
+        } => {
+            let n = resolve(amount, game);
+            crate::cost::cost_remove_counter::refund(game, source, n, counter_type);
+        }
         CostPart::AddCounter {
             amount,
             counter_type,
-        } => crate::cost::cost_put_counter::refund(game, source, *amount, counter_type),
+        } => {
+            let n = resolve(amount, game);
+            crate::cost::cost_put_counter::refund(game, source, n, counter_type);
+        }
         CostPart::ChooseColor(_) => crate::cost::cost_choose_color::refund(game, source),
         _ => {}
     }
@@ -119,7 +137,6 @@ pub fn get_max_amount_x(
     part: &CostPart,
     _effect: bool,
 ) -> Option<i32> {
-    let resolved = |v: i32| crate::cost::resolve_dynamic_amount(game, source, player, v);
     match part {
         CostPart::PayEnergy(_) => Some(game.player(player).energy_counters),
         CostPart::PayShards(_) => Some(game.player(player).mana_shards),
@@ -130,7 +147,7 @@ pub fn get_max_amount_x(
             ..
         } => {
             let current = game.card(source).counter_count(counter_type);
-            Some(current.min(resolved(*amount)))
+            Some(current.min(amount.resolve(game, source, player)))
         }
         _ => None,
     }
@@ -143,10 +160,9 @@ pub fn get_ability_amount(
     player: PlayerId,
     part: &CostPart,
 ) -> i32 {
-    match convert_amount(part) {
-        Some(v) => crate::cost::resolve_dynamic_amount(game, source, player, v),
-        None => 0,
-    }
+    convert_amount(part)
+        .map(|spec| spec.resolve(game, source, player))
+        .unwrap_or(0)
 }
 
 /// Mirrors Java's `CostPart.isReusable()`.

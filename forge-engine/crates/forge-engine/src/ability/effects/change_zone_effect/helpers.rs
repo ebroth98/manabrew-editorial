@@ -378,9 +378,41 @@ pub(super) fn apply_post_move(
             let _ = super::super::add_to_combat(ctx, sa, card_id, keys::ATTACKING);
         }
         if let Some(counter_type) = sa.with_counters_type_enum() {
-            ctx.game
-                .card_mut(card_id)
-                .add_counter(counter_type, sa.with_counters_amount().unwrap_or(1));
+            // WithCountersAmount$ goes through the AddCounter replacement chain.
+            let amount = sa.with_counters_amount().unwrap_or(1);
+            if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                &ctx.game.cards,
+                &ctx.game.cards[card_id.index()],
+                counter_type,
+            ) {
+                let mut add_event =
+                    crate::replacement::replacement_handler::ReplacementEvent::AddCounter {
+                        target: card_id,
+                        counter_type: counter_type.clone(),
+                        count: amount,
+                        is_effect: true,
+                    };
+                crate::replacement::replacement_handler::apply_replacements_with_agents(
+                    ctx.game,
+                    ctx.agents,
+                    &mut add_event,
+                );
+                let final_amount =
+                    if let crate::replacement::replacement_handler::ReplacementEvent::AddCounter {
+                        count,
+                        ..
+                    } = add_event
+                    {
+                        count
+                    } else {
+                        amount
+                    };
+                if final_amount > 0 {
+                    ctx.game
+                        .card_mut(card_id)
+                        .add_counter(counter_type, final_amount);
+                }
+            }
         }
         ctx.trigger_handler
             .register_active_trigger(ctx.game, card_id);
@@ -428,12 +460,17 @@ pub(super) fn apply_post_move(
                     ctx.game.card_mut(card_id).set_exiled_by(Some(sid));
                 }
                 let src_zone = ctx.game.card(sid).zone;
-                if matches!(
+                let source_active = matches!(
                     src_zone,
                     ZoneType::Battlefield | ZoneType::Stack | ZoneType::Command
-                ) && !ctx.game.card(sid).remembered_cards.contains(&card_id)
-                {
+                );
+                if source_active && !ctx.game.card(sid).remembered_cards.contains(&card_id) {
                     ctx.game.card_mut(sid).add_remembered_card(card_id);
+                }
+                // Mirrors Java `SpellAbilityEffect.handleExiledWith` — feeds
+                // `Card.ExiledWithSource` / `Defined$ ExiledWith` selectors.
+                if source_active {
+                    ctx.game.card_mut(sid).add_imprinted_card(card_id);
                 }
             }
         }

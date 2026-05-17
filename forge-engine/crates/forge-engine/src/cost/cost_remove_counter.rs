@@ -38,7 +38,7 @@ pub fn can_pay(
         game,
         source,
         player,
-        *amount,
+        amount.resolve(game, source, player),
         counter_type,
         type_filter,
     )
@@ -59,7 +59,7 @@ pub fn pay_with_decision(
     else {
         return false;
     };
-    let resolved = super::resolve_dynamic_amount(game, source, player, *amount);
+    let resolved = amount.resolve(game, source, player);
     if !type_filter.eq_ignore_ascii_case("CARDNAME")
         && !type_filter.eq_ignore_ascii_case("NICKNAME")
     {

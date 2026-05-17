@@ -22,7 +22,7 @@ pub fn payment_order(part: &super::CostPart) -> i32 {
 pub fn can_pay(
     game: &crate::game::GameState,
     _available_mana: &crate::mana::ManaPool,
-    _source: crate::ids::CardId,
+    source: crate::ids::CardId,
     player: crate::ids::PlayerId,
     _ability: Option<&crate::spellability::SpellAbility>,
     part: &super::CostPart,
@@ -51,7 +51,7 @@ pub fn can_pay(
             }
         })
         .sum();
-    total >= *amount
+    total >= amount.resolve(game, source, player)
 }
 
 pub fn pay_with_decision(

@@ -30,7 +30,7 @@ pub fn payment_order(part: &super::CostPart) -> i32 {
 pub fn can_pay(
     game: &crate::game::GameState,
     _available_mana: &crate::mana::ManaPool,
-    _source: crate::ids::CardId,
+    source: crate::ids::CardId,
     player: crate::ids::PlayerId,
     _ability: Option<&crate::spellability::SpellAbility>,
     part: &super::CostPart,
@@ -38,7 +38,7 @@ pub fn can_pay(
     let super::CostPart::PayLife(amount) = part else {
         return false;
     };
-    let resolved_amount = crate::cost::resolve_dynamic_amount(game, _source, player, *amount);
+    let resolved_amount = amount.resolve(game, source, player);
     if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life(
         game, player, true, None,
     ) {
@@ -57,6 +57,6 @@ pub fn pay_with_decision(
     let super::CostPart::PayLife(amount) = part else {
         return false;
     };
-    let resolved = crate::cost::resolve_dynamic_amount(game, source, player, *amount);
+    let resolved = amount.resolve(game, source, player);
     pay_as_decided(game, player, resolved)
 }

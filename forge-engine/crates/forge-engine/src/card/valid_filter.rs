@@ -1399,6 +1399,9 @@ fn legacy_matches_card_atom(raw: &str, card: &Card, context: MatchContext<'_>) -
         "oppctrl" | "opponentctrl" | "opponent" => card.controller != source.controller,
         "chosenctrl" => Some(card.controller) == source.chosen_player,
         "oppown" | "opponentown" => card.owner != source.controller,
+        "targetedplayerown" | "targetedown" | "targetedowner" => {
+            context.targeted_players.contains(&card.owner)
+        }
         "iscommander" => card.is_commander,
         "legendary" => card.type_line.is_legendary(),
         "basic" => card.type_line.is_basic(),
@@ -1637,6 +1640,7 @@ fn legacy_matches_card_atom(raw: &str, card: &Card, context: MatchContext<'_>) -
                     "artifact" => card.type_line.is_artifact(),
                     "enchantment" => card.type_line.is_enchantment(),
                     "token" => card.is_token,
+                    "colorless" => card.color.is_colorless(),
                     _ => {
                         if let Some(color) = Color::from_name(negated_value) {
                             card.color.has_color(color)
@@ -2225,6 +2229,7 @@ fn matches_type_and_qualifier_parts(
                             "basic" => card.type_line.is_basic(),
                             "snow" => card.type_line.is_snow(),
                             "token" => card.is_token,
+                            "colorless" => card.color.is_colorless(),
                             _ => {
                                 if let Some(color) = Color::from_name(negated) {
                                     card.color.has_color(color)

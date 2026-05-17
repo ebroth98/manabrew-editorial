@@ -79,7 +79,7 @@ pub fn can_pay(
     }
     let valid =
         super::get_sacrifice_targets_for_cost(game, player, type_filter, ability).len() as i32;
-    valid >= *amount
+    valid >= amount.resolve(game, source, player)
 }
 
 pub fn pay_with_decision(

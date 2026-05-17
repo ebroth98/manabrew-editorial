@@ -346,6 +346,10 @@ impl DeterministicAgent {
         if self.is_land(play.card_id) {
             return format!("LAND:{}", self.card_name(play.card_id));
         }
+        // MDFC back-face land — Java buckets as LAND via isLandAbility().
+        if play.mode == PlayCardMode::BackFaceLand {
+            return format!("LAND:{}", self.card_name(play.card_id));
+        }
         // Java harness: Room UnlockDoor is a StaticAbilityApiBased where
         // isSpell()=false, isLandAbility()=false, isManaAbility()=false,
         // so actionBaseLabel() classifies it as "AB:".

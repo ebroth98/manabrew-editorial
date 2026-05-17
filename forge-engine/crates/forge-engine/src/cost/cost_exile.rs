@@ -133,7 +133,7 @@ pub fn can_pay(
                 }
             }
             if super::exile_requires_shared_card_type(type_filter) {
-                if available < *amount {
+                if available < amount.resolve(game, source, player) {
                     return false;
                 }
                 let mut has_pair = false;
@@ -152,7 +152,7 @@ pub fn can_pay(
                     return false;
                 }
             }
-            available >= *amount
+            available >= amount.resolve(game, source, player)
         }
         super::CostPart::ExileFromAnyGrave {
             amount,
@@ -171,7 +171,11 @@ pub fn can_pay(
                         ability,
                         true,
                     );
-                return if is_eligible { *amount <= 1 } else { false };
+                return if is_eligible {
+                    amount.resolve(game, source, player) <= 1
+                } else {
+                    false
+                };
             }
             let count = game
                 .players
@@ -193,13 +197,13 @@ pub fn can_pay(
                         )
                 })
                 .count() as i32;
-            count >= *amount
+            count >= amount.resolve(game, source, player)
         }
         super::CostPart::ExileFromSameGrave {
             amount,
             type_filter,
         } => {
-            let resolved_amount = super::resolve_dynamic_amount(game, source, player, *amount);
+            let resolved_amount = amount.resolve(game, source, player);
             let base_filter = super::normalize_exile_base_filter(type_filter);
             let mut by_owner: std::collections::HashMap<crate::ids::PlayerId, i32> =
                 std::collections::HashMap::new();

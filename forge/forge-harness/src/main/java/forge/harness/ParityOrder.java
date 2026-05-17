@@ -47,7 +47,11 @@ public final class ParityOrder {
                 ? cardModeSortKey(sa)
                 : String.format("%05d", abilityDeclarationIndex(sa));
         final String fallback = sa.toUnsuppressedString() == null ? "" : sa.toUnsuppressedString();
-        return label + "|" + bucket + "|" + hostParity + "|" + variant + "|" + fallback;
+        final String key = label + "|" + bucket + "|" + hostParity + "|" + variant + "|" + fallback;
+        if (Boolean.getBoolean("forge.parity.sort.trace")) {
+            System.err.printf("[sort-java] %s%n", key);
+        }
+        return key;
     }
 
     private static String actionBaseLabel(final SpellAbility sa) {

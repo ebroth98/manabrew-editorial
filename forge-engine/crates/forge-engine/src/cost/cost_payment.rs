@@ -326,21 +326,39 @@ fn refund_cost_part(game: &mut GameState, source: CardId, player: PlayerId, part
             amount,
             counter_type,
             ..
-        } => crate::cost::cost_remove_counter::refund(game, source, *amount, counter_type),
+        } => crate::cost::cost_remove_counter::refund(
+            game,
+            source,
+            amount.resolve(game, source, player),
+            counter_type,
+        ),
         CostPart::AddCounter {
             amount,
             counter_type,
         } => {
-            crate::cost::cost_put_counter::refund(game, source, *amount, counter_type);
+            crate::cost::cost_put_counter::refund(
+                game,
+                source,
+                amount.resolve(game, source, player),
+                counter_type,
+            );
         }
         CostPart::PayEnergy(amount) => {
-            crate::cost::cost_pay_energy::refund(game, player, *amount);
+            crate::cost::cost_pay_energy::refund(
+                game,
+                player,
+                amount.resolve(game, source, player),
+            );
         }
         CostPart::PayShards(amount) => {
-            crate::cost::cost_pay_shards::refund(game, player, *amount);
+            crate::cost::cost_pay_shards::refund(
+                game,
+                player,
+                amount.resolve(game, source, player),
+            );
         }
         CostPart::PayLife(amount) => {
-            game.player_gain_life(player, *amount);
+            game.player_gain_life(player, amount.resolve(game, source, player));
         }
         CostPart::ChooseColor(_) => {
             crate::cost::cost_choose_color::refund(game, source);

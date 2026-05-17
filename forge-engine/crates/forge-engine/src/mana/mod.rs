@@ -264,16 +264,22 @@ pub struct ManaPaymentContext {
     pub type_line: Option<forge_foundation::CardTypeLine>,
     /// Subtypes of the spell being cast.
     pub card_name: Option<String>,
+    /// Color of the spell being cast (for `Spell.Colorless`-style qualifiers).
+    pub card_color: Option<forge_foundation::ColorSet>,
     /// Chosen creature/card types keyed by mana source card ID (e.g. Cavern of Souls).
     pub chosen_types_by_source: std::collections::HashMap<CardId, String>,
 }
 
 pub fn payment_context_for_sa(game: &GameState, sa: &SpellAbility) -> ManaPaymentContext {
-    let (type_line, card_name) = if let Some(source) = sa.source {
+    let (type_line, card_name, card_color) = if let Some(source) = sa.source {
         let card = game.card(source);
-        (Some(card.type_line.clone()), Some(card.card_name.clone()))
+        (
+            Some(card.type_line.clone()),
+            Some(card.card_name.clone()),
+            Some(card.color),
+        )
     } else {
-        (None, None)
+        (None, None, None)
     };
 
     ManaPaymentContext {
@@ -286,6 +292,7 @@ pub fn payment_context_for_sa(game: &GameState, sa: &SpellAbility) -> ManaPaymen
         sa_on_stack: false,
         type_line,
         card_name,
+        card_color,
         chosen_types_by_source: game
             .cards
             .iter()
@@ -337,7 +344,12 @@ fn check_single_restriction(restriction: &str, ctx: &ManaPaymentContext) -> bool
                                 "Artifact" => tl.is_artifact(),
                                 _ => tl.has_subtype(base),
                             };
-                            base_ok && tl.has_subtype(sub)
+                            let sub_ok = match sub {
+                                "Colorless" => ctx.card_color.is_some_and(|c| c.is_colorless()),
+                                "Multicolor" => ctx.card_color.is_some_and(|c| c.is_multicolor()),
+                                _ => tl.has_subtype(sub),
+                            };
+                            base_ok && sub_ok
                         } else {
                             tl.has_subtype(other)
                         }
@@ -1946,6 +1958,7 @@ mod tests {
             sa_on_stack: false,
             type_line: Some(CardTypeLine::parse("Creature Zombie Assassin")),
             card_name: Some("Unstoppable Slasher".to_string()),
+            card_color: None,
             chosen_types_by_source,
         };
 

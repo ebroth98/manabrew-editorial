@@ -430,6 +430,9 @@ pub fn resolve_defined_player_with_sa(
         "ReplacedCardOwner" => triggered_owner(sa, game, AbilityKey::ReplacedCard)
             .or_else(|| triggered_owner(sa, game, AbilityKey::Card)),
         "TriggeredSourceController" => triggered_controller(sa, game, AbilityKey::Source),
+        "TriggeredSourceSAController" => sa
+            .get_triggering_spell_ability("SourceSA")
+            .map(|cause_sa| cause_sa.activating_player),
         "TriggeredPlayerController" => triggered_controller(sa, game, AbilityKey::Player),
         "DefendingPlayer" | "TriggeredDefendingPlayer" => sa
             .target_chosen
@@ -636,6 +639,10 @@ pub fn resolve_defined_players_with_sa(
             .into_iter()
             .map(|cid| game.card(cid).controller)
             .collect(),
+        "TriggeredSourceSAController" => sa
+            .get_triggering_spell_ability("SourceSA")
+            .map(|cause_sa| vec![cause_sa.activating_player])
+            .unwrap_or_default(),
         "TriggeredPlayerController" => {
             let mut players = sa.get_triggering_players(AbilityKey::Player);
             for cid in sa.get_triggering_cards(AbilityKey::Player) {

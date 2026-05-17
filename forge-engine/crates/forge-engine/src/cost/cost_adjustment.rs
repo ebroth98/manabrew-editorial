@@ -13,7 +13,7 @@ use forge_foundation::ZoneType;
 use crate::agent::PlayerAgent;
 use crate::card::{valid_filter, Card};
 use crate::card_trait_base::CardTraitIrOwner;
-use crate::cost::{parse_cost, Cost};
+use crate::cost::{parse_cost, Cost, CostPart};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::mana_cost_being_paid::ManaCostBeingPaid;
@@ -258,17 +258,18 @@ fn compute_cost_adjustment_inner(
                 continue;
             }
 
-            // EffectZone$ governs the SOURCE zone the static is active from
-            // (e.g. Temur Battlecrier's `EffectZone$ Battlefield`), not the
-            // zone the spell is being cast from. Compare it to `source.zone`,
-            // not `cast_zone`. The previous `cast_zone` comparison silently
-            // dropped every Battlefield-source ReduceCost static when casting
-            // from Hand (which is every normal cast).
-            if !st_ab.ir.effect_zone_all
-                && !st_ab.ir.effect_zones.is_empty()
-                && !st_ab.ir.effect_zones.contains(&source.zone)
-            {
-                continue;
+            // EffectZone$ gates by the static's host zone (not the cast zone).
+            // Empty declaration defaults to Battlefield — Java
+            // `StaticAbility.zonesCheck`.
+            if !st_ab.ir.effect_zone_all {
+                let active = if st_ab.ir.effect_zones.is_empty() {
+                    source.zone == ZoneType::Battlefield
+                } else {
+                    st_ab.ir.effect_zones.contains(&source.zone)
+                };
+                if !active {
+                    continue;
+                }
             }
 
             // ── checkRequirement: common CardTraitBase requirements ──
@@ -340,7 +341,7 @@ fn compute_cost_adjustment_inner(
             let amount: i32 = if let Ok(n) = amount_str.parse::<i32>() {
                 n
             } else {
-                resolve_svar_for_cost(game, source, amount_str, caster)
+                crate::svar::resolve_cost_amount_svar(game, source, amount_str, caster)
             };
 
             // ── applyReduceCostAbility: MinMana$ ─────────────────────
@@ -507,7 +508,7 @@ pub fn compute_raise_cost_parts_with_targets(
                     .count() as i32
             } else if st_ab.ir.relative {
                 let amount_str = st_ab.ir.amount.as_deref().unwrap_or("1");
-                resolve_svar_for_cost(game, source, amount_str, caster)
+                crate::svar::resolve_cost_amount_svar(game, source, amount_str, caster)
             } else {
                 st_ab
                     .ir
@@ -522,8 +523,23 @@ pub fn compute_raise_cost_parts_with_targets(
             }
 
             let parsed = parse_cost(scost);
+            // Mirrors `AbilityUtils.calculateAmount(host, getAmount(), sa)`:
+            // resolve the inner `<Y/.../>` amount against the host SVars.
+            // Zero means the part is opt-out (Announce$ default).
+            let svar_amount = resolve_raise_cost_svar_amount(scost, source);
+            if matches!(svar_amount, Some(n) if n <= 0) {
+                continue;
+            }
+            let adjusted_parts = match svar_amount {
+                Some(amt) => parsed
+                    .parts
+                    .iter()
+                    .map(|p| substitute_part_amount(p, amt))
+                    .collect::<Vec<_>>(),
+                None => parsed.parts.clone(),
+            };
             for _ in 0..count {
-                merged_parts.extend(parsed.parts.clone());
+                merged_parts.extend(adjusted_parts.clone());
             }
             has_tap |= parsed.has_tap;
             mandatory |= parsed.mandatory;
@@ -538,6 +554,77 @@ pub fn compute_raise_cost_parts_with_targets(
             has_tap,
             mandatory,
         })
+    }
+}
+
+/// Resolve the `<amount/.../>` slot of a cost via the source card's SVars.
+/// `None` when the slot is missing, numeric, or `X`.
+fn resolve_raise_cost_svar_amount(scost: &str, source: &Card) -> Option<i32> {
+    let start = scost.find('<')?;
+    let rest = &scost[start + 1..];
+    let end_rel = rest.find('>')?;
+    let inner = &rest[..end_rel];
+    let slash = inner.find('/')?;
+    let name = inner[..slash].trim();
+    if name.is_empty() || name.eq_ignore_ascii_case("X") || name.parse::<i32>().is_ok() {
+        return None;
+    }
+    resolve_svar_amount_chain(source, name)
+}
+
+/// Walk an `SVar$NAME` chain to its first numeric value. 8-hop cap.
+fn resolve_svar_amount_chain(source: &Card, start_name: &str) -> Option<i32> {
+    let mut name = start_name.to_string();
+    for _ in 0..8 {
+        let raw = source.svars.get(&name)?;
+        if let Some(rest) = raw.strip_prefix("SVar$") {
+            let next = rest.split('/').next().unwrap_or("").trim();
+            if next.is_empty() {
+                return None;
+            }
+            name = next.to_string();
+            continue;
+        }
+        if let Some(num_str) = raw.strip_prefix("Number$") {
+            return num_str.trim().parse().ok();
+        }
+        return raw.trim().parse().ok();
+    }
+    None
+}
+
+/// Rewrite a parsed `CostPart`'s amount slot with `amount`.
+fn substitute_part_amount(part: &CostPart, amount: i32) -> CostPart {
+    let spec = crate::cost::AmountSpec::Literal(amount);
+    match part {
+        CostPart::Exile {
+            type_filter, from, ..
+        } => CostPart::Exile {
+            amount: spec,
+            type_filter: type_filter.clone(),
+            from: *from,
+        },
+        CostPart::ExileFromAnyGrave { type_filter, .. } => CostPart::ExileFromAnyGrave {
+            amount: spec,
+            type_filter: type_filter.clone(),
+        },
+        CostPart::ExileFromSameGrave { type_filter, .. } => CostPart::ExileFromSameGrave {
+            amount: spec,
+            type_filter: type_filter.clone(),
+        },
+        CostPart::Sacrifice { type_filter, .. } => CostPart::Sacrifice {
+            amount: spec,
+            type_filter: type_filter.clone(),
+        },
+        CostPart::Discard { type_filter, .. } => CostPart::Discard {
+            amount: spec,
+            type_filter: type_filter.clone(),
+        },
+        CostPart::Return { type_filter, .. } => CostPart::Return {
+            amount: spec,
+            type_filter: type_filter.clone(),
+        },
+        other => other.clone(),
     }
 }
 
@@ -568,96 +655,6 @@ fn check_valid_spell(valid_spell: &str, spell_card: &Card) -> bool {
             _ => true,
         }
     })
-}
-
-// ── SVar resolution for cost adjustment context ──────────────────────
-
-/// Resolve an SVar expression in the context of cost adjustment.
-///
-/// Supports:
-/// - Direct SVar names on `source.svars` that contain `Count$...` expressions
-/// - Numeric literals
-fn resolve_svar_for_cost(game: &GameState, source: &Card, name: &str, caster: PlayerId) -> i32 {
-    // If it's a direct number, return it
-    if let Ok(n) = name.parse::<i32>() {
-        return n;
-    }
-
-    // Look up in source card's SVars
-    let expr = match source.get_s_var(name) {
-        Some(e) => e,
-        None => return 0,
-    };
-
-    evaluate_count_expr(game, source, expr, caster)
-}
-
-/// Evaluate a `Count$...` expression.
-fn evaluate_count_expr(game: &GameState, source: &Card, expr: &str, caster: PlayerId) -> i32 {
-    // Count$CardCounters.TYPE — count of a specific counter kind on the host.
-    // Used by cards like Animar, Soul of Elements whose cost reduction scales
-    // with its own +1/+1 counters.
-    if let Some(counter_name) = expr.strip_prefix("Count$CardCounters.") {
-        let counter_type = crate::ability::ability_utils::parse_counter_type(counter_name);
-        return source.counter_count(&counter_type);
-    }
-
-    // Count$ThisTurnCast_Card.YouCtrl — spells cast this turn by controller
-    if let Some(rest) = expr.strip_prefix("Count$ThisTurnCast_") {
-        if rest.contains("YouCtrl") || rest.contains("YouOwn") {
-            return game.player(source.controller).spells_cast_this_turn;
-        }
-        // Generic: all players' spells this turn (approximate)
-        return game.player(caster).spells_cast_this_turn;
-    }
-
-    // Count$YourLifeTotal
-    if expr == "Count$YourLifeTotal" {
-        return game.player(source.controller).life;
-    }
-
-    // Count$Valid <filter>$<aggregator>
-    //
-    // Java's `AbilityUtils.calculateAmount` recognises this pattern as
-    // "evaluate aggregator over the set of cards on the battlefield matching
-    // <filter>". Sunderflock uses `Count$Valid Elemental.YouCtrl$GreatestCardManaCost`
-    // to scale its ReduceCost by the largest Elemental CMC the controller owns.
-    // Currently supported aggregators: `Amount` (count) and `GreatestCardManaCost`
-    // (max CMC). Add more here as parity tests surface them.
-    if let Some(rest) = expr.strip_prefix("Count$Valid ") {
-        let (filter, aggregator) = rest.split_once('$').unwrap_or((rest, ""));
-        let selector = crate::parsing::cached_compiled_selector(filter);
-        let matches: Vec<&Card> = game
-            .cards
-            .iter()
-            .filter(|c| c.zone == ZoneType::Battlefield)
-            .filter(|c| {
-                valid_filter::matches_valid_card_selector_in_game(&selector, c, source, game)
-            })
-            .collect();
-        return match aggregator {
-            // No aggregator (e.g. Battlecrier `Count$Valid Creature.YouCtrl+powerGE4`):
-            // return the count of matching permanents. The default for `Count$Valid`
-            // without a `$<aggregator>` suffix is the cardinality of the match set.
-            // Mirrors Java `CardFactoryUtil.xCount` which falls through to
-            // `CardLists.count(...)` when no extra aggregator is parsed.
-            "" | "Amount" => matches.len() as i32,
-            "GreatestCardManaCost" => matches.iter().map(|c| c.mana_cost.cmc()).max().unwrap_or(0),
-            _ => 0,
-        };
-    }
-
-    // Count$CardsInYourGraveyard or Count$TypeYouCtrl.Graveyard
-    if expr.contains("Graveyard") && expr.contains("YouCtrl") {
-        return game
-            .cards_in_zone(ZoneType::Graveyard, source.controller)
-            .len() as i32;
-    }
-
-    // Fallback: try numeric
-    expr.strip_prefix("Count$")
-        .and_then(|s| s.parse::<i32>().ok())
-        .unwrap_or(0)
 }
 
 // ── ValidCard$ matching (mirrors Java's checkRequirement ValidCard) ──

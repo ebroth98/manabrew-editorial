@@ -100,7 +100,9 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             ctx.game.card_mut(source_id).clear_remembered();
             ctx.game.card_mut(source_id).add_remembered_player(pid);
 
-            let sub_sa = build_spell_ability(ctx.game, source_id, &sub_text, pid);
+            // Java `RepeatEachEffect` keeps sa.getActivatingPlayer() across
+            // iterations; pid flows in only via Remembered.
+            let sub_sa = build_spell_ability(ctx.game, source_id, &sub_text, controller);
             resolve_sub_chain(ctx, sub_sa);
 
             if ctx.game.game_over {

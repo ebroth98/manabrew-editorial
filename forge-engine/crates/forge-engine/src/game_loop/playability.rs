@@ -140,27 +140,33 @@ impl GameLoop {
                         });
                     }
                 }
-            } else if card
-                .other_part
-                .as_ref()
-                .is_some_and(|other| other.type_line.is_land())
-            {
-                if crate::staticability::static_ability_cant_be_cast::cant_play_land_ability(
-                    &game.cards,
-                    card,
-                    player,
-                ) {
-                    continue;
-                }
-                let land_sa = SpellAbility::new_land(Some(card_id), player);
-                if !must_be_instant && crate::spellability::land_ability::can_play(&land_sa, game) {
-                    playable.push(crate::agent::PlayOption {
-                        card_id,
-                        mode: crate::agent::PlayCardMode::BackFaceLand,
-                        alt_cost_index: 0,
-                    });
-                }
             } else {
+                // MDFC: emit both the back-face LAND and the front-face SPELL
+                // (Java `getPossibleActions`).
+                if card
+                    .other_part
+                    .as_ref()
+                    .is_some_and(|other| other.type_line.is_land())
+                {
+                    let cant_play_land =
+                        crate::staticability::static_ability_cant_be_cast::cant_play_land_ability(
+                            &game.cards,
+                            card,
+                            player,
+                        );
+                    if !cant_play_land {
+                        let land_sa = SpellAbility::new_land(Some(card_id), player);
+                        if !must_be_instant
+                            && crate::spellability::land_ability::can_play(&land_sa, game)
+                        {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::BackFaceLand,
+                                alt_cost_index: 0,
+                            });
+                        }
+                    }
+                }
                 let cast_sa =
                     crate::spellability::build_spell_ability_for_card_cast(game, card_id, player);
                 if crate::staticability::static_ability_cant_be_cast::cant_be_cast_ability_in_context(
@@ -206,6 +212,7 @@ impl GameLoop {
                     sa_on_stack: false,
                     type_line: Some(card.type_line.clone()),
                     card_name: Some(card.card_name.clone()),
+                    card_color: Some(card.color),
                     chosen_types_by_source: chosen_types_by_source.clone(),
                 };
                 let available_mana = mana::calculate_available_mana_with_context(
@@ -1092,6 +1099,7 @@ impl GameLoop {
                     sa_on_stack: false,
                     type_line: Some(card.type_line.clone()),
                     card_name: Some(card.card_name.clone()),
+                    card_color: Some(card.color),
                     chosen_types_by_source: game
                         .cards
                         .iter()

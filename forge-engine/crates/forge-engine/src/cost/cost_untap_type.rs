@@ -18,7 +18,7 @@ pub fn to_string(part: &super::CostPart) -> String {
             // Mirrors Java: Cost.convertAmountTypeToWords(i, getAmount(), " tapped " + desc)
             // Simplified inline since the full utility isn't ported yet.
             let desc = type_filter.as_str();
-            if *amount == 1 {
+            if matches!(amount.as_literal(), Some(1)) {
                 sb.push_str(&format!("a tapped {}", desc));
             } else {
                 sb.push_str(&format!("{} tapped {}s", amount, desc));
@@ -91,7 +91,7 @@ pub fn can_pay(
     game: &crate::game::GameState,
     _available_mana: &crate::mana::ManaPool,
     source: crate::ids::CardId,
-    _player: crate::ids::PlayerId,
+    player: crate::ids::PlayerId,
     _ability: Option<&crate::spellability::SpellAbility>,
     part: &super::CostPart,
 ) -> bool {
@@ -124,7 +124,7 @@ pub fn can_pay(
             can_untap_candidate(game, cid)
         })
         .count() as i32;
-    count >= *amount
+    count >= amount.resolve(game, source, player)
 }
 
 pub fn pay_with_decision(

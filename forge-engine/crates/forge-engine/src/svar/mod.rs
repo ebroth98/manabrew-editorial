@@ -1309,6 +1309,77 @@ pub fn resolve_count_svar(
     )
 }
 
+/// Resolve a cost-adjustment `Amount$ <ident>` slot. Tries a direct integer
+/// parse first, then looks up `ident` on the host's SVar table and routes
+/// through the subset of `Count$…` patterns relevant for cost adjustment.
+/// Mirrors Java `AbilityUtils.calculateAmount(host, name, staticAbility)`
+/// for the static-ability path. Owned by `svar/` so cost callers don't
+/// reimplement SVar walking.
+pub fn resolve_cost_amount_svar(
+    game: &GameState,
+    source: &crate::card::Card,
+    name: &str,
+    caster: PlayerId,
+) -> i32 {
+    if let Ok(n) = name.parse::<i32>() {
+        return n;
+    }
+    let Some(expr) = source.get_s_var(name) else {
+        return 0;
+    };
+    evaluate_cost_amount_count_expr(game, source, expr, caster)
+}
+
+fn evaluate_cost_amount_count_expr(
+    game: &GameState,
+    source: &crate::card::Card,
+    expr: &str,
+    caster: PlayerId,
+) -> i32 {
+    use crate::card::Card;
+    use forge_foundation::ZoneType;
+    if let Some(counter_name) = expr.strip_prefix("Count$CardCounters.") {
+        let counter_type = crate::ability::ability_utils::parse_counter_type(counter_name);
+        return source.counter_count(&counter_type);
+    }
+    if let Some(rest) = expr.strip_prefix("Count$ThisTurnCast_") {
+        if rest.contains("YouCtrl") || rest.contains("YouOwn") {
+            return game.player(source.controller).spells_cast_this_turn;
+        }
+        return game.player(caster).spells_cast_this_turn;
+    }
+    if expr == "Count$YourLifeTotal" {
+        return game.player(source.controller).life;
+    }
+    if let Some(rest) = expr.strip_prefix("Count$Valid ") {
+        let (filter, aggregator) = rest.split_once('$').unwrap_or((rest, ""));
+        let selector = crate::parsing::cached_compiled_selector(filter);
+        let matches: Vec<&Card> = game
+            .cards
+            .iter()
+            .filter(|c| c.zone == ZoneType::Battlefield)
+            .filter(|c| {
+                crate::card::valid_filter::matches_valid_card_selector_in_game(
+                    &selector, c, source, game,
+                )
+            })
+            .collect();
+        return match aggregator {
+            "" | "Amount" => matches.len() as i32,
+            "GreatestCardManaCost" => matches.iter().map(|c| c.mana_cost.cmc()).max().unwrap_or(0),
+            _ => 0,
+        };
+    }
+    if expr.contains("Graveyard") && expr.contains("YouCtrl") {
+        return game
+            .cards_in_zone(ZoneType::Graveyard, source.controller)
+            .len() as i32;
+    }
+    expr.strip_prefix("Count$")
+        .and_then(|s| s.parse::<i32>().ok())
+        .unwrap_or(0)
+}
+
 pub fn resolve_count_svar_for_sa(
     expr: &str,
     game: &GameState,
@@ -1476,13 +1547,22 @@ pub fn resolve_count_svar_for_sa(
             if !zones.is_empty() {
                 let source = game.card(source_id);
                 let selector = crate::parsing::cached_compiled_selector(restrictions);
+                // Thread targets through so `TargetedPlayerOwn` etc. resolve.
+                let targeted_players: Vec<crate::ids::PlayerId> =
+                    sa.target_chosen.target_player.into_iter().collect();
+                let targeted_cards: Vec<crate::ids::CardId> =
+                    sa.target_chosen.target_card.into_iter().collect();
+                let ctx = crate::card::valid_filter::MatchContext::from_source(source)
+                    .with_game(game)
+                    .with_targets(&targeted_cards, &targeted_players)
+                    .with_spell_ability(sa);
                 let count = game
                     .cards
                     .iter()
                     .filter(|card| {
                         zones.contains(&card.zone)
-                            && crate::card::valid_filter::matches_valid_card_selector_in_game(
-                                &selector, card, source, game,
+                            && crate::card::valid_filter::matches_valid_card_selector_with_context(
+                                &selector, card, ctx,
                             )
                     })
                     .count() as i32;
@@ -1700,6 +1780,16 @@ pub fn resolve_count_svar_for_sa(
         if let Some(zone) = zone {
             return game.cards_in_zone(zone, controller).len() as i32;
         }
+    }
+
+    // Count$RememberedSize — mirrors Java `Card.getRememberedCount()`
+    // (cards + players + integers).
+    if let Some(rest) = expr.strip_prefix("Count$RememberedSize") {
+        let operators = rest.strip_prefix('/').unwrap_or(rest);
+        let card = game.card(source_id);
+        let count =
+            card.remembered_cards.len() + card.remembered_players.len() + card.remembered_cmc.len();
+        return do_x_math(count as i32, operators, game, source_id, controller, sa);
     }
 
     // Fallback

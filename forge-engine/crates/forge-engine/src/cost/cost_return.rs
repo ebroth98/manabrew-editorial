@@ -45,7 +45,7 @@ pub fn can_pay(
         return game.card(source).zone == ZoneType::Battlefield;
     }
     let targets = super::get_sacrifice_targets(game, player, type_filter);
-    (targets.len() as i32) >= *amount
+    (targets.len() as i32) >= amount.resolve(game, source, player)
 }
 
 pub fn pay_with_decision(

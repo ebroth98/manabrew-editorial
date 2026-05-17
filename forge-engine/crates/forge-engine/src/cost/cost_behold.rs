@@ -41,7 +41,7 @@ pub fn can_pay(
     else {
         return false;
     };
-    let resolved_amount = super::resolve_dynamic_amount(game, source, player, *amount);
+    let resolved_amount = amount.resolve(game, source, player);
     if type_filter.ends_with("ChosenType") {
         let mut cards = game.cards_in_zone(ZoneType::Hand, player).to_vec();
         cards.extend(

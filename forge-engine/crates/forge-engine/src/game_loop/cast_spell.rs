@@ -1325,7 +1325,7 @@ impl GameLoop {
                 {
                     let valid =
                         crate::cost::get_tap_type_targets(game, player, type_filter, card_id);
-                    let needed = (*amount).max(0) as usize;
+                    let needed = (amount.resolve(game, card_id, player)).max(0) as usize;
                     if valid.len() < needed {
                         rollback_cast!();
                     }
@@ -1358,6 +1358,7 @@ impl GameLoop {
                 sa_on_stack: true,
                 type_line: Some(card.type_line.clone()),
                 card_name: Some(card.card_name.clone()),
+                card_color: Some(card.color),
                 chosen_types_by_source,
             }
         };

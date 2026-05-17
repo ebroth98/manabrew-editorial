@@ -488,6 +488,7 @@ pub const NUM_DEF: &str = "NumDef";
 pub const NUM_TURNS: &str = "NumTurns";
 pub const RANDOM_TARGET: &str = "RandomTarget";
 pub const REMEMBER_CHOSEN: &str = "RememberChosen";
+pub const IMPRINT_CHOSEN: &str = "ImprintChosen";
 pub const REMEMBER_COUNTERED: &str = "RememberCountered";
 pub const REMEMBER_COUNTERED_CMC: &str = "RememberCounteredCMC";
 pub const REMEMBER_DAMAGED_CREATURE: &str = "RememberDamagedCreature";

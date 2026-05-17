@@ -702,7 +702,8 @@ fn auto_tap_lands_internal_with_ctx(
             };
             let produced =
                 produce_mana_for_auto_pay(game, pool, player, &sa_payment, chosen_atom, callback);
-            add_taps_for_mana_trigger_mana(game, pool, player, sa_payment.card_id, &produced);
+            let trigger_atoms =
+                add_taps_for_mana_trigger_mana(game, pool, player, &sa_payment, &produced);
             if consume_incrementally {
                 let spent = pool.pay_unpaid_for_spell_incremental(
                     &mut unpaid,
@@ -711,6 +712,10 @@ fn auto_tap_lands_internal_with_ctx(
                 );
                 payment.colors_spent |= spent.colors_spent;
                 payment.paying_mana.extend(spent.paying_mana);
+            } else {
+                for &atom in &trigger_atoms {
+                    let _ = unpaid.try_pay_mana(atom, atom as u8);
+                }
             }
             tapped_choices.push(AutoTapChoice {
                 card_id: sa_payment.card_id,
@@ -730,6 +735,7 @@ fn auto_tap_lands_internal_with_ctx(
                 .is_some_and(crate::ability::ProducedMana::is_combo_color_identity)
                 && sa_payment.atoms.is_empty();
             let needs_express = sa_payment.atoms.len() > 1;
+            let mut trigger_atoms_for_non_incremental: Vec<u16> = Vec::new();
             if is_empty_combo_color_identity {
                 // Java's deterministic AutoPay taps an empty `Combo
                 // ColorIdentity` source (Arcane Signet in a non-Commander
@@ -748,7 +754,8 @@ fn auto_tap_lands_internal_with_ctx(
                     chosen_atom,
                     callback,
                 );
-                add_taps_for_mana_trigger_mana(game, pool, player, sa_payment.card_id, &produced);
+                trigger_atoms_for_non_incremental =
+                    add_taps_for_mana_trigger_mana(game, pool, player, &sa_payment, &produced);
             }
 
             tapped_choices.push(AutoTapChoice {
@@ -772,6 +779,9 @@ fn auto_tap_lands_internal_with_ctx(
                 let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
                 for _ in 1..sa_payment.amount.max(1) {
                     let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
+                }
+                for &atom in &trigger_atoms_for_non_incremental {
+                    let _ = unpaid.try_pay_mana(atom, atom as u8);
                 }
             }
             // NOTE: do not re-iterate `1..amount` here to push extra mana into
@@ -858,9 +868,30 @@ fn add_taps_for_mana_trigger_mana(
     game: &GameState,
     pool: &mut ManaPool,
     player: PlayerId,
-    tapped_source: CardId,
+    sa_payment: &ManaAbilityRef,
     produced: &str,
-) {
+) -> Vec<u16> {
+    // TapsForMana fires only when the mana ability has a Tap cost
+    // (`AbilityManaPart.tapsForMana`). Implicit basic-land taps have no parsed
+    // ability index and always pass.
+    let mut produced_atoms: Vec<u16> = Vec::new();
+    let tapped_source = sa_payment.card_id;
+    let pays_with_tap = match sa_payment.ability_index {
+        Some(idx) => game
+            .card(tapped_source)
+            .activated_abilities
+            .get(idx)
+            .is_some_and(|ab| {
+                ab.cost
+                    .parts
+                    .iter()
+                    .any(|part| matches!(part, CostPart::Tap))
+            }),
+        None => true,
+    };
+    if !pays_with_tap {
+        return produced_atoms;
+    }
     let params = RunParams {
         card: Some(tapped_source),
         player: Some(player),
@@ -905,9 +936,20 @@ fn add_taps_for_mana_trigger_mana(
                 adds_counters_valid: None,
                 triggers_when_spent: None,
             };
-            add_produced_mana_to_pool(pool, &mana_string, &mana_params);
+            // Panharmonicon: each qualifying static fires the trigger again.
+            let extra = crate::staticability::static_ability_panharmonicon::extra_triggers(
+                game, host_id, trigger, &params,
+            );
+            let total_fires = 1 + extra as usize;
+            for _ in 0..total_fires {
+                add_produced_mana_to_pool(pool, &mana_string, &mana_params);
+                for _ in 0..amount {
+                    produced_atoms.push(atom);
+                }
+            }
         }
     }
+    produced_atoms
 }
 
 fn auto_pay_base_mana_string(
@@ -918,6 +960,16 @@ fn auto_pay_base_mana_string(
     callback: &mut Option<ManaPayCallbackFn<'_>>,
 ) -> String {
     let base_amount = auto_pay_base_amount(game, player, ma).max(1) as usize;
+
+    // Empty Combo ColorIdentity produces nothing — `ManaEffect.resolve`.
+    if ma
+        .produced_ir
+        .as_ref()
+        .is_some_and(crate::ability::ProducedMana::is_combo_color_identity)
+        && ma.atoms.is_empty()
+    {
+        return String::new();
+    }
 
     if let Some(fixed_atoms) = ma
         .produced_ir
@@ -1007,6 +1059,15 @@ fn collect_sorted_candidates(
     player: PlayerId,
     mana_ability_map: &IndexMap<i32, Vec<ManaAbilityRef>>,
 ) -> Vec<ManaAbilityRef> {
+    collect_sorted_candidates_with_pref(game, player, mana_ability_map, false)
+}
+
+fn collect_sorted_candidates_with_pref(
+    game: &GameState,
+    player: PlayerId,
+    mana_ability_map: &IndexMap<i32, Vec<ManaAbilityRef>>,
+    prefer_higher_amount: bool,
+) -> Vec<ManaAbilityRef> {
     let mut out: Vec<ManaAbilityRef> = mana_ability_map
         .values()
         .flat_map(|v| v.iter().cloned())
@@ -1023,6 +1084,15 @@ fn collect_sorted_candidates(
             let ts_a = game.card(a.card_id).zone_timestamp;
             let ts_b = game.card(b.card_id).zone_timestamp;
             ts_a.cmp(&ts_b)
+                .then_with(|| {
+                    // Probe-only tiebreak: prefer the higher-amount ability of
+                    // the same source so the greedy picker doesn't shadow it.
+                    if prefer_higher_amount && a.card_id == b.card_id {
+                        b.amount.cmp(&a.amount)
+                    } else {
+                        std::cmp::Ordering::Equal
+                    }
+                })
                 .then_with(|| a.source_order.cmp(&b.source_order))
         })
     });
@@ -1382,7 +1452,7 @@ fn pay_non_tap_mana_ability_costs(
         match part {
             CostPart::Tap | CostPart::Mana { .. } => {}
             CostPart::PayLife(amount) => {
-                if game.player(player).life < *amount {
+                if game.player(player).life < amount.resolve(game, ma.card_id, player) {
                     return false;
                 }
                 if let Some(ref mut cb) = callback {
@@ -1394,14 +1464,16 @@ fn pay_non_tap_mana_ability_costs(
                         return false;
                     }
                 }
-                game.player_lose_life(player, *amount);
+                game.player_lose_life(player, amount.resolve(game, ma.card_id, player));
             }
             CostPart::SubCounter {
                 amount,
                 counter_type,
                 ..
             } => {
-                if game.card(ma.card_id).counter_count(counter_type) < *amount {
+                if game.card(ma.card_id).counter_count(counter_type)
+                    < amount.resolve(game, ma.card_id, player)
+                {
                     return false;
                 }
                 if let Some(ref mut cb) = callback {
@@ -1413,15 +1485,18 @@ fn pay_non_tap_mana_ability_costs(
                         return false;
                     }
                 }
+                let amount_n = amount.resolve(game, ma.card_id, player);
                 game.card_mut(ma.card_id)
-                    .remove_counter(counter_type, *amount);
+                    .remove_counter(counter_type, amount_n);
             }
             CostPart::Sacrifice {
                 type_filter,
                 amount,
             } => {
                 if type_filter == "CARDNAME" {
-                    if *amount > 1 || game.card(ma.card_id).zone != ZoneType::Battlefield {
+                    if amount.resolve(game, ma.card_id, player) > 1
+                        || game.card(ma.card_id).zone != ZoneType::Battlefield
+                    {
                         return false;
                     }
                     if let Some(ref mut cb) = callback {
@@ -1468,7 +1543,7 @@ fn pay_non_tap_mana_ability_costs(
                             .cmp(&game.card(b).card_name)
                             .then_with(|| a.index().cmp(&b.index()))
                     });
-                    let required = (*amount).max(0) as usize;
+                    let required = (amount.resolve(game, ma.card_id, player)).max(0) as usize;
                     if targets.len() < required {
                         return false;
                     }
@@ -1499,7 +1574,9 @@ fn pay_non_tap_mana_ability_costs(
                 }
             }
             CostPart::Exile { amount, from, .. } => {
-                if !pay_cost_from_source(part) || *amount > 1 || game.card(ma.card_id).zone != *from
+                if !pay_cost_from_source(part)
+                    || amount.resolve(game, ma.card_id, player) > 1
+                    || game.card(ma.card_id).zone != *from
                 {
                     return false;
                 }
@@ -1551,18 +1628,23 @@ fn can_pay_source_paid_mana_cost_part(
 ) -> bool {
     match part {
         CostPart::Tap | CostPart::Mana { .. } => true,
-        CostPart::PayLife(amount) => game.player(player).life >= *amount,
+        CostPart::PayLife(amount) => {
+            game.player(player).life >= amount.resolve(game, source_id, player)
+        }
         CostPart::SubCounter {
             amount,
             counter_type,
             ..
-        } => game.card(source_id).counter_count(counter_type) >= *amount,
+        } => {
+            game.card(source_id).counter_count(counter_type)
+                >= amount.resolve(game, source_id, player)
+        }
         CostPart::Sacrifice {
             type_filter,
             amount,
         } => {
             if type_filter == "CARDNAME" {
-                *amount <= 1
+                amount.resolve(game, source_id, player) <= 1
                     && game.card(source_id).zone == ZoneType::Battlefield
                     && !reserved_sacrifices.contains(&source_id)
             } else {
@@ -1574,11 +1656,13 @@ fn can_pay_source_paid_mana_cost_part(
                     allow_reserved_source_reuse,
                     reserved_sacrifices,
                 );
-                (targets.len() as i32) >= *amount
+                (targets.len() as i32) >= amount.resolve(game, source_id, player)
             }
         }
         CostPart::Exile { amount, from, .. } => {
-            pay_cost_from_source(part) && *amount <= 1 && game.card(source_id).zone == *from
+            pay_cost_from_source(part)
+                && amount.resolve(game, source_id, player) <= 1
+                && game.card(source_id).zone == *from
         }
         CostPart::TapType { .. } => !choose_tap_type_targets_for_mana_ability(
             game,
@@ -1688,7 +1772,7 @@ fn choose_tap_type_targets_for_mana_ability_with_callback(
         return Vec::new();
     }
 
-    let required = (*amount).max(0) as usize;
+    let required = (amount.resolve(game, source_id, player)).max(0) as usize;
     if targets.len() < required {
         return Vec::new();
     }
@@ -1942,6 +2026,24 @@ fn group_sources_by_mana_color(
     payment_ctx: Option<&crate::mana::ManaPaymentContext>,
     filter_reflected_replacements: bool,
 ) -> IndexMap<i32, Vec<ManaAbilityRef>> {
+    group_sources_by_mana_color_inner(
+        game,
+        player,
+        reserved_sacrifices,
+        payment_ctx,
+        filter_reflected_replacements,
+        false,
+    )
+}
+
+fn group_sources_by_mana_color_inner(
+    game: &GameState,
+    player: PlayerId,
+    reserved_sacrifices: &[CardId],
+    payment_ctx: Option<&crate::mana::ManaPaymentContext>,
+    filter_reflected_replacements: bool,
+    skip_self_restriction: bool,
+) -> IndexMap<i32, Vec<ManaAbilityRef>> {
     let mut mana_map: IndexMap<i32, Vec<ManaAbilityRef>> = IndexMap::new();
     let mut source_order = 0usize;
 
@@ -1950,8 +2052,15 @@ fn group_sources_by_mana_color(
         let mut explicit_mana_added = false;
 
         for ab in &card.activated_abilities {
-            if !is_payable_mana_ability(game, player, card_id, ab, reserved_sacrifices, payment_ctx)
-            {
+            if !is_payable_mana_ability_with_self_check(
+                game,
+                player,
+                card_id,
+                ab,
+                reserved_sacrifices,
+                payment_ctx,
+                !skip_self_restriction,
+            ) {
                 continue;
             }
             // Handle ManaReflected abilities (e.g. The Grey Havens).
@@ -2313,12 +2422,13 @@ pub fn can_pay_spell_mana_cost_for_action_space(
         guard += 1;
 
         let mana_ability_map =
-            group_sources_by_mana_color(game, player, &[], Some(payment_ctx), true);
+            group_sources_by_mana_color_inner(game, player, &[], Some(payment_ctx), true, true);
         if mana_ability_map.is_empty() {
             break;
         }
 
-        let mut candidates = collect_sorted_candidates(game, player, &mana_ability_map);
+        let mut candidates =
+            collect_sorted_candidates_with_pref(game, player, &mana_ability_map, true);
         candidates.retain(|candidate| {
             !used_sources.contains(&candidate.card_id) && candidate.card_id != current_spell
         });
@@ -2406,13 +2516,7 @@ pub fn can_pay_spell_mana_cost_for_action_space(
             add_produced_mana_to_pool(&mut simulated_pool, &mana_string, &params);
             mana_string
         };
-        add_taps_for_mana_trigger_mana(
-            game,
-            &mut simulated_pool,
-            player,
-            sa_payment.card_id,
-            &produced,
-        );
+        add_taps_for_mana_trigger_mana(game, &mut simulated_pool, player, &sa_payment, &produced);
         simulated_pool.pay_unpaid_for_spell_incremental(&mut unpaid, payment_ctx, false);
 
         used_sources.insert(sa_payment.card_id);
@@ -2521,6 +2625,26 @@ fn is_payable_mana_ability(
     reserved_sacrifices: &[CardId],
     payment_ctx: Option<&crate::mana::ManaPaymentContext>,
 ) -> bool {
+    is_payable_mana_ability_with_self_check(
+        game,
+        player,
+        card_id,
+        ab,
+        reserved_sacrifices,
+        payment_ctx,
+        true,
+    )
+}
+
+fn is_payable_mana_ability_with_self_check(
+    game: &GameState,
+    player: PlayerId,
+    card_id: CardId,
+    ab: &crate::ability::activated::ActivatedAbility,
+    reserved_sacrifices: &[CardId],
+    payment_ctx: Option<&crate::mana::ManaPaymentContext>,
+    apply_self_check: bool,
+) -> bool {
     if !ab.is_mana_ability {
         return false;
     }
@@ -2564,16 +2688,21 @@ fn is_payable_mana_ability(
             if !crate::mana::mana_meets_restriction(&resolved, ctx) {
                 return false;
             }
-            let self_ctx = crate::mana::ManaPaymentContext {
-                is_spell: false,
-                is_activated_ability: true,
-                sa_on_stack: false,
-                type_line: Some(card.type_line.clone()),
-                card_name: Some(card.card_name.clone()),
-                chosen_types_by_source: ctx.chosen_types_by_source.clone(),
-            };
-            if !crate::mana::mana_meets_restriction(&resolved, &self_ctx) {
-                return false;
+            // ActionSpace.java:277 (permissive) vs AutoPay.canPayShard:273
+            // (strict self-check). Action-space probes use the permissive form.
+            if apply_self_check {
+                let self_ctx = crate::mana::ManaPaymentContext {
+                    is_spell: false,
+                    is_activated_ability: true,
+                    sa_on_stack: false,
+                    type_line: Some(card.type_line.clone()),
+                    card_name: Some(card.card_name.clone()),
+                    card_color: Some(card.color),
+                    chosen_types_by_source: ctx.chosen_types_by_source.clone(),
+                };
+                if !crate::mana::mana_meets_restriction(&resolved, &self_ctx) {
+                    return false;
+                }
             }
         }
     }

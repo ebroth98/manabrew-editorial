@@ -60,7 +60,7 @@ pub fn pay_with_decision(
     else {
         return false;
     };
-    let resolved = super::resolve_dynamic_amount(game, source, player, *amount);
+    let resolved = amount.resolve(game, source, player);
     pay_as_decided(game, source, resolved, counter_type)
 }
 

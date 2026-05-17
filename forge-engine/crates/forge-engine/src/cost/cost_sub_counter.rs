@@ -28,11 +28,12 @@ pub fn can_pay(game: &GameState, source: CardId, part: &super::CostPart) -> bool
     else {
         return false;
     };
+    let controller = game.card(source).controller;
     can_pay_for_player(
         game,
         source,
-        game.card(source).controller,
-        *amount,
+        controller,
+        amount.resolve(game, source, controller),
         counter_type,
         type_filter,
     )

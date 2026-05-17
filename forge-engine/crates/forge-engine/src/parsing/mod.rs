@@ -1024,6 +1024,11 @@ fn lower_selector_part(value: &str, is_first_part: bool) -> SelectorPredicate {
         "chosenctrl" => SelectorPredicate::Raw(normalized.to_string()),
         "youown" => SelectorPredicate::CardOwner(ControllerSelector::You),
         "oppown" | "opponentown" => SelectorPredicate::CardOwner(ControllerSelector::Opponent),
+        // Raw — runtime-resolved against the SA's target list in valid_filter.
+        // (`targetedplayerctrl` already lowers to a Context predicate below.)
+        "targetedplayerown" | "targetedown" | "targetedowner" => {
+            SelectorPredicate::Raw(normalized.to_string())
+        }
         "youdontctrl" => SelectorPredicate::Not(Box::new(SelectorPredicate::CardController(
             ControllerSelector::You,
         ))),
@@ -1397,6 +1402,7 @@ fn lower_non_predicate(value: &str) -> Option<SelectorPredicate> {
         "black" => SelectorPredicate::Color(CardColorSelector::Black),
         "red" => SelectorPredicate::Color(CardColorSelector::Red),
         "green" => SelectorPredicate::Color(CardColorSelector::Green),
+        "colorless" => SelectorPredicate::Colorless,
         "creature" => SelectorPredicate::CardType(CardSelectorType::Creature),
         "land" => SelectorPredicate::CardType(CardSelectorType::Land),
         "artifact" => SelectorPredicate::CardType(CardSelectorType::Artifact),

@@ -34,7 +34,7 @@ pub fn can_pay(
     else {
         return false;
     };
-    let resolved_amount = super::resolve_dynamic_amount(game, source, player, *amount);
+    let resolved_amount = amount.resolve(game, source, player);
     let static_source_cards = super::static_ability_source_cards(game);
     let base_filter = super::normalize_exile_base_filter(type_filter);
     let bf = super::get_zone_targets(game, player, ZoneType::Battlefield, &base_filter)

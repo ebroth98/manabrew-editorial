@@ -25,8 +25,8 @@ pub fn payment_order(part: &super::CostPart) -> i32 {
 pub fn can_pay(
     game: &crate::game::GameState,
     _available_mana: &crate::mana::ManaPool,
-    _source: crate::ids::CardId,
-    _player: crate::ids::PlayerId,
+    source: crate::ids::CardId,
+    player: crate::ids::PlayerId,
     _ability: Option<&crate::spellability::SpellAbility>,
     part: &super::CostPart,
 ) -> bool {
@@ -38,7 +38,7 @@ pub fn can_pay(
         return false;
     };
     let exiled = super::get_exiled_targets(game, type_filter).len() as i32;
-    exiled >= *amount
+    exiled >= amount.resolve(game, source, player)
 }
 
 pub fn pay_with_decision(

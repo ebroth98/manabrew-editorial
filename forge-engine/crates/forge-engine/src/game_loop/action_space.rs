@@ -97,7 +97,7 @@ impl GameLoop {
             } = part
             {
                 if type_filter == "CARDNAME" {
-                    if *amount > 1
+                    if amount.resolve(game, card_id, player) > 1
                         || (reserved_sacrifices.contains(&card_id) && !allow_reserved_source_reuse)
                     {
                         return false;
@@ -112,7 +112,7 @@ impl GameLoop {
                     if !allow_reserved_source_reuse {
                         targets.retain(|cid| !reserved_sacrifices.contains(cid));
                     }
-                    if (targets.len() as i32) < *amount {
+                    if (targets.len() as i32) < amount.resolve(game, card_id, player) {
                         return false;
                     }
                 }

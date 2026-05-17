@@ -64,7 +64,7 @@ pub fn can_pay(
         if card.zone == ZoneType::Hand && card.owner == player {
             hand_size -= 1;
         }
-        return hand_size >= *amount;
+        return hand_size >= amount.resolve(game, source, player);
     }
     let mut matching = game
         .cards_in_zone(ZoneType::Hand, player)
@@ -79,7 +79,7 @@ pub fn can_pay(
     {
         matching -= 1;
     }
-    matching >= *amount
+    matching >= amount.resolve(game, source, player)
 }
 
 pub fn pay_with_decision(

@@ -36,6 +36,15 @@ fn mark_triggers_card_state(triggers: &mut [Trigger], card: &Card, state_name: C
     }
 }
 
+/// Devoid as a CDA colorless override across all zones — mirrors
+/// `CardFactoryUtil.addKeywordAbility("Devoid", ...)`.
+fn intrinsic_color(face: &forge_carddb::CardFace) -> forge_foundation::ColorSet {
+    if face.keywords.iter().any(|k| k == "Devoid") {
+        return forge_foundation::ColorSet::COLORLESS;
+    }
+    face.resolved_color()
+}
+
 // ── Phase 1: Parse ──────────────────────────────────────────────────────────
 
 /// Parsed components from a card face's raw text, before any rewrites.
@@ -156,7 +165,7 @@ pub(crate) fn assemble_card(
         owner,
         face.type_line.clone(),
         face.mana_cost.clone(),
-        face.resolved_color(),
+        intrinsic_color(face),
         face.int_power,
         face.int_toughness,
         face.keywords.clone(),
@@ -271,11 +280,29 @@ pub(crate) fn assemble_card(
                 })
                 .collect();
 
+            let back_static_abilities: Vec<StaticAbility> = back_face
+                .static_abilities
+                .iter()
+                .filter_map(|raw| parse_static_ability(&format!("S$ {}", raw)))
+                .collect();
+
+            let back_replacement_effects: Vec<ReplacementEffect> = back_face
+                .replacements
+                .iter()
+                .filter_map(|raw| {
+                    parse_or_warn(
+                        parse_replacement_effect(&format!("R$ {}", raw)),
+                        "ReplacementEffect",
+                        raw,
+                    )
+                })
+                .collect();
+
             card.other_part = Some(CardOtherPart {
                 name: back_face.name.clone(),
                 type_line: back_face.type_line.clone(),
                 mana_cost: back_face.mana_cost.clone(),
-                color: back_face.resolved_color(),
+                color: intrinsic_color(back_face),
                 base_power: back_face.int_power,
                 base_toughness: back_face.int_toughness,
                 keywords: crate::keyword::keyword_collection::KeywordCollection::from_strings(
@@ -283,6 +310,8 @@ pub(crate) fn assemble_card(
                 ),
                 abilities: back_face.abilities.clone(),
                 triggers: back_triggers,
+                static_abilities: back_static_abilities,
+                replacement_effects: back_replacement_effects,
                 svars: back_face.svars.clone(),
             });
         }

@@ -5,7 +5,7 @@
 
 use forge_foundation::{ManaCost, ZoneType};
 
-use super::{CostPart, RevealFrom};
+use super::{AmountSpec, CostPart, RevealFrom};
 use crate::ability::effects::parse_counter_type;
 use crate::parsing::CostTokenKind;
 
@@ -34,7 +34,7 @@ pub(super) fn parse_cost_token(token: &str) -> TokenResult {
         CostTokenKind::Forage => CostPart::Forage,
         CostTokenKind::PromiseGift => CostPart::PromiseGift,
         CostTokenKind::Exert if parsed.inner.is_none() => CostPart::Exert {
-            amount: 1,
+            amount: AmountSpec::Literal(1),
             type_filter: "CARDNAME".to_string(),
         },
         kind => {
@@ -164,13 +164,16 @@ fn parse_discard(inner: &str) -> Option<CostPart> {
 }
 
 fn parse_pay_life(inner: &str) -> Option<CostPart> {
-    let amount = super::parse_i32_or_x(inner, 0);
+    let amount = AmountSpec::parse_or(inner, 0);
     Some(CostPart::PayLife(amount))
 }
 
 fn parse_sub_counter(inner: &str) -> Option<CostPart> {
     let mut it = inner.split('/');
-    let amount = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
+    let amount = it
+        .next()
+        .map(|s| AmountSpec::parse_or(s, 1))
+        .unwrap_or(AmountSpec::Literal(1));
     let counter_type_str = it.next().unwrap_or("P1P1");
     let type_filter = it.next().unwrap_or("CARDNAME").to_string();
     Some(CostPart::SubCounter {
@@ -182,7 +185,10 @@ fn parse_sub_counter(inner: &str) -> Option<CostPart> {
 
 fn parse_add_counter(inner: &str) -> Option<CostPart> {
     let mut it = inner.split('/');
-    let amount = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
+    let amount = it
+        .next()
+        .map(|s| AmountSpec::parse_or(s, 1))
+        .unwrap_or(AmountSpec::Literal(1));
     let counter_type_str = it.next().unwrap_or("LOYALTY");
     Some(CostPart::AddCounter {
         amount,
@@ -191,33 +197,36 @@ fn parse_add_counter(inner: &str) -> Option<CostPart> {
 }
 
 fn parse_pay_energy(inner: &str) -> Option<CostPart> {
-    let amount = inner.parse::<i32>().unwrap_or(1);
+    let amount = AmountSpec::parse_or(inner, 1);
     Some(CostPart::PayEnergy(amount))
 }
 
 fn parse_pay_shards(inner: &str) -> Option<CostPart> {
-    let amount = super::parse_i32_or_x(inner, 1);
+    let amount = AmountSpec::parse_or(inner, 1);
     Some(CostPart::PayShards(amount))
 }
 
 fn parse_choose_color(inner: &str) -> Option<CostPart> {
-    let amount = super::parse_i32_or_x(inner, 1);
+    let amount = AmountSpec::parse_or(inner, 1);
     Some(CostPart::ChooseColor(amount))
 }
 
 fn parse_choose_creature_type(inner: &str) -> Option<CostPart> {
-    let amount = super::parse_i32_or_x(inner, 1);
+    let amount = AmountSpec::parse_or(inner, 1);
     Some(CostPart::ChooseCreatureType(amount))
 }
 
 fn parse_flip_coin(inner: &str) -> Option<CostPart> {
-    let amount = super::parse_i32_or_x(inner, 1);
+    let amount = AmountSpec::parse_or(inner, 1);
     Some(CostPart::FlipCoin(amount))
 }
 
 fn parse_roll_dice(inner: &str) -> Option<CostPart> {
     let mut it = inner.splitn(4, '/');
-    let amount = it.next().map(|s| super::parse_i32_or_x(s, 1)).unwrap_or(1);
+    let amount = it
+        .next()
+        .map(|s| AmountSpec::parse_or(s, 1))
+        .unwrap_or(AmountSpec::Literal(1));
     let sides = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(6);
     let result_svar = it.next().unwrap_or("").to_string();
     Some(CostPart::RollDice {
@@ -335,17 +344,17 @@ fn parse_untap_type(inner: &str) -> Option<CostPart> {
 }
 
 fn parse_damage_you(inner: &str) -> Option<CostPart> {
-    let amount = inner.parse::<i32>().unwrap_or(1);
+    let amount = AmountSpec::parse_or(inner, 1);
     Some(CostPart::DamageYou(amount))
 }
 
 fn parse_draw(inner: &str) -> Option<CostPart> {
-    let amount = inner.parse::<i32>().unwrap_or(1);
+    let amount = AmountSpec::parse_or(inner, 1);
     Some(CostPart::Draw(amount))
 }
 
 fn parse_mill(inner: &str) -> Option<CostPart> {
-    let amount = inner.parse::<i32>().unwrap_or(1);
+    let amount = AmountSpec::parse_or(inner, 1);
     Some(CostPart::Mill(amount))
 }
 
@@ -417,12 +426,8 @@ fn parse_exert(inner: &str) -> Option<CostPart> {
 }
 
 fn parse_gain_life(inner: &str) -> Option<CostPart> {
-    let amount = inner
-        .split('/')
-        .next()
-        .and_then(|s| s.trim().parse::<i32>().ok())
-        .unwrap_or(1);
-    Some(CostPart::GainLife(amount))
+    let head = inner.split('/').next().unwrap_or(inner);
+    Some(CostPart::GainLife(AmountSpec::parse_or(head, 1)))
 }
 
 fn parse_gain_control(inner: &str) -> Option<CostPart> {
@@ -435,7 +440,10 @@ fn parse_gain_control(inner: &str) -> Option<CostPart> {
 
 fn parse_remove_any_counter(inner: &str) -> Option<CostPart> {
     let mut it = inner.split('/');
-    let amount = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
+    let amount = it
+        .next()
+        .map(|s| AmountSpec::parse_or(s, 1))
+        .unwrap_or(AmountSpec::Literal(1));
     let counter_str = it.next().unwrap_or("Any");
     let type_filter = it.next().unwrap_or("Permanent").to_string();
     let counter_type = if counter_str.eq_ignore_ascii_case("Any") || counter_str.is_empty() {
@@ -468,7 +476,7 @@ fn parse_unattach(inner: &str) -> Option<CostPart> {
 }
 
 fn parse_waterbend(inner: &str) -> Option<CostPart> {
-    let amount = inner.parse::<i32>().unwrap_or(0);
+    let amount = AmountSpec::parse_or(inner, 0);
     Some(CostPart::Waterbend { amount })
 }
 
@@ -486,7 +494,7 @@ fn parse_exiled_move_to_grave(inner: &str) -> Option<CostPart> {
 }
 
 fn parse_collect_evidence(inner: &str) -> Option<CostPart> {
-    let amount = super::parse_i32_or_x(inner, 1);
+    let amount = AmountSpec::parse_or(inner, 1);
     Some(CostPart::CollectEvidence(amount))
 }
 
@@ -508,7 +516,10 @@ fn parse_put_card_to_lib_from_battlefield(inner: &str) -> Option<CostPart> {
 
 fn parse_put_card_to_lib(inner: &str, from: ZoneType, same_zone: bool) -> Option<CostPart> {
     let mut it = inner.splitn(4, '/');
-    let amount = it.next().map(|s| super::parse_i32_or_x(s, 1)).unwrap_or(1);
+    let amount = it
+        .next()
+        .map(|s| AmountSpec::parse_or(s, 1))
+        .unwrap_or(AmountSpec::Literal(1));
     let lib_pos = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
     let type_filter = it.next().unwrap_or("Card").to_string();
     Some(CostPart::PutCardToLib {
@@ -524,8 +535,8 @@ fn parse_enlist(inner: &str) -> Option<CostPart> {
     let pieces: Vec<&str> = inner.split('/').collect();
     let amount = pieces
         .first()
-        .map(|s| super::parse_i32_or_x(s, 1))
-        .unwrap_or(1);
+        .map(|s| AmountSpec::parse_or(s, 1))
+        .unwrap_or(AmountSpec::Literal(1));
     let filter = if pieces.len() >= 3 {
         pieces[2]
     } else {
@@ -539,6 +550,6 @@ fn parse_enlist(inner: &str) -> Option<CostPart> {
 }
 
 fn parse_blight(inner: &str) -> Option<CostPart> {
-    let amount = super::parse_i32_or_x(inner, 1);
+    let amount = AmountSpec::parse_or(inner, 1);
     Some(CostPart::Blight(amount))
 }

@@ -38,7 +38,7 @@ pub fn can_pay(
     let super::CostPart::Mill(amount) = part else {
         return false;
     };
-    let resolved = super::resolve_dynamic_amount(game, source, player, *amount);
+    let resolved = amount.resolve(game, source, player);
     let lib_size = game.zone(ZoneType::Library, player).len() as i32;
     lib_size > resolved
 }
@@ -53,7 +53,7 @@ pub fn pay_with_decision(
     let super::CostPart::Mill(amount) = part else {
         return false;
     };
-    let resolved = super::resolve_dynamic_amount(game, source, player, *amount);
+    let resolved = amount.resolve(game, source, player);
     pay_as_decided(game, player, resolved);
     true
 }

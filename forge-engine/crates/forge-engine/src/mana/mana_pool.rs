@@ -566,13 +566,14 @@ impl ManaPool {
                 continue;
             }
             let atoms = shard.shard();
-            // Only add colored requirements (skip generic, handled below)
+            // {C} requires a colorless source — COLORLESS belongs in the mask.
             let color_mask = atoms
                 & (ManaAtom::WHITE
                     | ManaAtom::BLUE
                     | ManaAtom::BLACK
                     | ManaAtom::RED
-                    | ManaAtom::GREEN);
+                    | ManaAtom::GREEN
+                    | ManaAtom::COLORLESS);
             if color_mask != 0 {
                 requirements.push(color_mask);
             }

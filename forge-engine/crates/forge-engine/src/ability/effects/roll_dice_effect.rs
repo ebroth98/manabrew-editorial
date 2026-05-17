@@ -1133,12 +1133,12 @@ fn pay_roll_cost(
                 }
             }
             CostPart::PayLife(amount) => {
-                game.player_lose_life(player, *amount);
+                game.player_lose_life(player, amount.resolve(game, card_id, player));
                 trigger_handler.run_trigger(
                     TriggerType::LifeLost,
                     RunParams {
                         player: Some(player),
-                        life_amount: Some(*amount),
+                        life_amount: Some(amount.resolve(game, card_id, player)),
                         first_time: Some(false),
                         ..Default::default()
                     },
@@ -1150,10 +1150,12 @@ fn pay_roll_cost(
                 counter_type,
                 ..
             } => {
-                if game.card(card_id).counter_count(counter_type) < *amount {
+                let amount_n = amount.resolve(game, card_id, player);
+                if game.card(card_id).counter_count(counter_type) < amount_n {
                     return false;
                 }
-                game.card_mut(card_id).remove_counter(counter_type, *amount);
+                game.card_mut(card_id)
+                    .remove_counter(counter_type, amount_n);
             }
             _ => return false,
         }

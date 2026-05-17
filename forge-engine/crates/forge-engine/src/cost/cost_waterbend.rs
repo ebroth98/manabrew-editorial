@@ -25,7 +25,7 @@ pub fn can_pay(
             !c.tapped && cid != source && (c.is_creature() || c.type_line.is_artifact())
         })
         .count() as i32;
-    pool_total + tappable_count >= *amount
+    pool_total + tappable_count >= amount.resolve(game, source, player)
 }
 
 pub fn pay_with_decision(

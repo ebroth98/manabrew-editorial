@@ -68,7 +68,7 @@ pub fn can_pay(
             .sum();
         total_power >= *power_threshold
     } else {
-        (targets.len() as i32) >= *amount
+        (targets.len() as i32) >= amount.resolve(game, source, player)
     }
 }
 

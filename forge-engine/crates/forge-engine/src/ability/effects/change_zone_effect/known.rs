@@ -46,17 +46,47 @@ pub(super) fn resolve_known_origin(
     }
 
     let cards_to_move: Vec<CardId> = if sa.uses_targeting() {
-        let targeted_cards: Vec<CardId> = sa
-            .target_chosen
-            .all_target_cards()
-            .into_iter()
-            .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
-            .collect();
-
-        if !targeted_cards.is_empty() || sa.defined_player().is_none() {
-            targeted_cards
+        if sa.overloaded && origin_zone == ZoneType::Battlefield {
+            // Overload: target → each. Mirrors damage_deal_effect / pump_effect.
+            let valid_tgts = sa
+                .target_restrictions
+                .as_ref()
+                .and_then(|restrictions| restrictions.valid_tgts.first())
+                .map(String::as_str)
+                .unwrap_or_default();
+            let valid_tgts_selector = sa
+                .target_restrictions
+                .as_ref()
+                .map(|restrictions| &restrictions.valid_tgts_selector);
+            ctx.game
+                .player_order
+                .clone()
+                .iter()
+                .flat_map(|&pid| ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec())
+                .filter(|&cid| ctx.game.card(cid).zone == ZoneType::Battlefield)
+                .filter(|&cid| {
+                    super::super::matches_valid_cards_for_sa(
+                        ctx.game,
+                        sa,
+                        ctx.game.card(cid),
+                        valid_tgts_selector,
+                        valid_tgts,
+                    )
+                })
+                .collect()
         } else {
-            resolve_defined_player_choice(ctx, sa, origin_zone)
+            let targeted_cards: Vec<CardId> = sa
+                .target_chosen
+                .all_target_cards()
+                .into_iter()
+                .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
+                .collect();
+
+            if !targeted_cards.is_empty() || sa.defined_player().is_none() {
+                targeted_cards
+            } else {
+                resolve_defined_player_choice(ctx, sa, origin_zone)
+            }
         }
     } else if matches!(
         defined_ref,

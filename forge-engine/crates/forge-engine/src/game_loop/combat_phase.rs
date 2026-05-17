@@ -218,19 +218,21 @@ impl GameLoop {
                                 amount,
                                 type_filter,
                             } => {
+                                let amount_n = amount.resolve(game, attacker, active);
                                 optional_exert_by_attacker
                                     .entry(attacker)
                                     .or_default()
-                                    .push((amount, type_filter));
+                                    .push((amount_n, type_filter));
                             }
                             crate::cost::CostPart::Enlist {
                                 amount,
                                 type_filter,
                             } => {
+                                let amount_n = amount.resolve(game, attacker, active);
                                 optional_enlist_by_attacker
                                     .entry(attacker)
                                     .or_default()
-                                    .push((amount, type_filter));
+                                    .push((amount_n, type_filter));
                             }
                             _ => {}
                         }
@@ -265,9 +267,7 @@ impl GameLoop {
                         continue;
                     }
                     if let Some(parts) = optional_exert_by_attacker.get(&attacker).cloned() {
-                        for (amount, type_filter) in parts {
-                            let resolved =
-                                crate::cost::resolve_dynamic_amount(game, attacker, active, amount);
+                        for (resolved, type_filter) in parts {
                             if resolved > 0 {
                                 self.pay_exert_cost(
                                     game,
@@ -303,9 +303,7 @@ impl GameLoop {
                 let chosen = agents[active.index()].enlist_attackers(active, &possible_enlisters);
                 for attacker in chosen {
                     if let Some(parts) = optional_enlist_by_attacker.get(&attacker).cloned() {
-                        for (amount, type_filter) in parts {
-                            let resolved =
-                                crate::cost::resolve_dynamic_amount(game, attacker, active, amount);
+                        for (resolved, type_filter) in parts {
                             if resolved > 0 {
                                 self.pay_enlist_cost(
                                     game,

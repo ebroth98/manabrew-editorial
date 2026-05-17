@@ -76,4 +76,11 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
             ctx.game.card_mut(source_id).add_remembered_card(cid);
         }
     }
+
+    // ImprintChosen$ — `ChooseCardEffect.java:299-301`.
+    if sa.ir.imprint_chosen {
+        for &cid in &chosen {
+            ctx.game.card_mut(source_id).add_imprinted_card(cid);
+        }
+    }
 }

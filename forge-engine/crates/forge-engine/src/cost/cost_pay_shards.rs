@@ -27,7 +27,7 @@ pub fn can_pay(
     let super::CostPart::PayShards(amount) = part else {
         return false;
     };
-    let resolved_amount = super::resolve_dynamic_amount(game, source, player, *amount);
+    let resolved_amount = amount.resolve(game, source, player);
     game.player(player).mana_shards >= resolved_amount
 }
 
@@ -41,6 +41,6 @@ pub fn pay_with_decision(
     let super::CostPart::PayShards(amount) = part else {
         return false;
     };
-    let resolved = super::resolve_dynamic_amount(game, source, player, *amount);
+    let resolved = amount.resolve(game, source, player);
     pay_as_decided(game, player, resolved)
 }

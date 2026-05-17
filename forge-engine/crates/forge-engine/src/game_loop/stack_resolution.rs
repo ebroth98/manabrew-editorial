@@ -72,9 +72,15 @@ impl GameLoop {
             );
         }
 
-        // Storm/copy spells: resolve effect only, no card movement (copies have no physical card)
+        // Copy spells: resolve effect only. CR 707.10 / 111.11 — a copy of a
+        // permanent spell becomes a token (`GameAction.changeZone` line 94).
         if entry.spell_ability.is_copy {
+            let should_create_token_copy = (entry.is_creature_spell || entry.is_permanent_spell)
+                && entry.spell_ability.source.is_some();
             self.resolve_spell_effect(game, agents, &entry);
+            if should_create_token_copy {
+                self.resolve_copied_permanent_as_token(game, agents, &entry);
+            }
             crate::perf::increment(crate::perf::Metric::SpellAbilityClones, 3);
             self.trigger_handler.run_trigger(
                 TriggerType::AbilityResolves,
@@ -277,9 +283,6 @@ impl GameLoop {
                     }
                 }
             }
-        } else if entry.spell_ability.is_copy {
-            // Copy of a spell (from Replicate/Storm): resolve effect only, no card movement
-            self.resolve_spell_effect(game, agents, &entry);
         } else if let Some(card_id) = entry.spell_ability.source {
             let alt_cost = entry.spell_ability.alt_cost;
             let player = entry.spell_ability.activating_player;
@@ -1061,5 +1064,53 @@ impl GameLoop {
             rng: &mut *self.game_rng,
         };
         effects::resolve_effect(&mut ctx, sa);
+    }
+
+    /// CR 707.10 / 111.11 — copy of a permanent spell becomes a token.
+    fn resolve_copied_permanent_as_token(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        entry: &StackEntry,
+    ) {
+        use crate::ability::effects::token_effect_base::{TokenCreateTable, TokenEffectBase};
+        let Some(original_id) = entry.spell_ability.source else {
+            return;
+        };
+        let player = entry.spell_ability.activating_player;
+        let original = game.card(original_id).clone();
+        let proto = crate::ability::effects::copy_permanent_effect::get_proto_type(
+            &entry.spell_ability,
+            &original,
+            player,
+        );
+        let mut token_table = TokenCreateTable::default();
+        token_table.put(player, proto, 1);
+        let mut trigger_list = crate::card::card_zone_table::CardZoneTable::default();
+        let mut ctx = EffectContext {
+            game,
+            combat: Some(&mut self.combat),
+            agents,
+            trigger_handler: &mut self.trigger_handler,
+            token_templates: &self.token_templates,
+            token_art_variants: &self.token_art_variants,
+            token_fallback: &self.token_fallback,
+            edition_dates: &self.edition_dates,
+            mana_pools: &mut self.mana_pools,
+            parent_target_card: None,
+            rng: &mut *self.game_rng,
+        };
+        crate::ability::effects::token_effect_base::TOKEN_EFFECT_BASE.make_token_table(
+            &mut ctx,
+            token_table,
+            true,
+            &mut trigger_list,
+            &entry.spell_ability,
+        );
+        trigger_list.trigger_changes_zone_all(
+            &mut self.trigger_handler,
+            game,
+            Some(&entry.spell_ability),
+        );
     }
 }

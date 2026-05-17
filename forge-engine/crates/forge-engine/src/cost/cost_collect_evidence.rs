@@ -21,7 +21,7 @@ pub fn can_pay(
     let super::CostPart::CollectEvidence(amount) = part else {
         return false;
     };
-    let resolved_amount = super::resolve_dynamic_amount(game, source, player, *amount);
+    let resolved_amount = amount.resolve(game, source, player);
     let static_source_cards = super::static_ability_source_cards(game);
     let total_mv: i32 = game
         .cards_in_zone(forge_foundation::ZoneType::Graveyard, player)

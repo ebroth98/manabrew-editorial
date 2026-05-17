@@ -27,7 +27,7 @@ pub fn can_pay(
     let super::CostPart::Draw(amount) = part else {
         return false;
     };
-    let resolved = super::resolve_dynamic_amount(game, source, player, *amount);
+    let resolved = amount.resolve(game, source, player);
     let allowed =
         crate::staticability::static_ability_cant_draw::can_draw_amount(game, player, resolved);
     allowed >= resolved
@@ -43,6 +43,6 @@ pub fn pay_with_decision(
     let super::CostPart::Draw(amount) = part else {
         return false;
     };
-    let resolved = super::resolve_dynamic_amount(game, source, player, *amount);
+    let resolved = amount.resolve(game, source, player);
     pay_as_decided(game, player, resolved)
 }

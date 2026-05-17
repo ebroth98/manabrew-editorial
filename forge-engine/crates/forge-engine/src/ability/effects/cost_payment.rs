@@ -425,8 +425,7 @@ fn try_pay_effect_cost(
     for part in &cost.parts {
         match part {
             CostPart::FlipCoin(amount) => {
-                let resolved_amount =
-                    crate::cost::resolve_dynamic_amount(ctx.game, source, payer, *amount);
+                let resolved_amount = amount.resolve(ctx.game, source, payer);
                 for _ in 0..resolved_amount {
                     let called_heads = ctx.agents[payer.index()].choose_binary(
                         payer,
@@ -450,12 +449,13 @@ fn try_pay_effect_cost(
                 }
             }
             CostPart::DamageYou(amount) => {
-                ctx.game.deal_damage_to_player(payer, *amount);
+                ctx.game
+                    .deal_damage_to_player(payer, amount.resolve(ctx.game, source, payer));
                 ctx.trigger_handler.run_trigger(
                     TriggerType::DamageDone,
                     RunParams {
                         damage_target_player: Some(payer),
-                        damage_amount: Some(*amount),
+                        damage_amount: Some(amount.resolve(ctx.game, source, payer)),
                         is_combat_damage: Some(false),
                         ..Default::default()
                     },
@@ -463,12 +463,13 @@ fn try_pay_effect_cost(
                 );
             }
             CostPart::PayLife(amount) => {
-                ctx.game.player_lose_life(payer, *amount);
+                ctx.game
+                    .player_lose_life(payer, amount.resolve(ctx.game, source, payer));
                 ctx.trigger_handler.run_trigger(
                     TriggerType::LifeLost,
                     RunParams {
                         player: Some(payer),
-                        life_amount: Some(*amount),
+                        life_amount: Some(amount.resolve(ctx.game, source, payer)),
                         ..Default::default()
                     },
                     false,
@@ -482,18 +483,20 @@ fn try_pay_effect_cost(
                 }
             }
             CostPart::PayEnergy(amount) => {
-                ctx.game.player_add_energy(payer, -*amount);
+                ctx.game
+                    .player_add_energy(payer, -amount.resolve(ctx.game, source, payer));
             }
             CostPart::PayShards(amount) => {
-                ctx.game.player_add_shards(payer, -*amount);
+                ctx.game
+                    .player_add_shards(payer, -amount.resolve(ctx.game, source, payer));
             }
             CostPart::Draw(amount) => {
-                for _ in 0..*amount {
+                for _ in 0..amount.resolve(ctx.game, source, payer) {
                     ctx.game.draw_card(payer);
                 }
             }
             CostPart::Mill(amount) => {
-                for _ in 0..*amount {
+                for _ in 0..amount.resolve(ctx.game, source, payer) {
                     if let Some(top) = ctx.game.take_top_card_from_zone(ZoneType::Library, payer) {
                         ctx.move_card(top, ZoneType::Graveyard, payer);
                         ctx.trigger_handler.run_trigger(
@@ -518,13 +521,16 @@ fn try_pay_effect_cost(
                 amount,
                 counter_type,
             } => {
-                ctx.game.card_mut(source).add_counter(counter_type, *amount);
+                let amount_n = amount.resolve(ctx.game, source, payer);
+                ctx.game
+                    .card_mut(source)
+                    .add_counter(counter_type, amount_n);
             }
             CostPart::Discard {
                 amount,
                 type_filter,
             } => {
-                for _ in 0..*amount {
+                for _ in 0..amount.resolve(ctx.game, source, payer) {
                     let valid: Vec<CardId> = ctx
                         .game
                         .cards_in_zone(ZoneType::Hand, payer)
@@ -562,7 +568,7 @@ fn try_pay_effect_cost(
                 amount,
                 type_filter,
             } => {
-                for _ in 0..*amount {
+                for _ in 0..amount.resolve(ctx.game, source, payer) {
                     let valid = crate::cost::get_sacrifice_targets_for_cost(
                         ctx.game,
                         payer,
@@ -802,6 +808,9 @@ fn resolve_unless_payers(sa: &SpellAbility, game: &GameState) -> Vec<PlayerId> {
     if pays.eq_ignore_ascii_case("TargetedController") {
         if let Some(pid) = sa.target_chosen.target_player {
             vec![pid]
+        } else if let Some(cid) = sa.target_chosen.target_card {
+            // Card target: controller of the targeted card.
+            vec![game.card(cid).controller]
         } else {
             vec![game.opponent_of(sa.activating_player)]
         }

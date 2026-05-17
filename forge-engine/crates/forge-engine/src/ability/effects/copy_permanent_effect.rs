@@ -98,6 +98,7 @@ pub fn get_proto_type(sa: &SpellAbility, original: &Card, new_owner: crate::ids:
     copy.set_static_abilities(original.static_abilities.clone());
     copy.set_replacement_effects(original.copiable_replacement_effects());
     copy.set_perpetual(original, false);
+    copy.initial_loyalty = original.initial_loyalty.clone();
     // Copies are tokens for zone-change purposes (cease to exist off battlefield).
     copy.set_is_token(true);
 

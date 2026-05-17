@@ -32,7 +32,10 @@ pub(super) fn resolve_hidden_origin(
     let defined_ref = sa.defined_ref();
     let change_type = sa.change_type().unwrap_or("").to_string();
     let controller = sa.activating_player;
-    let change_num = sa.change_num();
+    // ChangeNum$ resolved late — may be a Count$ expression, not a literal.
+    let change_num =
+        crate::svar::resolve_numeric_svar(ctx.game, sa, crate::parsing::keys::CHANGE_NUM, 1).max(0)
+            as usize;
     let origin_zones = {
         let origins = sa.origin_zones();
         if origins.is_empty() {
@@ -253,6 +256,15 @@ pub(super) fn resolve_hidden_origin(
                 );
                 if !accepted {
                     continue;
+                }
+            }
+
+            // RememberSearched$ — Java ChangeZoneEffect.java:1081.
+            if sa.ir.remember_searched {
+                if let Some(sid) = sa.source {
+                    ctx.game
+                        .card_mut(sid)
+                        .add_remembered_player(affected_player);
                 }
             }
 

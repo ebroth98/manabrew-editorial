@@ -26,8 +26,8 @@ pub fn payment_order(part: &super::CostPart) -> i32 {
 pub fn can_pay(
     game: &crate::game::GameState,
     _available_mana: &crate::mana::ManaPool,
-    _source: crate::ids::CardId,
-    _player: crate::ids::PlayerId,
+    source: crate::ids::CardId,
+    player: crate::ids::PlayerId,
     _ability: Option<&crate::spellability::SpellAbility>,
     part: &super::CostPart,
 ) -> bool {
@@ -46,7 +46,7 @@ pub fn can_pay(
             crate::ability::effects::matches_change_type(game.card(cid), type_filter, &[])
         })
         .count() as i32;
-    count >= *amount
+    count >= amount.resolve(game, source, player)
 }
 
 pub fn pay_with_decision(

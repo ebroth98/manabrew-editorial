@@ -26,12 +26,12 @@ pub fn can_pay(
 pub fn pay_with_decision(
     game: &mut GameState,
     player: PlayerId,
-    _source: crate::ids::CardId,
+    source: crate::ids::CardId,
     part: &super::CostPart,
     _decision: &crate::cost::payment_decision::PaymentDecision,
 ) -> bool {
     let super::CostPart::GainLife(amount) = part else {
         return false;
     };
-    pay_as_decided(game, player, *amount)
+    pay_as_decided(game, player, amount.resolve(game, source, player))
 }

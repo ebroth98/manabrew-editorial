@@ -52,6 +52,32 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let origins: Vec<ZoneType> = sa.origin_zones();
 
     if origins.is_empty() {
+        // `Origin$ All` — Java's `ZoneType.listValueOf("All")` is empty and
+        // `ZoneType.isHidden(origin)` returns true for that case. Resolve
+        // the SA's `Defined$` (or targets) to concrete cards, then dispatch
+        // the known-origin path once per zone they currently occupy.
+        // `NoShuffle` because this is not a library search (CR 701.18).
+        let is_origin_all = sa.origin().is_some_and(|o| o.eq_ignore_ascii_case("All"));
+        if !is_origin_all {
+            return;
+        }
+        let defined_cards =
+            crate::ability::spell_ability_effect::get_defined_cards_or_targeted(ctx.game, sa);
+        if defined_cards.is_empty() {
+            return;
+        }
+        let mut zones: Vec<ZoneType> = Vec::new();
+        for cid in &defined_cards {
+            let zone = ctx.game.card(*cid).zone;
+            if !zones.contains(&zone) {
+                zones.push(zone);
+            }
+        }
+        let mut sa_no_shuffle = sa.clone();
+        sa_no_shuffle.ir.no_shuffle = true;
+        for zone in zones {
+            known::resolve_known_origin(ctx, &sa_no_shuffle, zone, dest_zone);
+        }
         return;
     }
 

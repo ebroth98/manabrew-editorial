@@ -165,10 +165,21 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let exile_source = if until_host_leaves { sa.source } else { None };
 
     {
-        // When the ability targets a player (e.g. Nihil Spellbomb: "target player's graveyard"),
-        // only search that player's zone instead of all players.
-        let player_ids: Vec<PlayerId> = if sa.target_chosen.target_player.is_some() {
-            sa.target_chosen.target_player.into_iter().collect()
+        // Restrict to the targeted/defined player when set; otherwise every player.
+        let player_ids: Vec<PlayerId> = if let Some(pid) = sa.target_chosen.target_player {
+            vec![pid]
+        } else if let Some(defined) = sa.ir.defined_text.as_deref() {
+            let resolved = crate::ability::ability_utils::resolve_defined_players_with_sa(
+                defined,
+                sa,
+                sa.activating_player,
+                ctx.game,
+            );
+            if resolved.is_empty() {
+                ctx.game.player_order.clone()
+            } else {
+                resolved
+            }
         } else {
             ctx.game.player_order.clone()
         };

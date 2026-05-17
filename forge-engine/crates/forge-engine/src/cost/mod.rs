@@ -64,16 +64,11 @@ use crate::parsing::CostTokenKind;
 use crate::spellability::SpellAbility;
 use crate::staticability::static_ability_cant_sacrifice::cant_sacrifice;
 
+/// Sentinel passed through [`resolve_dynamic_amount`] for the legacy `X`
+/// pathway. Kept for the few outer-API consumers (`GameLoop::pay_life_cost`,
+/// `AmountSpec::X.resolve`) that still receive an `i32`. New code should use
+/// `AmountSpec::X` directly.
 pub(crate) const DYNAMIC_X_SENTINEL: i32 = i32::MIN;
-
-pub(super) fn parse_i32_or_x(inner: &str, default: i32) -> i32 {
-    let trimmed = inner.trim();
-    if trimmed.eq_ignore_ascii_case("X") {
-        DYNAMIC_X_SENTINEL
-    } else {
-        trimmed.parse::<i32>().unwrap_or(default)
-    }
-}
 
 pub fn resolve_dynamic_amount(
     game: &GameState,
@@ -113,6 +108,118 @@ pub fn resolve_dynamic_amount(
     0
 }
 
+/// The amount slot of a [`CostPart`]. Replaces the legacy `i32` (with
+/// `DYNAMIC_X_SENTINEL`) once consumers are migrated. Mirrors Java's
+/// `CostPart.convertAmount` + `AbilityUtils.calculateAmount` split:
+/// literals resolve trivially, `X` reads `XPaid` / `SVar:X`, named SVar
+/// identifiers walk the host card's SVar table at call time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AmountSpec {
+    Literal(i32),
+    X,
+    /// SVar name on the host card (e.g. `Y` in `ExileFromHand<Y/Card.Blue>`
+    /// — the only legitimate source today is the `RaiseCost` SVar walker
+    /// in `cost_adjustment`). Reserved for explicit, audited parser sites.
+    Svar(String),
+}
+
+impl AmountSpec {
+    /// Parse a script amount token (`"3"`, `"X"`). Strips any trailing
+    /// `/extra` suffix so DSL forms like `Draw<1/You>` parse as `1`. Non-int,
+    /// non-X tokens fall back to `Literal(default)` — `Self::Svar` is reserved
+    /// for explicit parsers that want SVar-chain resolution (only
+    /// `cost_adjustment` today).
+    pub fn parse_or(raw: &str, default: i32) -> Self {
+        let head = raw.split('/').next().unwrap_or(raw).trim();
+        if head.is_empty() {
+            return Self::Literal(default);
+        }
+        if head.eq_ignore_ascii_case("X") {
+            Self::X
+        } else if let Ok(n) = head.parse::<i32>() {
+            Self::Literal(n)
+        } else {
+            Self::Literal(default)
+        }
+    }
+
+    /// Resolve to an `i32` at call time. `X` reads `XPaid`/`SVar:X` via the
+    /// legacy `resolve_dynamic_amount` flow; `Svar(name)` walks the host's
+    /// SVar chain to its first numeric value.
+    pub fn resolve(&self, game: &GameState, source: CardId, player: PlayerId) -> i32 {
+        match self {
+            Self::Literal(n) => *n,
+            Self::X => resolve_dynamic_amount(game, source, player, DYNAMIC_X_SENTINEL),
+            Self::Svar(name) => resolve_named_svar(game, source, player, name),
+        }
+    }
+
+    pub fn as_literal(&self) -> Option<i32> {
+        match self {
+            Self::Literal(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    pub fn is_x(&self) -> bool {
+        matches!(self, Self::X)
+    }
+}
+
+impl Default for AmountSpec {
+    fn default() -> Self {
+        Self::Literal(0)
+    }
+}
+
+impl From<i32> for AmountSpec {
+    fn from(n: i32) -> Self {
+        Self::Literal(n)
+    }
+}
+
+impl std::fmt::Display for AmountSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Literal(n) => write!(f, "{n}"),
+            Self::X => f.write_str("X"),
+            Self::Svar(name) => f.write_str(name),
+        }
+    }
+}
+
+/// Walk a named SVar on the host card to its first numeric value.
+/// Used by `AmountSpec::Svar(name).resolve()` (and, transitively, by the
+/// `RaiseCost` parser once it routes through `AmountSpec`).
+fn resolve_named_svar(game: &GameState, source: CardId, player: PlayerId, name: &str) -> i32 {
+    let host = game.card(source);
+    let mut current = name.to_string();
+    for _ in 0..8 {
+        let Some(raw) = host.svars.get(&current) else {
+            return 0;
+        };
+        if let Some(rest) = raw.strip_prefix("SVar$") {
+            let next = rest.split('/').next().unwrap_or("").trim();
+            if next.is_empty() {
+                return 0;
+            }
+            current = next.to_string();
+            continue;
+        }
+        if let Some(num_str) = raw.strip_prefix("Number$") {
+            return num_str.trim().parse().unwrap_or(0);
+        }
+        if let Ok(n) = raw.trim().parse::<i32>() {
+            return n;
+        }
+        if raw.starts_with("Count$") {
+            return crate::ability::effects::resolve_count_svar(raw, game, source, player);
+        }
+        return 0;
+    }
+    0
+}
+
 /// A single component of an ability cost.
 /// Mirrors Java's CostPart hierarchy.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,39 +255,54 @@ pub enum CostPart {
         max_waterbend: Option<String>,
     },
     /// Pay life. Mirrors CostPayLife.
-    PayLife(i32),
+    PayLife(AmountSpec),
     /// Sacrifice permanents. type_filter "CARDNAME" means sacrifice self.
-    Sacrifice { amount: i32, type_filter: String },
+    Sacrifice {
+        amount: AmountSpec,
+        type_filter: String,
+    },
     /// Discard cards. type_filter "CARDNAME" means discard self.
-    Discard { amount: i32, type_filter: String },
+    Discard {
+        amount: AmountSpec,
+        type_filter: String,
+    },
     /// Remove counters from a permanent (e.g. SubCounter<1/DREAM/NICKNAME>).
     SubCounter {
-        amount: i32,
+        amount: AmountSpec,
         counter_type: CounterType,
         type_filter: String,
     },
     /// Add counters to the source permanent (e.g. AddCounter<1/LOYALTY>). Mirrors CostPutCounter.
     AddCounter {
-        amount: i32,
+        amount: AmountSpec,
         counter_type: CounterType,
     },
     /// Exile cards from a specific zone (own zone) as cost. Mirrors CostExile.
     Exile {
-        amount: i32,
+        amount: AmountSpec,
         type_filter: String,
         from: ZoneType,
     },
     /// Exile cards from any player's graveyard as cost (ExileAnyGrave). Mirrors CostExile zoneMode=-1.
-    ExileFromAnyGrave { amount: i32, type_filter: String },
+    ExileFromAnyGrave {
+        amount: AmountSpec,
+        type_filter: String,
+    },
     /// Exile cards from the same graveyard as cost (ExileSameGrave). Mirrors CostExile zoneMode=0.
-    ExileFromSameGrave { amount: i32, type_filter: String },
+    ExileFromSameGrave {
+        amount: AmountSpec,
+        type_filter: String,
+    },
     /// Return permanents to owner's hand as cost. Mirrors CostReturn.
-    Return { amount: i32, type_filter: String },
+    Return {
+        amount: AmountSpec,
+        type_filter: String,
+    },
     /// Tap other permanents of a type as cost (tapXType<n/filter>). Mirrors CostTapType.
     /// When `min_total_power` is Some(N), tap any number of creatures whose total power >= N
     /// (used by Crew). When None, tap exactly `amount` matching permanents.
     TapType {
-        amount: i32,
+        amount: AmountSpec,
         type_filter: String,
         min_total_power: Option<i32>,
     },
@@ -188,36 +310,42 @@ pub enum CostPart {
     Untap,
     /// Untap other permanents of a type as cost (untapYType<n/filter>). Mirrors CostUntapType.
     UntapType {
-        amount: i32,
+        amount: AmountSpec,
         type_filter: String,
         can_untap_source: bool,
     },
     /// Pay energy counters. Mirrors CostPayEnergy.
-    PayEnergy(i32),
+    PayEnergy(AmountSpec),
     /// Pay shard counters. Mirrors CostPayShards.
-    PayShards(i32),
+    PayShards(AmountSpec),
     /// Deal damage to the source's controller as cost. Mirrors CostDamage.
-    DamageYou(i32),
+    DamageYou(AmountSpec),
     /// Draw cards as cost. Mirrors CostDraw.
-    Draw(i32),
+    Draw(AmountSpec),
     /// Mill cards as cost. Mirrors CostMill.
-    Mill(i32),
+    Mill(AmountSpec),
     /// Reveal cards as cost. Mirrors CostReveal.
     Reveal {
-        amount: i32,
+        amount: AmountSpec,
         type_filter: String,
         from: RevealFrom,
     },
     /// Exert permanent(s) as cost. Mirrors CostExert.
-    Exert { amount: i32, type_filter: String },
+    Exert {
+        amount: AmountSpec,
+        type_filter: String,
+    },
     /// Opponent gains life as cost. Mirrors CostGainLife.
-    GainLife(i32),
+    GainLife(AmountSpec),
     /// Gain control of permanents matching type_filter as cost. Mirrors CostGainControl.
-    GainControl { amount: i32, type_filter: String },
+    GainControl {
+        amount: AmountSpec,
+        type_filter: String,
+    },
     /// Remove any counter type from permanents matching type_filter. Mirrors CostRemoveAnyCounter.
     /// `counter_type` is None means any counter type.
     RemoveAnyCounter {
-        amount: i32,
+        amount: AmountSpec,
         type_filter: String,
         counter_type: Option<CounterType>,
     },
@@ -229,55 +357,70 @@ pub enum CostPart {
         description: Option<String>,
     },
     /// Move cards from exile to graveyard as cost. Mirrors CostExiledMoveToGrave.
-    ExiledMoveToGrave { amount: i32, type_filter: String },
+    ExiledMoveToGrave {
+        amount: AmountSpec,
+        type_filter: String,
+    },
     /// Add mana to the pool as a cost (AddMana<amount/type>). Mirrors CostAddMana.
     /// Always payable. Payment adds the specified mana to the activating player's pool.
-    AddMana { amount: i32, mana_type: String },
+    AddMana {
+        amount: AmountSpec,
+        mana_type: String,
+    },
     /// Waterbend cost (Waterbend<N>). Mirrors CostWaterbend.
     /// Pay N generic mana, but you can tap your artifacts and creatures to help (each tapped = {1}).
-    Waterbend { amount: i32 },
+    Waterbend { amount: AmountSpec },
     /// Choose one or more colors as a cost. Mirrors CostChooseColor.
-    ChooseColor(i32),
+    ChooseColor(AmountSpec),
     /// Choose a creature type as a cost. Mirrors CostChooseCreatureType.
-    ChooseCreatureType(i32),
+    ChooseCreatureType(AmountSpec),
     /// Flip one or more coins as a cost. Mirrors CostFlipCoin.
-    FlipCoin(i32),
+    FlipCoin(AmountSpec),
     /// Roll dice as a cost. Mirrors CostRollDice.
     RollDice {
-        amount: i32,
+        amount: AmountSpec,
         sides: i32,
         result_svar: String,
     },
     /// Exile spells from stack as a cost. Mirrors CostExileFromStack.
-    ExileFromStack { amount: i32, type_filter: String },
+    ExileFromStack {
+        amount: AmountSpec,
+        type_filter: String,
+    },
     /// Collect evidence N (exile cards from your graveyard with total MV >= N).
-    CollectEvidence(i32),
+    CollectEvidence(AmountSpec),
     /// Forage: exile 3 from your graveyard or sacrifice a Food.
     Forage,
     /// Put card(s) to library from a zone as a cost. Mirrors CostPutCardToLib.
     PutCardToLib {
-        amount: i32,
+        amount: AmountSpec,
         lib_pos: i32,
         type_filter: String,
         from: ZoneType,
         same_zone: bool,
     },
     /// Enlist another creature as a cost. Mirrors CostEnlist.
-    Enlist { amount: i32, type_filter: String },
+    Enlist {
+        amount: AmountSpec,
+        type_filter: String,
+    },
     /// Promise gift to an opponent as a cost. Mirrors CostPromiseGift.
     PromiseGift,
     /// Reveal previously chosen player/type as a cost. Mirrors CostRevealChosen.
     RevealChosen { reveal_type: String },
     /// Behold (reveal from hand/battlefield), optionally exile revealed cards.
     Behold {
-        amount: i32,
+        amount: AmountSpec,
         type_filter: String,
         exile: bool,
     },
     /// Blight N = put N -1/-1 counters on creature(s) you control.
-    Blight(i32),
+    Blight(AmountSpec),
     /// Exile from battlefield or graveyard as a combined cost (craft).
-    ExileCtrlOrGrave { amount: i32, type_filter: String },
+    ExileCtrlOrGrave {
+        amount: AmountSpec,
+        type_filter: String,
+    },
 }
 
 impl CostPart {
@@ -569,10 +712,9 @@ pub fn parse_cost(raw: &str) -> Cost {
 
 /// Parse `"amount/filter"` inner content, returning (amount, filter).
 /// If there's no slash, defaults to amount=1 and filter=inner.
-pub(super) fn parse_amount_filter(inner: &str) -> (i32, String) {
+pub(super) fn parse_amount_filter(inner: &str) -> (AmountSpec, String) {
     if let Some(slash_idx) = inner.find('/') {
-        let amt = parse_i32_or_x(&inner[..slash_idx], 1);
-        // Strip any trailing description (second slash)
+        let amt = AmountSpec::parse_or(&inner[..slash_idx], 1);
         let rest = &inner[slash_idx + 1..];
         let filter = if let Some(desc_idx) = rest.find('/') {
             rest[..desc_idx].to_string()
@@ -581,13 +723,13 @@ pub(super) fn parse_amount_filter(inner: &str) -> (i32, String) {
         };
         (amt, filter)
     } else {
-        (1, inner.to_string())
+        (AmountSpec::Literal(1), inner.to_string())
     }
 }
 
-pub(super) fn parse_amount_filter_dynamic(inner: &str) -> (i32, String) {
+pub(super) fn parse_amount_filter_dynamic(inner: &str) -> (AmountSpec, String) {
     if let Some(slash_idx) = inner.find('/') {
-        let amt = parse_i32_or_x(&inner[..slash_idx], 1);
+        let amt = AmountSpec::parse_or(&inner[..slash_idx], 1);
         let rest = &inner[slash_idx + 1..];
         let filter = if let Some(desc_idx) = rest.find('/') {
             rest[..desc_idx].to_string()
@@ -596,7 +738,7 @@ pub(super) fn parse_amount_filter_dynamic(inner: &str) -> (i32, String) {
         };
         (amt, filter)
     } else {
-        (parse_i32_or_x(inner, 1), inner.to_string())
+        (AmountSpec::parse_or(inner, 1), inner.to_string())
     }
 }
 
@@ -1041,7 +1183,7 @@ pub fn can_pay_with_ability_and_reserved(
                     if valid.is_empty() {
                         return false;
                     }
-                } else if (valid.len() as i32) < *amount {
+                } else if (valid.len() as i32) < amount.resolve(game, source, player) {
                     return false;
                 }
             }
@@ -1325,7 +1467,7 @@ mod tests {
                 amount,
                 type_filter,
             } => {
-                assert_eq!(*amount, 1);
+                assert_eq!(amount.as_literal(), Some(1));
                 assert_eq!(type_filter, "CARDNAME");
             }
             _ => panic!("expected Sacrifice cost part"),
@@ -1337,7 +1479,7 @@ mod tests {
         let cost = parse_cost("PayLife<3>");
         assert_eq!(cost.parts.len(), 1);
         match &cost.parts[0] {
-            CostPart::PayLife(n) => assert_eq!(*n, 3),
+            CostPart::PayLife(n) => assert_eq!(n.as_literal(), Some(3)),
             _ => panic!("expected PayLife cost part"),
         }
     }
@@ -1363,7 +1505,7 @@ mod tests {
                 amount,
                 type_filter,
             } => {
-                assert_eq!(*amount, 1);
+                assert_eq!(amount.as_literal(), Some(1));
                 assert_eq!(type_filter, "Creature");
             }
             _ => panic!("expected Sacrifice cost part"),
@@ -1391,7 +1533,7 @@ mod tests {
                 type_filter,
                 from,
             } => {
-                assert_eq!(*amount, 1);
+                assert_eq!(amount.as_literal(), Some(1));
                 assert_eq!(type_filter, "Card");
                 assert_eq!(*from, ZoneType::Hand);
             }
@@ -1408,7 +1550,7 @@ mod tests {
                 amount,
                 counter_type,
             } => {
-                assert_eq!(*amount, 1);
+                assert_eq!(amount.as_literal(), Some(1));
                 assert_eq!(*counter_type, CounterType::Loyalty);
             }
             _ => panic!("expected AddCounter cost part"),
@@ -1424,7 +1566,7 @@ mod tests {
                 amount,
                 type_filter,
             } => {
-                assert_eq!(*amount, 1);
+                assert_eq!(amount.as_literal(), Some(1));
                 assert_eq!(type_filter, "CARDNAME");
             }
             _ => panic!("expected Return cost part"),
@@ -1441,7 +1583,7 @@ mod tests {
                 type_filter,
                 min_total_power,
             } => {
-                assert_eq!(*amount, 2);
+                assert_eq!(amount.as_literal(), Some(2));
                 assert_eq!(type_filter, "Creature");
                 assert_eq!(*min_total_power, None);
             }
@@ -1459,7 +1601,7 @@ mod tests {
                 type_filter,
                 min_total_power,
             } => {
-                assert_eq!(*amount, 1); // "Any" defaults to 1
+                assert_eq!(amount.as_literal(), Some(1)); // "Any" defaults to 1
                 assert_eq!(type_filter, "Creature.Other");
                 assert_eq!(*min_total_power, Some(3));
             }
@@ -1472,7 +1614,7 @@ mod tests {
         let cost = parse_cost("PayEnergy<3>");
         assert_eq!(cost.parts.len(), 1);
         match &cost.parts[0] {
-            CostPart::PayEnergy(n) => assert_eq!(*n, 3),
+            CostPart::PayEnergy(n) => assert_eq!(n.as_literal(), Some(3)),
             _ => panic!("expected PayEnergy cost part"),
         }
     }
@@ -1488,7 +1630,9 @@ mod tests {
     fn parse_collect_evidence() {
         let cost = parse_cost("CollectEvidence<6>");
         assert_eq!(cost.parts.len(), 1);
-        assert!(matches!(cost.parts[0], CostPart::CollectEvidence(6)));
+        assert!(
+            matches!(&cost.parts[0], CostPart::CollectEvidence(n) if n.as_literal() == Some(6))
+        );
     }
 
     #[test]
@@ -1510,7 +1654,7 @@ mod tests {
                 from,
                 same_zone,
             } => {
-                assert_eq!(*amount, 1);
+                assert_eq!(amount.as_literal(), Some(1));
                 assert_eq!(*lib_pos, 0);
                 assert_eq!(type_filter, "Card");
                 assert_eq!(*from, ZoneType::Graveyard);
@@ -1529,7 +1673,7 @@ mod tests {
                 amount,
                 type_filter,
             } => {
-                assert_eq!(*amount, 1);
+                assert_eq!(amount.as_literal(), Some(1));
                 assert_eq!(type_filter, "Spell");
             }
             _ => panic!("expected ExileFromStack cost part"),
@@ -1545,7 +1689,7 @@ mod tests {
                 amount,
                 type_filter,
             } => {
-                assert_eq!(*amount, 2);
+                assert_eq!(amount.as_literal(), Some(2));
                 assert_eq!(type_filter, "Artifact");
             }
             _ => panic!("expected ExileCtrlOrGrave cost part"),

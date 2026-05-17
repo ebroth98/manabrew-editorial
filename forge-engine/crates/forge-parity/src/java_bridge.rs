@@ -122,6 +122,9 @@ impl JavaBridge {
         if std::env::var("FORGE_RNG_BT_UNBOUNDED").is_ok() {
             cmd.arg("-Dforge.parity.rng.bt.unbounded=true");
         }
+        if std::env::var("FORGE_SORT_TRACE").is_ok() {
+            cmd.arg("-Dforge.parity.sort.trace=true");
+        }
         if std::env::var("FORGE_LIB_DUMP").is_ok() {
             cmd.env("FORGE_LIB_DUMP", "1");
         }
@@ -368,6 +371,9 @@ impl JavaServer {
         }
         if std::env::var("FORGE_RNG_BT_UNBOUNDED").is_ok() {
             cmd.arg("-Dforge.parity.rng.bt.unbounded=true");
+        }
+        if std::env::var("FORGE_SORT_TRACE").is_ok() {
+            cmd.arg("-Dforge.parity.sort.trace=true");
         }
         if std::env::var("FORGE_LIB_DUMP").is_ok() {
             cmd.env("FORGE_LIB_DUMP", "1");

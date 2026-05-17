@@ -22,9 +22,11 @@ fn resolve(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
     let amount = manifest_params.amount;
     let controller = sa.activating_player;
 
-    // Determine which player manifests (DefinedPlayer$ or controller)
+    // DefinedPlayer$ → SA-aware resolution (Targeted preserves empty lists).
     let players = if let Some(def) = sa.defined_player() {
-        super::resolve_defined_players(def, controller, ctx.game)
+        crate::ability::ability_utils::resolve_defined_players_with_sa(
+            def, sa, controller, ctx.game,
+        )
     } else {
         vec![controller]
     };

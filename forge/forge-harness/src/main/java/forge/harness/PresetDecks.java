@@ -94,7 +94,7 @@ public final class PresetDecks {
             String name = entry.get("name").getAsString();
             int count = entry.get("count").getAsInt();
 
-            PaperCard card = cardDb.getCard(name);
+            PaperCard card = lookupCard(cardDb, name);
             if (card == null) {
                 System.err.println("[harness] WARNING: Card not found: " + name);
                 continue;
@@ -103,6 +103,22 @@ public final class PresetDecks {
         }
 
         return deck;
+    }
+
+    /**
+     * Mirrors {@code CardDatabase::get_by_card_name}: try the full name,
+     * then fall back to the front face of a Scryfall {@code " // "} string.
+     */
+    private static PaperCard lookupCard(CardDb cardDb, String name) {
+        PaperCard card = cardDb.getCard(name);
+        if (card != null) {
+            return card;
+        }
+        int sep = name.indexOf(" // ");
+        if (sep < 0) {
+            return null;
+        }
+        return cardDb.getCard(name.substring(0, sep));
     }
 
     /**
@@ -133,7 +149,7 @@ public final class PresetDecks {
                 continue;
             }
 
-            PaperCard card = cardDb.getCard(name);
+            PaperCard card = lookupCard(cardDb, name);
             if (card == null) {
                 System.err.println("[harness] WARNING: Card not found: " + name);
                 continue;

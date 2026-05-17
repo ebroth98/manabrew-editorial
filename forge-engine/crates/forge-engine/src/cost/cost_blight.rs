@@ -30,7 +30,7 @@ pub fn can_pay(
     let super::CostPart::Blight(amount) = part else {
         return false;
     };
-    let resolved_amount = super::resolve_dynamic_amount(game, source, player, *amount);
+    let resolved_amount = amount.resolve(game, source, player);
     let battlefield_cards: Vec<_> = game
         .players
         .iter()

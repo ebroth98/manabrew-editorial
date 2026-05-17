@@ -609,7 +609,13 @@ impl TriggerHandler {
                         decider: host_controller,
                         description: trigger.description.clone(),
                     };
-                    let source_ts = card.zone_timestamp;
+                    // `Card.gameTimestamp` skips Stack moves; clamp Stack
+                    // sources to 0 so sort matches `GameAction.changeZone`.
+                    let source_ts = if card.zone == ZoneType::Stack {
+                        0
+                    } else {
+                        card.zone_timestamp
+                    };
                     entries.push((pending, host_controller, source_ts, 1, trigger.id));
                     let extra = crate::staticability::static_ability_panharmonicon::extra_triggers(
                         game,
