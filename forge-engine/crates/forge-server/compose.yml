@@ -15,7 +15,9 @@
 
 services:
   forge-server:
-    build: .
+    build:
+      context: ../../.. # repo root (needs Cargo workspace + forge-engine/)
+      dockerfile: forge-engine/crates/forge-server/Dockerfile
     ports:
       - "9443:9443"
     environment:

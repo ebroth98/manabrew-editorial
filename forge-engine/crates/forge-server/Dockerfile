@@ -1,29 +1,28 @@
-FROM rust:1.85-slim AS builder
+# syntax=docker/dockerfile:1
+FROM rust:1.88-bookworm AS builder
 
 WORKDIR /build
 
-# Create a minimal workspace so `workspace = true` deps resolve
-COPY Cargo.toml ./crates/forge-server/Cargo.toml
+# Workspace manifests + lockfile
+COPY Cargo.toml Cargo.lock ./
 
-RUN mkdir -p crates/forge-server/src && \
-    cat <<'EOF' > Cargo.toml
-[workspace]
-resolver = "2"
-members = ["crates/forge-server"]
+# Engine workspace members (forge-server pulls in forge-agent-interface,
+# which transitively requires forge-engine and friends).
+COPY forge-engine/ forge-engine/
 
-[workspace.dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-EOF
+# Stub the other workspace members that cargo metadata validates.
+# src-tauri and tree-sitter-forge-card-script are declared in the root
+# Cargo.toml; cargo refuses to compile anything until every member
+# resolves, but forge-server never links against them.
+COPY src-tauri/Cargo.toml src-tauri/Cargo.toml
+RUN mkdir -p src-tauri/src && echo "fn main() {}" > src-tauri/src/main.rs && touch src-tauri/src/lib.rs
+COPY tree-sitter-forge-card-script/ tree-sitter-forge-card-script/
 
-# Dummy main for dependency caching
-RUN echo 'fn main() {}' > crates/forge-server/src/main.rs && \
-    cargo build --release -p forge-server && \
-    rm -rf crates/forge-server/src
-
-# Copy real source and rebuild
-COPY src/ ./crates/forge-server/src/
-RUN cargo build --release -p forge-server
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/build/target \
+    cargo build --release -p forge-server \
+    && cp /build/target/release/forge-server /usr/local/bin/forge-server
 
 # --- Runtime ---
 FROM debian:bookworm-slim
@@ -32,7 +31,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /build/target/release/forge-server /usr/local/bin/forge-server
+COPY --from=builder /usr/local/bin/forge-server /usr/local/bin/forge-server
 
 ENV FORGE_HOST=0.0.0.0
 ENV FORGE_PORT=9443
