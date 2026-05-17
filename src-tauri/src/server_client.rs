@@ -5,6 +5,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
 
+use forge_agent_interface::protocol::StateEnvelope;
 use forge_server::protocol::ServerMessage;
 
 pub struct ServerClient {
@@ -190,38 +191,33 @@ async fn run_ws_client(
 }
 
 fn emit_server_message(app: &AppHandle, msg: &ServerMessage) {
-    // Handle game envelopes in StateUpdate specially
-    if let ServerMessage::StateUpdate {
-        from_player: _,
-        state,
-    } = msg
-    {
-        if let Some(kind) = state.get("kind").and_then(|v| v.as_str()) {
-            if kind == "response" {
-                let gm: tauri::State<'_, crate::game_manager::GameManager> =
-                    app.state::<crate::game_manager::GameManager>();
-                gm.route_remote_response(state);
-                return;
-            } else if kind == "roomRelay" {
-                if let ServerMessage::StateUpdate { from_player, state } = msg {
+    if let ServerMessage::StateUpdate { from_player, state } = msg {
+        if let Ok(envelope) = serde_json::from_value::<StateEnvelope>(state.clone()) {
+            match envelope {
+                StateEnvelope::Response { .. } => {
+                    let gm: tauri::State<'_, crate::game_manager::GameManager> =
+                        app.state::<crate::game_manager::GameManager>();
+                    gm.route_remote_response(state);
+                    return;
+                }
+                StateEnvelope::RoomRelay { .. } => {
                     let _ = app.emit(
                         "server:room_message",
                         serde_json::json!({ "from_player": from_player, "state": state }),
                     );
                 }
-            } else if kind == "prompt" {
-                let _ = app.emit("game:remote_prompt", state);
-                return;
-            } else if kind == "log" {
-                if let Some(entry) = state.get("entry") {
-                    let _ = app.emit("game:log", entry);
+                StateEnvelope::Prompt { .. } => {
+                    let _ = app.emit("game:remote_prompt", state);
+                    return;
                 }
-                return;
-            } else if kind == "snapshot" {
-                if let Some(entry) = state.get("entry") {
-                    let _ = app.emit("game:snapshot", entry);
+                StateEnvelope::Log { entry, .. } => {
+                    let _ = app.emit("game:log", &entry);
+                    return;
                 }
-                return;
+                StateEnvelope::Snapshot { entry, .. } => {
+                    let _ = app.emit("game:snapshot", &entry);
+                    return;
+                }
             }
         }
     }

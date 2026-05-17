@@ -88,7 +88,7 @@ export default function Lobby() {
   const [aiDeckDialogOpen, setAiDeckDialogOpen] = useState(false);
   const [refreshingLobby, setRefreshingLobby] = useState(false);
   const [sidePanel, setSidePanel] = useState<"chat" | "players" | null>(null);
-  const [botUsernames, setBotUsernames] = useState<string[]>([]);
+  const [mySpawnedBots, setMySpawnedBots] = useState<string[]>([]);
   const [botDeckTarget, setBotDeckTarget] = useState<string | null>(null);
 
   useEffect(() => {
@@ -300,7 +300,7 @@ export default function Lobby() {
         deck: deck.deck,
         commanderName: deck.commanderName ?? null,
       });
-      setBotUsernames((prev) => [...prev, botName]);
+      setMySpawnedBots((prev) => [...prev, botName]);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to spawn bot.");
     }
@@ -309,7 +309,7 @@ export default function Lobby() {
   async function handleRemoveBot(botName: string) {
     try {
       await getPlatform().server!.removeAiBot(botName);
-      setBotUsernames((prev) => prev.filter((u) => u !== botName));
+      setMySpawnedBots((prev) => prev.filter((u) => u !== botName));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to remove bot.");
     }
@@ -444,7 +444,7 @@ export default function Lobby() {
             onStartTabletop={handleStartTabletop}
             onAddBot={handleAddAiBot}
             onRemoveBot={handleRemoveBot}
-            botUsernames={botUsernames}
+            mySpawnedBots={mySpawnedBots}
           />
         </div>
 

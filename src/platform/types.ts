@@ -71,9 +71,13 @@ export interface SetDeckSelectionParams {
   commanderName: string | null;
 }
 
+export type BotAgentKind = "simple";
+
 export interface SpawnAiBotParams extends SetDeckSelectionParams {
   roomId: string;
   username: string;
+  /** Defaults to `"simple"` when omitted. */
+  agent?: BotAgentKind;
 }
 
 // ============================================================================

@@ -1,9 +1,10 @@
 use tauri::{AppHandle, State};
 
-use crate::client_bot::{ClientBotConfig, ClientBotManager};
+use crate::client_bot::ClientBotManager;
 use crate::multiplayer_controller::relay_response_value;
 use crate::server_client::ServerClient;
 use forge_agent_interface::deck_dto::Deck;
+use forge_bot::{AgentKind, BotConfig};
 
 fn send_server_message(client: &ServerClient, msg: serde_json::Value) -> Result<(), String> {
     client.send(&msg.to_string())
@@ -40,16 +41,23 @@ pub async fn server_spawn_ai_bot(
     deck_name: String,
     deck: Deck,
     commander_name: Option<String>,
+    agent: Option<AgentKind>,
 ) -> Result<(), String> {
     let connection = client.connection_config()?;
-    bot_manager.spawn_bot(ClientBotConfig {
-        connection,
-        room_id,
-        username,
-        deck_name,
-        deck,
-        commander_name,
-    })
+    let scheme = if connection.port == 443 { "wss" } else { "ws" };
+    let relay_url = format!("{}://{}:{}", scheme, connection.host, connection.port);
+    bot_manager.spawn_bot(
+        relay_url,
+        BotConfig {
+            username,
+            password: connection.password,
+            room_id,
+            deck_name,
+            deck,
+            commander_name,
+            agent: agent.unwrap_or_default(),
+        },
+    )
 }
 
 #[tauri::command]
@@ -172,7 +180,13 @@ pub async fn server_send_room_message(
     client: State<'_, ServerClient>,
     message: serde_json::Value,
 ) -> Result<(), String> {
-    if message.get("kind").and_then(|value| value.as_str()) != Some("roomRelay") {
+    let envelope: forge_agent_interface::protocol::StateEnvelope =
+        serde_json::from_value(message.clone())
+            .map_err(|e| format!("Room message must be a valid StateEnvelope: {}", e))?;
+    if !matches!(
+        envelope,
+        forge_agent_interface::protocol::StateEnvelope::RoomRelay { .. }
+    ) {
         return Err("Room message must be a roomRelay envelope".to_string());
     }
     send_server_message(

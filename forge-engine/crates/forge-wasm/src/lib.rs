@@ -17,6 +17,7 @@
 //!
 //! This is designed to run in a Web Worker for non-blocking UI.
 
+mod bot_api;
 mod card_loader;
 mod game_runner;
 mod limited_api;
@@ -24,6 +25,7 @@ mod limited_bootstrap;
 mod wasm_api;
 pub mod wasm_transport;
 
+pub use bot_api::*;
 pub use card_loader::*;
 pub use limited_api::*;
 pub use limited_bootstrap::*;

@@ -7,7 +7,7 @@ use forge_agent_interface::agent_impl::PromptAgent;
 use forge_agent_interface::deck_dto::Deck;
 use forge_agent_interface::game_view_dto::GameViewDto;
 use forge_agent_interface::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
-use forge_agent_interface::simple_ai::spawn_simple_ai_prompt_responder;
+use forge_bot::agent::{spawn_agent_responder, SimpleAi};
 use forge_carddb::CardDatabase;
 use forge_engine_core::agent::PlayerAgent;
 use forge_engine_core::game::GameState;
@@ -59,7 +59,7 @@ pub fn run_hosted_engine_game(
     let local_ai = local_player_index.map(|player_index| {
         let (ai_prompt_tx, ai_prompt_rx) = std_mpsc::channel::<AgentPrompt>();
         let (ai_response_tx, ai_response_rx) = std_mpsc::channel::<PlayerAction>();
-        spawn_simple_ai_prompt_responder(ai_prompt_rx, ai_response_tx);
+        spawn_agent_responder(Box::new(SimpleAi::new()), ai_prompt_rx, ai_response_tx);
         (
             player_index,
             Box::new(PromptAgent::new(

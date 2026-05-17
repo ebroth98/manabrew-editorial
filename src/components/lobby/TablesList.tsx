@@ -23,7 +23,9 @@ interface TablesListProps {
   onStartTabletop?: () => void;
   onAddBot?: () => void;
   onRemoveBot?: (username: string) => void;
-  botUsernames?: string[];
+  /** Bots this host process spawned — used to show the remove button. The
+   *  relay has no isBot field; tracking lives client-local. */
+  mySpawnedBots?: string[];
 }
 
 export function TablesList({
@@ -38,7 +40,7 @@ export function TablesList({
   onStartTabletop,
   onAddBot,
   onRemoveBot,
-  botUsernames = [],
+  mySpawnedBots = [],
 }: TablesListProps) {
   const [joiningRoomId, setJoiningRoomId] = useState<string | null>(null);
 
@@ -95,7 +97,7 @@ export function TablesList({
             {/* Player slots */}
             <div className="grid gap-2 sm:grid-cols-2">
               {orderedPlayers.map((p) => {
-                const isBot = botUsernames.includes(p.username);
+                const canRemove = mySpawnedBots.includes(p.username);
                 return (
                   <div
                     key={p.username}
@@ -112,7 +114,6 @@ export function TablesList({
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        {isBot && <Bot className="h-3 w-3 text-muted-foreground shrink-0" />}
                         <span className="text-sm font-medium truncate">{p.username}</span>
                         {p.username === currentRoom.host && (
                           <GameIcon
@@ -125,7 +126,7 @@ export function TablesList({
                         {p.selected_deck_name ?? "No deck selected"}
                       </div>
                     </div>
-                    {isBot && isHost ? (
+                    {canRemove && isHost ? (
                       <Button
                         size="icon"
                         variant="ghost"

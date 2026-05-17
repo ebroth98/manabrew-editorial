@@ -5,14 +5,13 @@ use std::thread;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::network::{
-    decode_relay_response, encode_relay_envelope, wrap_broadcast_state, RelayEnvelope,
-};
+use crate::network::{decode_relay_response, wrap_broadcast_state};
 use crate::server_client::ServerClient;
 use forge_agent_interface::game_log_event::GameLogEntryDto;
 use forge_agent_interface::game_snapshot_event::GameSnapshotEventDto;
 use forge_agent_interface::ids_codec::player_slot;
 use forge_agent_interface::prompt::{AgentPrompt, PlayerAction};
+use forge_agent_interface::protocol::StateEnvelope;
 
 pub fn spawn_engine_prompt_forwarder(
     app: AppHandle,
@@ -49,17 +48,18 @@ pub fn spawn_notify_forwarder(
                 app.emit("game:log", &msg)
             };
             if let Some(from_player) = relay_from_player.as_ref() {
-                let envelope = match encode_relay_envelope(RelayEnvelope::Log {
+                let envelope = StateEnvelope::Log {
                     from_player: from_player.clone(),
                     entry: msg,
-                }) {
+                };
+                let state = match serde_json::to_value(envelope) {
                     Ok(v) => v,
                     Err(e) => {
                         eprintln!("[log_fwd] Failed to encode log envelope: {}", e);
                         continue;
                     }
                 };
-                let payload = wrap_broadcast_state(envelope);
+                let payload = wrap_broadcast_state(state);
                 if let Some(client) = app.try_state::<ServerClient>() {
                     let _ = client.send(&payload);
                 }
@@ -82,17 +82,18 @@ pub fn spawn_snapshot_forwarder(
                 app.emit("game:snapshot", &msg)
             };
             if let Some(from_player) = relay_from_player.as_ref() {
-                let envelope = match encode_relay_envelope(RelayEnvelope::Snapshot {
+                let envelope = StateEnvelope::Snapshot {
                     from_player: from_player.clone(),
                     entry: msg,
-                }) {
+                };
+                let state = match serde_json::to_value(envelope) {
                     Ok(v) => v,
                     Err(e) => {
                         eprintln!("[snapshot_fwd] Failed to encode snapshot envelope: {}", e);
                         continue;
                     }
                 };
-                let payload = wrap_broadcast_state(envelope);
+                let payload = wrap_broadcast_state(state);
                 if let Some(client) = app.try_state::<ServerClient>() {
                     let _ = client.send(&payload);
                 }
@@ -105,16 +106,25 @@ pub fn spawn_remote_prompt_forwarder(app: AppHandle, rx: mpsc::Receiver<(usize, 
     thread::spawn(move || {
         eprintln!("[remote_fwd] Remote prompt forwarder started");
         while let Ok((player_index, prompt)) = rx.recv() {
-            let for_player = player_slot(player_index);
-            let envelope = match encode_relay_envelope(RelayEnvelope::Prompt { for_player, prompt })
-            {
+            let prompt_value = match serde_json::to_value(&prompt) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("[remote_fwd] Failed to encode prompt payload: {}", e);
+                    continue;
+                }
+            };
+            let envelope = StateEnvelope::Prompt {
+                for_player: player_slot(player_index),
+                prompt: prompt_value,
+            };
+            let state = match serde_json::to_value(envelope) {
                 Ok(v) => v,
                 Err(e) => {
                     eprintln!("[remote_fwd] Failed to encode prompt envelope: {}", e);
                     continue;
                 }
             };
-            let msg = wrap_broadcast_state(envelope);
+            let msg = wrap_broadcast_state(state);
             if let Some(client) = app.try_state::<ServerClient>() {
                 let _ = client.send(&msg);
             }
@@ -128,12 +138,8 @@ pub fn relay_response(
     player_slot: &str,
     action: PlayerAction,
 ) -> Result<(), String> {
-    let envelope = encode_relay_envelope(RelayEnvelope::Response {
-        from_player: player_slot.to_string(),
-        action,
-    })?;
-    let msg = wrap_broadcast_state(envelope);
-    client.send(&msg)
+    let action_value = serde_json::to_value(action).map_err(|e| e.to_string())?;
+    relay_response_value(client, player_slot, action_value)
 }
 
 pub fn relay_response_value(
@@ -141,12 +147,12 @@ pub fn relay_response_value(
     player_slot: &str,
     action: serde_json::Value,
 ) -> Result<(), String> {
-    let envelope = serde_json::json!({
-        "kind": "response",
-        "fromPlayer": player_slot,
-        "action": action,
-    });
-    let msg = wrap_broadcast_state(envelope);
+    let envelope = StateEnvelope::Response {
+        from_player: player_slot.to_string(),
+        action,
+    };
+    let state = serde_json::to_value(envelope).map_err(|e| e.to_string())?;
+    let msg = wrap_broadcast_state(state);
     client.send(&msg)
 }
 

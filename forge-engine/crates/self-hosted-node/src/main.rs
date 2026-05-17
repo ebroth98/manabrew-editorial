@@ -13,10 +13,10 @@ use forge_agent_interface::deck_dto::Deck;
 use forge_agent_interface::ids_codec::{parse_player_slot, player_slot};
 use forge_agent_interface::java_prompt_normalizer::translate_java_action_value;
 use forge_agent_interface::prompt::{AgentPrompt, PlayerAction};
-use forge_agent_interface::simple_ai::choose_simple_ai_action;
+use forge_bot::{run_bot, AgentKind, BotConfig};
 use forge_engine_core::game::TypeRegistry;
 use forge_server::protocol::{
-    ClientMessage, PlayerDeckInfo, RoomInfo, RoomStatus, ServerMessage,
+    ClientMessage, PlayerDeckInfo, RoomInfo, RoomStatus, ServerMessage, StateEnvelope,
 };
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
@@ -24,6 +24,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc as tokio_mpsc;
+use tokio::task::JoinHandle;
 use tokio::time;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
@@ -35,13 +36,6 @@ type WsWrite = SplitSink<WsStream, Message>;
 type WsRead = SplitStream<WsStream>;
 
 const SELF_HOSTED_NODE_PROTOCOL: &str = "self-hosted-node";
-const BOT_PROTOCOL: &str = "simple-ai-bot";
-
-#[derive(Debug, Clone)]
-enum Role {
-    Host,
-    Bot,
-}
 
 struct RelayClient {
     username: String,
@@ -59,10 +53,8 @@ enum EngineSession {
 }
 
 #[derive(Default)]
-struct ClientLoopState {
-    player_slot: Option<String>,
-    last_choose_action_signature: Option<String>,
-    last_choose_action_choice: Option<forge_engine_core::player::actions::PlayerAction>,
+struct BotState {
+    handle: Option<JoinHandle<()>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -82,8 +74,7 @@ struct SpawnBotDeckPayload {
 }
 
 type SharedEngineSession = Arc<Mutex<Option<EngineSession>>>;
-type SharedBotState = Arc<Mutex<bool>>;
-type SharedClientLoopState = Arc<Mutex<ClientLoopState>>;
+type SharedBotState = Arc<Mutex<BotState>>;
 
 #[tokio::main]
 async fn main() {
@@ -171,85 +162,64 @@ async fn run(config: Config) -> Result<(), Box<dyn std::error::Error + Send + Sy
         );
     }
 
-    let bot_state: SharedBotState = Arc::new(Mutex::new(false));
+    let bot_state: SharedBotState = Arc::new(Mutex::new(BotState::default()));
     if config.bot_enabled {
-        maybe_spawn_bot(config.clone(), room_id.clone(), bot_state.clone());
+        spawn_bot(&config, &config.bot_deck, room_id.clone(), &bot_state);
     }
 
     let engine_session: SharedEngineSession = Arc::new(Mutex::new(None));
-    let loop_state = Arc::new(Mutex::new(ClientLoopState::default()));
     let (outbound_tx, outbound_rx) = tokio_mpsc::unbounded_channel::<ClientMessage>();
     run_client_loop(
         host,
-        config.clone(),
-        Role::Host,
+        config,
         room_id,
         engine_session,
         bot_state,
-        loop_state,
         outbound_tx,
         outbound_rx,
     )
     .await
 }
 
-async fn run_bot(
-    config: Config,
-    room_id: String,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut bot =
-        RelayClient::connect(&config.relay_url, &config.bot_username, &config.password).await?;
-    bot.send(&ClientMessage::JoinRoom {
-        room_id: room_id.clone(),
-        observe: false,
-    })
-    .await?;
-    info!(room_id, username = %config.bot_username, "bot joining room");
-
-    wait_until_room_contains(&mut bot, &room_id, &config.bot_username).await?;
-    seat_client(&mut bot, &config.bot_deck).await?;
-    let engine_session: SharedEngineSession = Arc::new(Mutex::new(None));
-    let loop_state = Arc::new(Mutex::new(ClientLoopState::default()));
-    let (outbound_tx, outbound_rx) = tokio_mpsc::unbounded_channel::<ClientMessage>();
-    run_client_loop(
-        bot,
-        config,
-        Role::Bot,
-        room_id,
-        engine_session,
-        Arc::new(Mutex::new(false)),
-        loop_state,
-        outbound_tx,
-        outbound_rx,
-    )
-    .await
-}
-
-fn maybe_spawn_bot(config: Config, room_id: String, bot_state: SharedBotState) {
-    let should_spawn = match bot_state.lock() {
-        Ok(mut spawned) => {
-            if *spawned {
-                false
-            } else {
-                *spawned = true;
-                true
-            }
-        }
+fn spawn_bot(config: &Config, deck: &DeckSelection, room_id: String, bot_state: &SharedBotState) {
+    let mut guard = match bot_state.lock() {
+        Ok(guard) => guard,
         Err(error) => {
             warn!(%error, "bot state lock poisoned");
-            false
+            return;
         }
     };
-    if !should_spawn {
+    if guard.handle.is_some() {
         debug!(room_id, "bot already spawned for room");
         return;
     }
-
-    tokio::spawn(async move {
-        if let Err(error) = run_bot(config, room_id).await {
+    let relay_url = config.relay_url.clone();
+    let bot_config = BotConfig {
+        username: config.bot_username.clone(),
+        password: config.password.clone(),
+        room_id,
+        deck_name: deck.name.clone(),
+        deck: deck.deck.clone(),
+        commander_name: deck.commander_name.clone(),
+        agent: AgentKind::Simple,
+    };
+    let handle = tokio::spawn(async move {
+        if let Err(error) = run_bot(relay_url, bot_config).await {
             error!(%error, "bot task exited");
         }
     });
+    guard.handle = Some(handle);
+}
+
+fn stop_bot(bot_state: &SharedBotState) {
+    match bot_state.lock() {
+        Ok(mut state) => {
+            if let Some(handle) = state.handle.take() {
+                handle.abort();
+            }
+        }
+        Err(error) => warn!(%error, "bot state lock poisoned"),
+    }
 }
 
 fn load_type_registry() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -292,37 +262,6 @@ async fn wait_for_host_room(
     }
 }
 
-async fn wait_until_room_contains(
-    client: &mut RelayClient,
-    room_id: &str,
-    username: &str,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    loop {
-        match client.recv().await? {
-            Some(ServerMessage::RoomUpdate { room })
-                if room.room_id == room_id
-                    && room
-                        .players
-                        .iter()
-                        .any(|player| player.username == username) =>
-            {
-                info!(room_id, username, "client is seated in room");
-                return Ok(());
-            }
-            Some(ServerMessage::AuthResult { success, error, .. }) => {
-                if !success {
-                    return Err(format!("authentication failed: {:?}", error).into());
-                }
-            }
-            Some(ServerMessage::Error { code, message }) => {
-                return Err(format!("server error while joining room: {code}: {message}").into());
-            }
-            Some(other) => debug!(?other, "ignored message while waiting for room join"),
-            None => return Err("relay closed while waiting for room join".into()),
-        }
-    }
-}
-
 async fn seat_client(
     client: &mut RelayClient,
     deck: &DeckSelection,
@@ -349,11 +288,9 @@ async fn seat_client(
 async fn run_client_loop(
     mut client: RelayClient,
     config: Config,
-    role: Role,
     room_id: String,
     engine_session: SharedEngineSession,
     bot_state: SharedBotState,
-    loop_state: SharedClientLoopState,
     outbound_tx: tokio_mpsc::UnboundedSender<ClientMessage>,
     mut outbound_rx: tokio_mpsc::UnboundedReceiver<ClientMessage>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -363,9 +300,8 @@ async fn run_client_loop(
     loop {
         tokio::select! {
             _ = heartbeat.tick() => {
-                client.broadcast_room_message(protocol_for_role(&role), json!({
+                client.broadcast_room_message(SELF_HOSTED_NODE_PROTOCOL, json!({
                     "type": "heartbeat",
-                    "role": role_name(&role),
                     "node": client.username,
                 })).await?;
             }
@@ -384,11 +320,9 @@ async fn run_client_loop(
                 handle_server_message(
                     &mut client,
                     &config,
-                    &role,
                     &room_id,
                     &engine_session,
                     &bot_state,
-                    &loop_state,
                     &outbound_tx,
                     message,
                 ).await?;
@@ -400,28 +334,24 @@ async fn run_client_loop(
 async fn handle_server_message(
     client: &mut RelayClient,
     config: &Config,
-    role: &Role,
     room_id: &str,
     engine_session: &SharedEngineSession,
     bot_state: &SharedBotState,
-    loop_state: &SharedClientLoopState,
     outbound_tx: &tokio_mpsc::UnboundedSender<ClientMessage>,
     message: ServerMessage,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match message {
         ServerMessage::RoomUpdate { room } => {
             log_room_update(&client.username, &room);
-            maybe_auto_start_room(client, config, role, &room).await?;
+            maybe_auto_start_room(client, config, &room).await?;
         }
         ServerMessage::StateUpdate { from_player, state } => {
             handle_state_update(
                 client,
                 config,
-                role,
                 room_id,
                 engine_session,
                 bot_state,
-                loop_state,
                 from_player,
                 state,
             )
@@ -443,10 +373,8 @@ async fn handle_server_message(
             starting_life,
         } => {
             info!(room_id, ?player_order, observer = %client.username, "game started");
-            remember_player_slot(&client.username, role, loop_state, &player_order);
             maybe_start_hosted_engine(
                 config,
-                role,
                 engine_session,
                 outbound_tx,
                 player_order,
@@ -468,273 +396,102 @@ async fn handle_server_message(
 async fn handle_state_update(
     client: &mut RelayClient,
     config: &Config,
-    role: &Role,
     room_id: &str,
     engine_session: &SharedEngineSession,
     bot_state: &SharedBotState,
-    loop_state: &SharedClientLoopState,
     from_player: String,
     state: Value,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if state.get("kind").and_then(Value::as_str) == Some("response") {
-        route_remote_response(engine_session, &state);
-        return Ok(());
-    }
-
-    if state.get("kind").and_then(Value::as_str) == Some("prompt") {
-        maybe_answer_bot_prompt(client, role, loop_state, &state).await?;
-        return Ok(());
-    }
-
-    if state.get("kind").and_then(Value::as_str) != Some("roomRelay") {
+    let Ok(envelope) = serde_json::from_value::<StateEnvelope>(state.clone()) else {
         debug!(from_player, state = %state, observer = %client.username, "state update");
         return Ok(());
-    }
+    };
 
-    let protocol = state
-        .get("protocol")
-        .and_then(Value::as_str)
-        .unwrap_or("<missing>");
-    info!(
-        from_player,
-        protocol,
-        state = %state,
-        observer = %client.username,
-        "room relay message"
-    );
-
-    let payload_type = state
-        .get("payload")
-        .and_then(|payload| payload.get("type"))
-        .and_then(Value::as_str);
-
-    if protocol == SELF_HOSTED_NODE_PROTOCOL && payload_type == Some("removeBot") {
-        if matches!(role, Role::Host) {
-            match bot_state.lock() {
-                Ok(mut spawned) => *spawned = false,
-                Err(error) => warn!(%error, "bot state lock poisoned"),
-            }
+    match envelope {
+        StateEnvelope::Response { .. } => {
+            route_remote_response(engine_session, &state);
+            Ok(())
         }
-        if matches!(role, Role::Bot) {
-            info!(observer = %client.username, "received self-hosted-node removeBot request");
-            client.send(&ClientMessage::LeaveRoom).await?;
-        }
-    }
-
-    if protocol == SELF_HOSTED_NODE_PROTOCOL
-        && payload_type == Some("startGame")
-        && matches!(role, Role::Host)
-    {
-        info!(observer = %client.username, "received self-hosted-node startGame request");
-        client.send(&ClientMessage::StartGame).await?;
-    }
-
-    if protocol == SELF_HOSTED_NODE_PROTOCOL
-        && payload_type == Some("spawnBot")
-        && matches!(role, Role::Host)
-    {
-        let requested_room_id = state
-            .get("roomId")
-            .and_then(Value::as_str)
-            .unwrap_or(room_id);
-        if requested_room_id == room_id {
-            info!(observer = %client.username, room_id, "received self-hosted-node spawnBot request");
-            let bot_config = config_for_spawn_bot(config, &state);
-            maybe_spawn_bot(bot_config, room_id.to_string(), bot_state.clone());
-        } else {
-            debug!(
+        StateEnvelope::RoomRelay {
+            protocol,
+            from_player: _,
+            room_id: requested_room_id,
+            payload,
+            ..
+        } => {
+            info!(
+                from_player,
+                protocol,
+                payload = %payload,
                 observer = %client.username,
-                current_room_id = room_id,
-                requested_room_id,
-                "ignoring spawnBot request for another room"
+                "room relay message"
             );
-        }
-    }
-
-    if protocol == BOT_PROTOCOL && payload_type == Some("ping") && matches!(role, Role::Bot) {
-        client
-            .broadcast_room_message(
-                BOT_PROTOCOL,
-                json!({
-                    "type": "pong",
-                    "bot": client.username,
-                }),
-            )
-            .await?;
-    }
-
-    Ok(())
-}
-
-fn remember_player_slot(
-    username: &str,
-    role: &Role,
-    loop_state: &SharedClientLoopState,
-    player_order: &[String],
-) {
-    if !matches!(role, Role::Bot) {
-        return;
-    }
-    let slot = player_order
-        .iter()
-        .position(|player| player == username)
-        .map(player_slot);
-    let Some(slot) = slot else {
-        warn!(
-            username,
-            ?player_order,
-            "bot was not present in game player order"
-        );
-        return;
-    };
-    match loop_state.lock() {
-        Ok(mut state) => {
-            state.player_slot = Some(slot.clone());
-            info!(username, player_slot = %slot, "bot player slot assigned");
-        }
-        Err(error) => warn!(%error, "client loop state lock poisoned"),
-    }
-}
-
-async fn maybe_answer_bot_prompt(
-    client: &mut RelayClient,
-    role: &Role,
-    loop_state: &SharedClientLoopState,
-    state: &Value,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if !matches!(role, Role::Bot) {
-        return Ok(());
-    }
-
-    let Some(for_player) = state.get("forPlayer").and_then(Value::as_str) else {
-        debug!(observer = %client.username, state = %state, "bot prompt missing forPlayer");
-        return Ok(());
-    };
-    let Some(prompt_value) = state.get("prompt") else {
-        debug!(observer = %client.username, state = %state, "bot prompt missing prompt body");
-        return Ok(());
-    };
-
-    let action_value = {
-        let mut guard = match loop_state.lock() {
-            Ok(guard) => guard,
-            Err(error) => {
-                warn!(%error, "client loop state lock poisoned");
+            if protocol != SELF_HOSTED_NODE_PROTOCOL {
                 return Ok(());
             }
-        };
-        if guard.player_slot.as_deref() != Some(for_player) {
-            debug!(
-                observer = %client.username,
-                for_player,
-                bot_slot = ?guard.player_slot,
-                "ignoring prompt for another player"
-            );
-            return Ok(());
-        }
-        if prompt_value.get("kind").and_then(Value::as_str) == Some("priority") {
-            Some(json!({ "kind": "pass" }))
-        } else if let Some(action) = choose_simple_ai_action_from_prompt_value(prompt_value) {
-            match serde_json::to_value(action) {
-                Ok(value) => Some(value),
-                Err(error) => {
-                    warn!(observer = %client.username, %error, "failed to serialize bot action");
-                    None
+            let payload_type = payload.get("type").and_then(Value::as_str);
+            match payload_type {
+                Some("removeBot") => {
+                    info!(observer = %client.username, "received removeBot request");
+                    stop_bot(bot_state);
                 }
+                Some("startGame") => {
+                    info!(observer = %client.username, "received startGame request");
+                    client.send(&ClientMessage::StartGame).await?;
+                }
+                Some("spawnBot") => {
+                    let effective_room_id = requested_room_id.as_deref().unwrap_or(room_id);
+                    if effective_room_id == room_id {
+                        info!(observer = %client.username, room_id, "received spawnBot request");
+                        let bot_deck = bot_deck_from_payload(config, &payload);
+                        stop_bot(bot_state);
+                        spawn_bot(config, &bot_deck, room_id.to_string(), bot_state);
+                    } else {
+                        debug!(
+                            observer = %client.username,
+                            current_room_id = room_id,
+                            requested_room_id = effective_room_id,
+                            "ignoring spawnBot request for another room"
+                        );
+                    }
+                }
+                _ => {}
             }
-        } else {
-            let prompt: AgentPrompt = match serde_json::from_value(prompt_value.clone()) {
-                Ok(prompt) => prompt,
-                Err(error) => {
-                    warn!(observer = %client.username, %error, "bot prompt payload was invalid");
-                    return Ok(());
-                }
-            };
-            let mut signature = guard.last_choose_action_signature.take();
-            let mut choice = guard.last_choose_action_choice.take();
-            let action = choose_simple_ai_action(prompt, &mut signature, &mut choice);
-            guard.last_choose_action_signature = signature;
-            guard.last_choose_action_choice = choice;
-            action.and_then(|action| match serde_json::to_value(action) {
-                Ok(value) => Some(value),
-                Err(error) => {
-                    warn!(observer = %client.username, %error, "failed to serialize bot action");
-                    None
-                }
-            })
+            Ok(())
         }
-    };
-
-    let Some(action_value) = action_value else {
-        warn!(observer = %client.username, for_player, "simple AI had no response for prompt");
-        return Ok(());
-    };
-
-    client
-        .send(&ClientMessage::BroadcastState {
-            state: json!({
-                "kind": "response",
-                "fromPlayer": for_player,
-                "action": action_value,
-            }),
-        })
-        .await?;
-    info!(observer = %client.username, for_player, "bot answered prompt");
-    Ok(())
-}
-
-fn choose_simple_ai_action_from_prompt_value(prompt: &Value) -> Option<PlayerAction> {
-    match prompt.get("type").and_then(Value::as_str)? {
-        "mulligan" => Some(PlayerAction::MulliganDecision { keep: true }),
-        "mulliganPutBack" => {
-            let count = prompt
-                .get("count")
-                .and_then(Value::as_u64)
-                .unwrap_or_default() as usize;
-            let card_ids = prompt
-                .get("handCardIds")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .take(count)
-                .map(str::to_string)
-                .collect();
-            Some(PlayerAction::MulliganPutBackDecision { card_ids })
+        _ => {
+            debug!(from_player, state = %state, observer = %client.username, "state update");
+            Ok(())
         }
-        _ => None,
     }
 }
 
-fn config_for_spawn_bot(config: &Config, state: &Value) -> Config {
-    let mut config = config.clone();
-    let deck = state
-        .get("payload")
-        .and_then(|payload| serde_json::from_value::<SpawnBotPayload>(payload.clone()).ok())
+fn bot_deck_from_payload(config: &Config, payload: &Value) -> DeckSelection {
+    let deck = serde_json::from_value::<SpawnBotPayload>(payload.clone())
+        .ok()
         .and_then(|payload| payload.deck);
-    if let Some(deck) = deck {
-        info!(
-            deck = %deck.deck_name,
-            cards = deck.deck.cards.len(),
-            commander = ?deck.commander_name,
-            "using requested bot deck"
-        );
-        config.bot_deck = DeckSelection {
-            name: deck.deck_name,
-            deck: deck.deck,
-            commander_name: deck.commander_name,
-        };
+    let Some(deck) = deck else {
+        return config.bot_deck.clone();
+    };
+    info!(
+        deck = %deck.deck_name,
+        cards = deck.deck.cards.len(),
+        commander = ?deck.commander_name,
+        "using requested bot deck"
+    );
+    DeckSelection {
+        name: deck.deck_name,
+        deck: deck.deck,
+        commander_name: deck.commander_name,
     }
-    config
 }
 
 async fn maybe_auto_start_room(
     client: &mut RelayClient,
     config: &Config,
-    role: &Role,
     room: &RoomInfo,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if !config.auto_start || !matches!(role, Role::Host) {
+    if !config.auto_start {
         return Ok(());
     }
     if room.host != config.username
@@ -760,16 +517,12 @@ async fn maybe_auto_start_room(
 
 fn maybe_start_hosted_engine(
     config: &Config,
-    role: &Role,
     engine_session: &SharedEngineSession,
     outbound_tx: &tokio_mpsc::UnboundedSender<ClientMessage>,
     player_order: Vec<String>,
     player_decks: Vec<PlayerDeckInfo>,
     starting_life: i32,
 ) {
-    if !matches!(role, Role::Host) {
-        return;
-    }
     if !config.engine_enabled {
         debug!("hosted engine disabled for this node");
         return;
@@ -950,19 +703,23 @@ fn log_hosted_engine_result(result: std::thread::Result<()>) {
 }
 
 fn route_remote_response(engine_session: &SharedEngineSession, state: &Value) {
-    let from_player = match state.get("fromPlayer").and_then(Value::as_str) {
-        Some(from_player) => from_player,
-        None => {
-            warn!(state = %state, "relay response missing fromPlayer");
+    let envelope: StateEnvelope = match serde_json::from_value(state.clone()) {
+        Ok(envelope) => envelope,
+        Err(error) => {
+            warn!(%error, state = %state, "relay response invalid envelope");
             return;
         }
     };
-    let Some(player_index) = parse_player_slot(from_player) else {
-        warn!(from_player, "relay response has invalid player slot");
+    let StateEnvelope::Response {
+        from_player,
+        action: action_value,
+    } = envelope
+    else {
+        warn!(state = %state, "expected response envelope");
         return;
     };
-    let Some(action_value) = state.get("action") else {
-        warn!(from_player, "relay response missing action");
+    let Some(player_index) = parse_player_slot(&from_player) else {
+        warn!(from_player, "relay response has invalid player slot");
         return;
     };
 
@@ -981,7 +738,7 @@ fn route_remote_response(engine_session: &SharedEngineSession, state: &Value) {
         EngineSession::Rust {
             remote_response_txs,
         } => {
-            let action: PlayerAction = match serde_json::from_value(action_value.clone()) {
+            let action: PlayerAction = match serde_json::from_value(action_value) {
                 Ok(action) => action,
                 Err(error) => {
                     warn!(from_player, %error, "relay response has invalid rust action");
@@ -1003,7 +760,7 @@ fn route_remote_response(engine_session: &SharedEngineSession, state: &Value) {
                 debug!(from_player, player_index, "no response channel for player");
                 return;
             };
-            if let Err(error) = tx.send(translate_java_action_value(action_value)) {
+            if let Err(error) = tx.send(translate_java_action_value(&action_value)) {
                 warn!(from_player, %error, "failed to route relay response");
             }
         }
@@ -1016,11 +773,12 @@ fn spawn_remote_prompt_forwarder(
 ) {
     thread::spawn(move || {
         while let Ok((player_index, prompt)) = remote_prompt_rx.recv() {
-            let state = json!({
-                "kind": "prompt",
-                "forPlayer": player_slot(player_index),
-                "prompt": prompt,
-            });
+            let Ok(state) = serde_json::to_value(StateEnvelope::Prompt {
+                for_player: player_slot(player_index),
+                prompt: serde_json::to_value(prompt).unwrap_or(Value::Null),
+            }) else {
+                continue;
+            };
             if outbound_tx
                 .send(ClientMessage::BroadcastState { state })
                 .is_err()
@@ -1037,11 +795,12 @@ fn spawn_raw_prompt_forwarder(
 ) {
     thread::spawn(move || {
         while let Ok((player_index, prompt)) = remote_prompt_rx.recv() {
-            let state = json!({
-                "kind": "prompt",
-                "forPlayer": player_slot(player_index),
-                "prompt": prompt,
-            });
+            let Ok(state) = serde_json::to_value(StateEnvelope::Prompt {
+                for_player: player_slot(player_index),
+                prompt,
+            }) else {
+                continue;
+            };
             if outbound_tx
                 .send(ClientMessage::BroadcastState { state })
                 .is_err()
@@ -1130,15 +889,17 @@ impl RelayClient {
         protocol: &str,
         payload: Value,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let envelope = StateEnvelope::RoomRelay {
+            protocol: protocol.to_string(),
+            version: 1,
+            message_id: Uuid::new_v4().to_string(),
+            from_player: Some(self.username.clone()),
+            target_player: None,
+            room_id: None,
+            payload,
+        };
         self.send(&ClientMessage::BroadcastState {
-            state: json!({
-                "kind": "roomRelay",
-                "protocol": protocol,
-                "version": 1,
-                "messageId": Uuid::new_v4().to_string(),
-                "fromPlayer": self.username,
-                "payload": payload,
-            }),
+            state: serde_json::to_value(envelope)?,
         })
         .await
     }
@@ -1166,18 +927,4 @@ fn log_room_update(observer: &str, room: &RoomInfo) {
         players,
         "room update"
     );
-}
-
-fn protocol_for_role(role: &Role) -> &'static str {
-    match role {
-        Role::Host => SELF_HOSTED_NODE_PROTOCOL,
-        Role::Bot => BOT_PROTOCOL,
-    }
-}
-
-fn role_name(role: &Role) -> &'static str {
-    match role {
-        Role::Host => "host",
-        Role::Bot => "bot",
-    }
 }

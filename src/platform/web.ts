@@ -23,8 +23,7 @@ import type {
   SetDeckSelectionParams,
   SpawnAiBotParams,
 } from "./types";
-import { isRoomRelayEnvelope } from "@/types/server";
-import type { RoomRelayEnvelope } from "@/types/server";
+import type { RoomRelayEnvelope, StateEnvelope } from "@/types/server";
 import type { Deck } from "@/types/manabrew";
 import { expandPresetDeckDefinitions, type PresetDeckDefinition } from "@/lib/presetDecks";
 
@@ -79,6 +78,8 @@ class WorkerBridge {
   private remoteBuffer: SharedArrayBuffer | null = null;
   private remoteSignal: Int32Array | null = null;
   private remoteData: Uint8Array | null = null;
+  private remotePlayerSlot: string | null = null;
+  private remoteResponseUnsubscribe: (() => void) | null = null;
 
   constructor(eventBus: WebEventBus) {
     this.eventBus = eventBus;
@@ -149,22 +150,30 @@ class WorkerBridge {
   private pollForRemotePrompts(): void {
     if (!this.remoteSignal || !this.remoteData) return;
 
+    this.remoteResponseUnsubscribe?.();
     // Listen for relay responses from the remote player
-    this.eventBus.on<{ from_player: string; state: Record<string, unknown> }>(
-      "server:state_update",
-      (payload) => {
-        if (payload.state?.kind === "response" && this.remoteSignal && this.remoteData) {
-          const action = payload.state.action;
-          if (action) {
-            const json = new TextEncoder().encode(JSON.stringify(action));
-            Atomics.store(this.remoteSignal, 1, json.length);
-            this.remoteData.set(json, 0);
-            Atomics.store(this.remoteSignal, 0, 2); // RESPONSE_READY
-            Atomics.notify(this.remoteSignal, 0);
-          }
+    this.remoteResponseUnsubscribe = this.eventBus.on<{
+      from_player: string;
+      state: Record<string, unknown>;
+    }>("server:state_update", (payload) => {
+      if (payload.state?.kind === "response" && this.remoteSignal && this.remoteData) {
+        if (
+          this.remotePlayerSlot &&
+          payload.state.fromPlayer &&
+          payload.state.fromPlayer !== this.remotePlayerSlot
+        ) {
+          return;
         }
-      },
-    );
+        const action = payload.state.action;
+        if (action) {
+          const json = new TextEncoder().encode(JSON.stringify(action));
+          Atomics.store(this.remoteSignal, 1, json.length);
+          this.remoteData.set(json, 0);
+          Atomics.store(this.remoteSignal, 0, 2); // RESPONSE_READY
+          Atomics.notify(this.remoteSignal, 0);
+        }
+      }
+    });
 
     const poll = () => {
       if (!this.remoteSignal || !this.remoteData || !this.remoteBuffer) return;
@@ -193,6 +202,10 @@ class WorkerBridge {
     };
 
     requestAnimationFrame(poll);
+  }
+
+  setRemotePlayerSlot(playerSlot: string | null): void {
+    this.remotePlayerSlot = playerSlot;
   }
 
   /**
@@ -338,6 +351,9 @@ class WorkerBridge {
     this.remoteBuffer = null;
     this.remoteSignal = null;
     this.remoteData = null;
+    this.remotePlayerSlot = null;
+    this.remoteResponseUnsubscribe?.();
+    this.remoteResponseUnsubscribe = null;
     this.pendingRequests.clear();
     this.initPromise = null;
   }
@@ -376,6 +392,9 @@ class WebGameApi implements IGameApi {
     this.isMultiplayer = true;
     this.isHost = params.localIsHost;
     this.myPlayerSlot = `player-${params.enginePlayerIndex}`;
+    this.bridge.setRemotePlayerSlot(
+      params.localIsHost ? `player-${params.enginePlayerIndex === 0 ? 1 : 0}` : null,
+    );
 
     if (params.localIsHost) {
       // Host: run the engine in the worker with two SABs
@@ -393,11 +412,12 @@ class WebGameApi implements IGameApi {
     if (this.isMultiplayer && !this.isHost && this.serverApi) {
       // Non-host multiplayer: relay response via WebSocket to the host
       const fromPlayer = params.playerSlot ?? this.myPlayerSlot ?? "player-0";
-      this.serverApi.broadcastState({
+      const envelope: StateEnvelope = {
         kind: "response",
         fromPlayer,
         action: params.action,
-      });
+      };
+      this.serverApi.broadcastState(envelope);
     } else if (this.bridge.gameBuffer) {
       // Host or single-player: write response to local SharedArrayBuffer
       this.bridge.writeResponse(params.action);
@@ -505,20 +525,42 @@ class WebEventBus implements IEventBus {
 // Web Server API (WebSocket-based multiplayer)
 // ============================================================================
 
+interface BotEntry {
+  ws: WebSocket;
+  /** wasm-bindgen handle — has `free()` to release the underlying memory. */
+  bot: {
+    on_open(): string[];
+    on_server_message(text: string): string[];
+    failure(): string | undefined;
+    free(): void;
+  };
+}
+
 class WebServerApi implements IServerApi {
   private ws: WebSocket | null = null;
   private eventBus: WebEventBus;
+  private relayUrl: string | null = null;
+  private serverPassword: string | null = null;
+  private bots = new Map<string, BotEntry>();
+  private wasmReady: Promise<typeof import("@/wasm/forge_wasm")> | null = null;
 
   constructor(eventBus: WebEventBus) {
     this.eventBus = eventBus;
 
     // Relay prompts from the game engine to remote players via WebSocket
     eventBus.on<Record<string, unknown>>("game:relay_prompt", (prompt) => {
-      this.broadcastState({
+      const forPlayer =
+        typeof prompt.decidingPlayerId === "string" ? prompt.decidingPlayerId : undefined;
+      if (!forPlayer) {
+        console.error("[WebServerApi] Cannot relay prompt without decidingPlayerId");
+        return;
+      }
+      const envelope: StateEnvelope = {
         kind: "prompt",
-        forPlayer: "player-1", // TODO: support multiple remote players
+        forPlayer,
         prompt,
-      });
+      };
+      this.broadcastState(envelope);
     });
   }
 
@@ -526,6 +568,8 @@ class WebServerApi implements IServerApi {
     this.disconnect();
     const scheme = params.port === 443 ? "wss" : "ws";
     const url = `${scheme}://${params.host}:${params.port}`;
+    this.relayUrl = url;
+    this.serverPassword = params.password;
 
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(url);
@@ -562,10 +606,15 @@ class WebServerApi implements IServerApi {
   }
 
   async disconnect(): Promise<void> {
+    for (const username of [...this.bots.keys()]) {
+      await this.removeAiBot(username);
+    }
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
+    this.relayUrl = null;
+    this.serverPassword = null;
   }
 
   async listRooms(): Promise<void> {
@@ -620,12 +669,65 @@ class WebServerApi implements IServerApi {
     this.send({ type: "BroadcastState", state: message });
   }
 
-  async spawnAiBot(_params: SpawnAiBotParams): Promise<void> {
-    throw new Error("Client-hosted AI bots are only available in the Tauri app.");
+  async spawnAiBot(params: SpawnAiBotParams): Promise<void> {
+    if (!this.relayUrl || this.serverPassword == null) {
+      throw new Error("Cannot spawn bot: not connected to relay.");
+    }
+    if (this.bots.has(params.username)) {
+      throw new Error(`Bot '${params.username}' is already running.`);
+    }
+    const wasm = await this.loadWasm();
+    const bot = new wasm.WasmBot(
+      JSON.stringify({
+        username: params.username,
+        password: this.serverPassword,
+        roomId: params.roomId,
+        deckName: params.deckName,
+        deck: params.deck,
+        commanderName: params.commanderName,
+        agent: params.agent ?? "simple",
+      }),
+    );
+    const ws = new WebSocket(this.relayUrl);
+    const entry: BotEntry = { ws, bot };
+    this.bots.set(params.username, entry);
+    ws.onopen = () => {
+      for (const msg of bot.on_open()) ws.send(msg);
+    };
+    ws.onmessage = (e: MessageEvent) => {
+      if (typeof e.data !== "string") return;
+      for (const msg of bot.on_server_message(e.data)) ws.send(msg);
+      const failure = bot.failure();
+      if (failure) {
+        console.error(`[bot ${params.username}] ${failure}`);
+        ws.close();
+      }
+    };
+    ws.onerror = () => console.error(`[bot ${params.username}] WebSocket error`);
+    ws.onclose = () => {
+      bot.free();
+      this.bots.delete(params.username);
+    };
   }
 
-  async removeAiBot(_username: string): Promise<void> {
-    throw new Error("Client-hosted AI bots are only available in the Tauri app.");
+  async removeAiBot(username: string): Promise<void> {
+    const entry = this.bots.get(username);
+    if (!entry) return;
+    entry.ws.close();
+    this.bots.delete(username);
+    // `bot.free()` is invoked from the ws.onclose handler — calling it here too
+    // would double-free the wasm-bindgen handle.
+  }
+
+  private async loadWasm(): Promise<typeof import("@/wasm/forge_wasm")> {
+    if (!this.wasmReady) {
+      this.wasmReady = (async () => {
+        const wasm = await import("@/wasm/forge_wasm");
+        await wasm.default();
+        return wasm;
+      })();
+    }
+    return this.wasmReady;
   }
 
   private send(msg: Record<string, unknown>): void {
@@ -639,31 +741,30 @@ class WebServerApi implements IServerApi {
   private handleServerMessage(msg: Record<string, unknown>): void {
     const type = msg.type as string;
 
-    // Handle game relay envelopes in StateUpdate
     if (type === "StateUpdate" && msg.state) {
-      const state = msg.state as Record<string, unknown>;
-      const kind = state.kind as string | undefined;
-      if (kind === "response") {
-        // Route remote response to game store
-        this.eventBus.emit("server:state_update", {
-          from_player: msg.from_player,
-          state,
-        });
-        return;
-      } else if (isRoomRelayEnvelope(state)) {
-        this.eventBus.emit("server:room_message", {
-          from_player: msg.from_player,
-          state,
-        });
-      } else if (kind === "prompt") {
-        this.eventBus.emit("game:remote_prompt", state);
-        return;
-      } else if (kind === "log" && state.entry) {
-        this.eventBus.emit("game:log", state.entry);
-        return;
-      } else if (kind === "snapshot" && state.entry) {
-        this.eventBus.emit("game:snapshot", state.entry);
-        return;
+      const envelope = msg.state as StateEnvelope;
+      switch (envelope.kind) {
+        case "response":
+          this.eventBus.emit("server:state_update", {
+            from_player: msg.from_player,
+            state: envelope,
+          });
+          return;
+        case "roomRelay":
+          this.eventBus.emit("server:room_message", {
+            from_player: msg.from_player,
+            state: envelope,
+          });
+          break;
+        case "prompt":
+          this.eventBus.emit("game:remote_prompt", envelope);
+          return;
+        case "log":
+          this.eventBus.emit("game:log", envelope.entry);
+          return;
+        case "snapshot":
+          this.eventBus.emit("game:snapshot", envelope.entry);
+          return;
       }
     }
 

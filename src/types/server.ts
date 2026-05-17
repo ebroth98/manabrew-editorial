@@ -125,6 +125,13 @@ export interface RoomRelayEnvelope<TPayload = unknown> {
   payload: TPayload;
 }
 
+export type StateEnvelope =
+  | { kind: "prompt"; forPlayer: string; prompt: unknown }
+  | { kind: "response"; fromPlayer: string; action: unknown }
+  | { kind: "log"; fromPlayer: string; entry: unknown }
+  | { kind: "snapshot"; fromPlayer: string; entry: unknown }
+  | RoomRelayEnvelope;
+
 export interface RoomMessagePayload<TPayload = unknown> {
   from_player: string;
   state: RoomRelayEnvelope<TPayload>;

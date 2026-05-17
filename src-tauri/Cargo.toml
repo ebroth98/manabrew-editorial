@@ -33,6 +33,7 @@ tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures-util = "0.3"
 forge-server = { path = "../forge-engine/crates/forge-server" }
 forge-agent-interface = { path = "../forge-engine/crates/forge-agent-interface" }
+forge-bot = { path = "../forge-engine/crates/forge-bot" }
 forge-game-runtime = { path = "../forge-engine/crates/forge-game-runtime" }
 forge-limited = { path = "../forge-engine/crates/forge-limited" }
 tauri-plugin-http = "2.5.8"

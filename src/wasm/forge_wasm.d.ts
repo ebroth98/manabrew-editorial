@@ -1,6 +1,15 @@
 /* tslint:disable */
 /* eslint-disable */
 
+export class WasmBot {
+    free(): void;
+    [Symbol.dispose](): void;
+    failure(): string | undefined;
+    constructor(config_json: string);
+    on_open(): string[];
+    on_server_message(text: string): string[];
+}
+
 /**
  * Verify WASM is working by echoing back a message.
  */
@@ -174,20 +183,25 @@ export interface InitOutput {
     readonly limited_update_gauntlet_human_deck: (a: any) => [number, number, number];
     readonly limited_winston_pass: (a: number, b: number) => [number, number, number];
     readonly limited_winston_take: (a: number, b: number) => [number, number, number];
+    readonly log: (a: number, b: number) => void;
+    readonly wasm_init: () => void;
+    readonly __wbg_wasmbot_free: (a: number, b: number) => void;
     readonly echo: (a: number, b: number) => [number, number];
     readonly get_engine_info: () => any;
     readonly has_card: (a: number, b: number) => number;
     readonly is_card_db_loaded: () => number;
     readonly is_token_db_loaded: () => number;
     readonly load_card_archive: (a: number, b: number) => [bigint, number, number];
-    readonly log: (a: number, b: number) => void;
     readonly parse_config: (a: any) => [number, number, number];
     readonly parse_deck: (a: any) => [number, number, number];
     readonly run_interactive_game: (a: any, b: any, c: any, d: any) => [number, number, number];
     readonly run_multiplayer_game: (a: any, b: any, c: any, d: any, e: any, f: number) => [number, number, number];
     readonly test_foundation: () => any;
     readonly test_rng: () => any;
-    readonly wasm_init: () => void;
+    readonly wasmbot_failure: (a: number) => [number, number];
+    readonly wasmbot_new: (a: number, b: number) => [number, number, number];
+    readonly wasmbot_on_open: (a: number) => [number, number];
+    readonly wasmbot_on_server_message: (a: number, b: number, c: number) => [number, number];
     readonly get_card_count: () => number;
     readonly get_token_count: () => number;
     readonly __wbindgen_malloc_command_export: (a: number, b: number) => number;
@@ -197,6 +211,7 @@ export interface InitOutput {
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_free_command_export: (a: number, b: number, c: number) => void;
     readonly __externref_table_dealloc_command_export: (a: number) => void;
+    readonly __externref_drop_slice_command_export: (a: number, b: number) => void;
     readonly __wbindgen_start: () => void;
 }
 

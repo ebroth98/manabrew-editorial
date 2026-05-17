@@ -141,6 +141,7 @@ class TauriServerApi implements IServerApi {
       deckName: params.deckName,
       deck: params.deck,
       commanderName: params.commanderName,
+      agent: params.agent ?? "simple",
     });
   }
 

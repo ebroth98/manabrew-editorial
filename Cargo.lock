@@ -1976,6 +1976,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-bot"
+version = "0.1.0"
+dependencies = [
+ "forge-agent-interface",
+ "forge-engine-core",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+]
+
+[[package]]
 name = "forge-card-script"
 version = "0.1.0"
 dependencies = [
@@ -2144,6 +2158,7 @@ version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
  "forge-agent-interface",
+ "forge-bot",
  "forge-carddb",
  "forge-cardset-archive",
  "forge-engine-core",
@@ -3647,6 +3662,7 @@ name = "manabrew"
 version = "0.0.0"
 dependencies = [
  "forge-agent-interface",
+ "forge-bot",
  "forge-carddb",
  "forge-cardset-archive",
  "forge-engine-core",
@@ -5752,6 +5768,7 @@ name = "self-hosted-node"
 version = "0.1.0"
 dependencies = [
  "forge-agent-interface",
+ "forge-bot",
  "forge-carddb",
  "forge-engine-core",
  "forge-foundation",
