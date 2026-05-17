@@ -10,6 +10,7 @@ interface HoverCardPreviewProps {
   onSelectAction?: (action: HandActionOption) => void;
   pinned?: boolean;
   slot?: HTMLElement | null;
+  imageSize?: "normal" | "large";
 }
 
 /**
@@ -22,6 +23,7 @@ export function HoverCardPreview({
   onSelectAction,
   pinned,
   slot,
+  imageSize,
 }: HoverCardPreviewProps) {
   if (!preview.hoveredCard) return null;
   if (pinned && !slot) return null;
@@ -41,6 +43,7 @@ export function HoverCardPreview({
       onMouseEnter={preview.onMouseEnterPreview}
       onMouseLeave={preview.onMouseLeavePreview}
       slot={slot}
+      imageSize={imageSize}
     />
   );
 }

@@ -30,7 +30,8 @@
         "png": "https://cards.scryfall.io/png/front/7/1/715e637a-dfd8-45a0-b1ea-53e4abd29307.png?1592517669",
         "art_crop": "https://cards.scryfall.io/art_crop/front/7/1/715e637a-dfd8-45a0-b1ea-53e4abd29307.jpg?1592517669",
         "border_crop": "https://cards.scryfall.io/border_crop/front/7/1/715e637a-dfd8-45a0-b1ea-53e4abd29307.jpg?1592517669"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Urza's Mine",
@@ -58,7 +59,25 @@
         "png": "https://cards.scryfall.io/png/front/2/1/21079a99-690a-459a-b803-19585d8cf5fb.png?1562901569",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/1/21079a99-690a-459a-b803-19585d8cf5fb.jpg?1562901569",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/1/21079a99-690a-459a-b803-19585d8cf5fb.jpg?1562901569"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Urza's Construction Drone",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Urza's Tower",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Urza's Mine",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Urza's Power Plant",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Disruptor Flute",
@@ -83,7 +102,8 @@
         "png": "https://cards.scryfall.io/png/front/5/c/5cad8671-4761-4014-a8a3-af45627e6e79.png?1717470370",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/c/5cad8671-4761-4014-a8a3-af45627e6e79.jpg?1717470370",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/c/5cad8671-4761-4014-a8a3-af45627e6e79.jpg?1717470370"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Urza's Power Plant",
@@ -111,7 +131,25 @@
         "png": "https://cards.scryfall.io/png/front/5/e/5e5786d5-355d-454c-b09b-e307a7a324d4.png?1717191197",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/e/5e5786d5-355d-454c-b09b-e307a7a324d4.jpg?1717191197",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/e/5e5786d5-355d-454c-b09b-e307a7a324d4.jpg?1717191197"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Urza's Construction Drone",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Urza's Tower",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Urza's Mine",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Urza's Power Plant",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Candelabra of Tawnos",
@@ -136,7 +174,8 @@
         "png": "https://cards.scryfall.io/png/front/3/5/35a335bf-7358-460f-b7c9-1e8bc4300f64.png?1562906316",
         "art_crop": "https://cards.scryfall.io/art_crop/front/3/5/35a335bf-7358-460f-b7c9-1e8bc4300f64.jpg?1562906316",
         "border_crop": "https://cards.scryfall.io/border_crop/front/3/5/35a335bf-7358-460f-b7c9-1e8bc4300f64.jpg?1562906316"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Ancient Tomb",
@@ -161,7 +200,8 @@
         "png": "https://cards.scryfall.io/png/front/b/d/bd3d4b4b-cf31-4f89-8140-9650edb03c7b.png?1764758774",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/d/bd3d4b4b-cf31-4f89-8140-9650edb03c7b.jpg?1764758774",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/d/bd3d4b4b-cf31-4f89-8140-9650edb03c7b.jpg?1764758774"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Grim Monolith",
@@ -186,7 +226,8 @@
         "png": "https://cards.scryfall.io/png/front/9/d/9ddc9fe1-17c8-4e1d-aeb8-c4214e881280.png?1562863767",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/d/9ddc9fe1-17c8-4e1d-aeb8-c4214e881280.jpg?1562863767",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/d/9ddc9fe1-17c8-4e1d-aeb8-c4214e881280.jpg?1562863767"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Urza's Saga",
@@ -215,7 +256,17 @@
         "png": "https://cards.scryfall.io/png/front/c/1/c1e0f201-42cb-46a1-901a-65bb4fc18f6c.png?1667318301",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/1/c1e0f201-42cb-46a1-901a-65bb4fc18f6c.jpg?1667318301",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/1/c1e0f201-42cb-46a1-901a-65bb4fc18f6c.jpg?1667318301"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Urza's Saga",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Construct",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Urza's Workshop",
@@ -242,7 +293,8 @@
         "png": "https://cards.scryfall.io/png/front/3/7/37c9b9d7-2fa7-4710-94bb-c55ee7bf598c.png?1674344246",
         "art_crop": "https://cards.scryfall.io/art_crop/front/3/7/37c9b9d7-2fa7-4710-94bb-c55ee7bf598c.jpg?1674344246",
         "border_crop": "https://cards.scryfall.io/border_crop/front/3/7/37c9b9d7-2fa7-4710-94bb-c55ee7bf598c.jpg?1674344246"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "The One Ring",
@@ -269,7 +321,17 @@
         "png": "https://cards.scryfall.io/png/front/1/2/126ea71a-9a64-4d1e-a8ca-1efce3b8346f.png?1686972720",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/2/126ea71a-9a64-4d1e-a8ca-1efce3b8346f.jpg?1686972720",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/2/126ea71a-9a64-4d1e-a8ca-1efce3b8346f.jpg?1686972720"
-      }
+      },
+      "allParts": [
+        {
+          "name": "The One Ring",
+          "component": "combo_piece"
+        },
+        {
+          "name": "A-The One Ring",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Trinisphere",
@@ -294,7 +356,8 @@
         "png": "https://cards.scryfall.io/png/front/5/2/52ea8286-225b-4990-981a-6b8c49748794.png?1774863282",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/2/52ea8286-225b-4990-981a-6b8c49748794.jpg?1774863282",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/2/52ea8286-225b-4990-981a-6b8c49748794.jpg?1774863282"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Planar Nexus",
@@ -319,7 +382,8 @@
         "png": "https://cards.scryfall.io/png/front/6/4/6429e625-1f18-413a-b7d7-6eb2814ee5a2.png?1721159049",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/4/6429e625-1f18-413a-b7d7-6eb2814ee5a2.jpg?1721159049",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/4/6429e625-1f18-413a-b7d7-6eb2814ee5a2.jpg?1721159049"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Kozilek's Command",
@@ -347,7 +411,17 @@
         "png": "https://cards.scryfall.io/png/front/9/2/92585587-cfdc-406a-9114-4f6dd8802c37.png?1740308391",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/2/92585587-cfdc-406a-9114-4f6dd8802c37.jpg?1740308391",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/2/92585587-cfdc-406a-9114-4f6dd8802c37.jpg?1740308391"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Kozilek's Command",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Eldrazi Spawn",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Urza's Tower",
@@ -375,7 +449,25 @@
         "png": "https://cards.scryfall.io/png/front/7/6/7693a698-65be-4d85-8b9d-c02c1596b99d.png?1717191202",
         "art_crop": "https://cards.scryfall.io/art_crop/front/7/6/7693a698-65be-4d85-8b9d-c02c1596b99d.jpg?1717191202",
         "border_crop": "https://cards.scryfall.io/border_crop/front/7/6/7693a698-65be-4d85-8b9d-c02c1596b99d.jpg?1717191202"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Urza's Construction Drone",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Urza's Tower",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Urza's Mine",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Urza's Power Plant",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Karn, the Great Creator",
@@ -404,7 +496,8 @@
         "png": "https://cards.scryfall.io/png/front/e/e/ee243dbe-83ee-40af-8e26-c1528166ef5a.png?1723251375",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/e/ee243dbe-83ee-40af-8e26-c1528166ef5a.jpg?1723251375",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/e/ee243dbe-83ee-40af-8e26-c1528166ef5a.jpg?1723251375"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Ugin, Eye of the Storms",
@@ -433,7 +526,8 @@
         "png": "https://cards.scryfall.io/png/front/2/8/281172b9-15ce-4128-afe5-17cd47d87dc9.png?1744835416",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/8/281172b9-15ce-4128-afe5-17cd47d87dc9.jpg?1744835416",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/8/281172b9-15ce-4128-afe5-17cd47d87dc9.jpg?1744835416"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Emrakul, the Aeons Torn",
@@ -464,7 +558,8 @@
         "png": "https://cards.scryfall.io/png/front/0/e/0e0d989d-7186-40dc-bdfe-cfbb77656bc8.png?1612809706",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/e/0e0d989d-7186-40dc-bdfe-cfbb77656bc8.jpg?1612809706",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/e/0e0d989d-7186-40dc-bdfe-cfbb77656bc8.jpg?1612809706"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Voltaic Key",
@@ -489,7 +584,8 @@
         "png": "https://cards.scryfall.io/png/front/6/d/6dd61957-f3a2-4976-8f15-88258f71406a.png?1562463293",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/d/6dd61957-f3a2-4976-8f15-88258f71406a.jpg?1562463293",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/d/6dd61957-f3a2-4976-8f15-88258f71406a.jpg?1562463293"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Pithing Needle",
@@ -514,7 +610,8 @@
         "png": "https://cards.scryfall.io/png/front/c/3/c300dcb0-1909-47d8-9818-46b2763d2bf9.png?1561994302",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/3/c300dcb0-1909-47d8-9818-46b2763d2bf9.jpg?1561994302",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/3/c300dcb0-1909-47d8-9818-46b2763d2bf9.jpg?1561994302"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Cityscape Leveler",
@@ -544,7 +641,17 @@
         "png": "https://cards.scryfall.io/png/front/1/5/15564a92-7980-438e-b4cb-8ffb50fb6393.png?1764118106",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/5/15564a92-7980-438e-b4cb-8ffb50fb6393.jpg?1764118106",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/5/15564a92-7980-438e-b4cb-8ffb50fb6393.jpg?1764118106"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Powerstone",
+          "component": "token"
+        },
+        {
+          "name": "Cityscape Leveler",
+          "component": "combo_piece"
+        }
+      ]
     }
   ]
 }

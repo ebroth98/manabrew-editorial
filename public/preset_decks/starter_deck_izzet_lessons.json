@@ -36,7 +36,8 @@
         "png": "https://cards.scryfall.io/png/front/b/8/b8ebe3cf-7143-453a-b0ef-2f5bdaac3185.png?1572894204",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/8/b8ebe3cf-7143-453a-b0ef-2f5bdaac3185.jpg?1572894204",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/8/b8ebe3cf-7143-453a-b0ef-2f5bdaac3185.jpg?1572894204"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Spirebluff Canal",
@@ -64,7 +65,8 @@
         "png": "https://cards.scryfall.io/png/front/5/9/59a04e16-a767-4112-ab01-6ca1b09c286c.png?1712356382",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/9/59a04e16-a767-4112-ab01-6ca1b09c286c.jpg?1712356382",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/9/59a04e16-a767-4112-ab01-6ca1b09c286c.jpg?1712356382"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Artist's Talent",
@@ -95,7 +97,8 @@
         "png": "https://cards.scryfall.io/png/front/8/b/8b9e51d9-189b-4dd6-87cb-628ea6373e81.png?1721426571",
         "art_crop": "https://cards.scryfall.io/art_crop/front/8/b/8b9e51d9-189b-4dd6-87cb-628ea6373e81.jpg?1721426571",
         "border_crop": "https://cards.scryfall.io/border_crop/front/8/b/8b9e51d9-189b-4dd6-87cb-628ea6373e81.jpg?1721426571"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Riverpyre Verge",
@@ -123,7 +126,8 @@
         "png": "https://cards.scryfall.io/png/front/5/7/57a93a71-d77c-417f-85d0-cd420f573331.png?1773857340",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/7/57a93a71-d77c-417f-85d0-cd420f573331.jpg?1773857340",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/7/57a93a71-d77c-417f-85d0-cd420f573331.jpg?1773857340"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Monument to Endurance",
@@ -148,7 +152,17 @@
         "png": "https://cards.scryfall.io/png/front/d/2/d21433ba-0a14-42bc-ad0b-a4ef823a3295.png?1738400354",
         "art_crop": "https://cards.scryfall.io/art_crop/front/d/2/d21433ba-0a14-42bc-ad0b-a4ef823a3295.jpg?1738400354",
         "border_crop": "https://cards.scryfall.io/border_crop/front/d/2/d21433ba-0a14-42bc-ad0b-a4ef823a3295.jpg?1738400354"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Monument to Endurance",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Gran-Gran",
@@ -185,7 +199,8 @@
         "png": "https://cards.scryfall.io/png/front/f/a/fa434b41-e5f7-4989-865a-95db67b05cb1.png?1764120269",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/a/fa434b41-e5f7-4989-865a-95db67b05cb1.jpg?1764120269",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/a/fa434b41-e5f7-4989-865a-95db67b05cb1.jpg?1764120269"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Combustion Technique",
@@ -216,7 +231,8 @@
         "png": "https://cards.scryfall.io/png/front/f/d/fdcca576-2ef2-44cc-9944-a92bd146444a.png?1774088518",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/d/fdcca576-2ef2-44cc-9944-a92bd146444a.jpg?1774088518",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/d/fdcca576-2ef2-44cc-9944-a92bd146444a.jpg?1774088518"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Accumulate Wisdom",
@@ -247,7 +263,8 @@
         "png": "https://cards.scryfall.io/png/front/a/6/a6335319-6c92-40d4-ab2d-c06c79049c30.png?1764120188",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/6/a6335319-6c92-40d4-ab2d-c06c79049c30.jpg?1764120188",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/6/a6335319-6c92-40d4-ab2d-c06c79049c30.jpg?1764120188"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Firebending Lesson",
@@ -278,7 +295,8 @@
         "png": "https://cards.scryfall.io/png/front/f/a/fa940e68-010e-4b68-be8a-555d7068f7b4.png?1764120947",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/a/fa940e68-010e-4b68-be8a-555d7068f7b4.jpg?1764120947",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/a/fa940e68-010e-4b68-be8a-555d7068f7b4.jpg?1764120947"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Three Steps Ahead",
@@ -307,7 +325,17 @@
         "png": "https://cards.scryfall.io/png/front/f/e/fe47a73a-55fd-405c-bb19-36344c010bac.png?1714001508",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/e/fe47a73a-55fd-405c-bb19-36344c010bac.jpg?1714001508",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/e/fe47a73a-55fd-405c-bb19-36344c010bac.jpg?1714001508"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Three Steps Ahead",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Copy",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Mountain",
@@ -338,7 +366,8 @@
         "png": "https://cards.scryfall.io/png/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.png?1730486024",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.jpg?1730486024",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.jpg?1730486024"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Abandon Attachments",
@@ -371,7 +400,8 @@
         "png": "https://cards.scryfall.io/png/front/7/4/74ca45a4-97ab-4255-9129-884e8b42b984.png?1764121430",
         "art_crop": "https://cards.scryfall.io/art_crop/front/7/4/74ca45a4-97ab-4255-9129-884e8b42b984.jpg?1764121430",
         "border_crop": "https://cards.scryfall.io/border_crop/front/7/4/74ca45a4-97ab-4255-9129-884e8b42b984.jpg?1764121430"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "It'll Quench Ya!",
@@ -402,7 +432,8 @@
         "png": "https://cards.scryfall.io/png/front/4/7/47c25e41-f43c-4447-81b5-b9631448bd29.png?1764120308",
         "art_crop": "https://cards.scryfall.io/art_crop/front/4/7/47c25e41-f43c-4447-81b5-b9631448bd29.jpg?1764120308",
         "border_crop": "https://cards.scryfall.io/border_crop/front/4/7/47c25e41-f43c-4447-81b5-b9631448bd29.jpg?1764120308"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Iroh's Demonstration",
@@ -433,7 +464,8 @@
         "png": "https://cards.scryfall.io/png/front/1/8/18d15fed-1f8f-4407-a221-a47ce75001a8.png?1764120967",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/8/18d15fed-1f8f-4407-a221-a47ce75001a8.jpg?1764120967",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/8/18d15fed-1f8f-4407-a221-a47ce75001a8.jpg?1764120967"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Boomerang Basics",
@@ -464,7 +496,8 @@
         "png": "https://cards.scryfall.io/png/front/1/7/17ab958a-abc6-472e-ad6a-97c731d89c74.png?1764120201",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/7/17ab958a-abc6-472e-ad6a-97c731d89c74.jpg?1764120201",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/7/17ab958a-abc6-472e-ad6a-97c731d89c74.jpg?1764120201"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Agna Qel'a",
@@ -491,7 +524,8 @@
         "png": "https://cards.scryfall.io/png/front/6/b/6b885829-a323-4f7d-87c9-aa4615dcbe5c.png?1764121943",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/b/6b885829-a323-4f7d-87c9-aa4615dcbe5c.jpg?1764121943",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/b/6b885829-a323-4f7d-87c9-aa4615dcbe5c.jpg?1764121943"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Island",
@@ -522,7 +556,8 @@
         "png": "https://cards.scryfall.io/png/front/0/e/0e443748-edf1-4499-9507-3649dd57ee95.png?1730486011",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/e/0e443748-edf1-4499-9507-3649dd57ee95.jpg?1730486011",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/e/0e443748-edf1-4499-9507-3649dd57ee95.jpg?1730486011"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Consult the Star Charts",
@@ -551,7 +586,8 @@
         "png": "https://cards.scryfall.io/png/front/a/1/a16a6555-2e3a-4587-aacd-0307d696b26c.png?1752946753",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/1/a16a6555-2e3a-4587-aacd-0307d696b26c.jpg?1752946753",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/1/a16a6555-2e3a-4587-aacd-0307d696b26c.jpg?1752946753"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Spell Pierce",
@@ -580,7 +616,8 @@
         "png": "https://cards.scryfall.io/png/front/b/c/bc8f80e2-dd9d-4abc-b44c-fbef4d403e6f.png?1775936529",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/c/bc8f80e2-dd9d-4abc-b44c-fbef4d403e6f.jpg?1775936529",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/c/bc8f80e2-dd9d-4abc-b44c-fbef4d403e6f.jpg?1775936529"
-      }
+      },
+      "allParts": []
     }
   ]
 }

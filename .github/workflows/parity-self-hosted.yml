@@ -175,6 +175,8 @@ jobs:
     if: always()
     runs-on: [self-hosted, Linux, run_parity]
     timeout-minutes: 90
+    env:
+      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -202,6 +204,12 @@ jobs:
         with:
           path: .parity-cache
           key: parity-java-${{ hashFiles('forge/forge-harness/src/**', 'forge/forge-game/src/**', 'forge/forge-core/src/**', 'forge/forge-ai/src/**', 'public/preset_decks/**') }}
+
+      - name: Select Java 17
+        run: |
+          echo "$JAVA_HOME/bin" >> "$GITHUB_PATH"
+          "$JAVA_HOME/bin/java" --version
+          mvn -version
 
       - name: Build Java parity harness JAR
         working-directory: forge

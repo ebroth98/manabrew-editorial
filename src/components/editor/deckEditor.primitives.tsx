@@ -108,10 +108,17 @@ export function CollapsibleHeader({
 }) {
   return (
     <div className="flex items-center gap-1 mb-1.5">
-      <button
-        type="button"
-        className="flex items-center gap-1 flex-1 text-left hover:text-foreground text-muted-foreground"
+      <div
+        role="button"
+        tabIndex={0}
+        className="flex items-center gap-1 flex-1 text-left hover:text-foreground text-muted-foreground cursor-pointer"
         onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
       >
         {collapsed ? (
           <ChevronRight className="h-3 w-3 shrink-0" />
@@ -120,7 +127,7 @@ export function CollapsibleHeader({
         )}
         <span className="text-xs font-semibold uppercase tracking-wide">{label}</span>
         <span className="text-xs text-muted-foreground/60 ml-1">({count})</span>
-      </button>
+      </div>
       {extraContent}
     </div>
   );

@@ -45,7 +45,17 @@
         "png": "https://cards.scryfall.io/png/front/6/3/636058c3-bacc-4a66-8988-832ab0cc9be6.png?1664413521",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/3/636058c3-bacc-4a66-8988-832ab0cc9be6.jpg?1664413521",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/3/636058c3-bacc-4a66-8988-832ab0cc9be6.jpg?1664413521"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Ognis, the Dragon's Lash",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Korvold, Fae-Cursed King",
@@ -85,7 +95,8 @@
         "png": "https://cards.scryfall.io/png/front/9/2/92ea1575-eb64-43b5-b604-c6e23054f228.png?1571197150",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/2/92ea1575-eb64-43b5-b604-c6e23054f228.jpg?1571197150",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/2/92ea1575-eb64-43b5-b604-c6e23054f228.jpg?1571197150"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Beastmaster Ascension",
@@ -120,14 +131,19 @@
       "count": 1,
       "set": "plst",
       "cardNumber": "M19-254",
-      "uris": {
-        "small": "https://cards.scryfall.io/small/front/a/0/a02c44e9-fbcd-4924-a641-6dbc55076349.jpg?1573517835",
-        "normal": "https://cards.scryfall.io/normal/front/a/0/a02c44e9-fbcd-4924-a641-6dbc55076349.jpg?1573517835",
-        "large": "https://cards.scryfall.io/large/front/a/0/a02c44e9-fbcd-4924-a641-6dbc55076349.jpg?1573517835",
-        "png": "https://cards.scryfall.io/png/front/a/0/a02c44e9-fbcd-4924-a641-6dbc55076349.png?1573517835",
-        "art_crop": "https://cards.scryfall.io/art_crop/front/a/0/a02c44e9-fbcd-4924-a641-6dbc55076349.jpg?1573517835",
-        "border_crop": "https://cards.scryfall.io/border_crop/front/a/0/a02c44e9-fbcd-4924-a641-6dbc55076349.jpg?1573517835"
-      }
+      "manaCost": "",
+      "colors": [],
+      "colorIdentity": [],
+      "cmc": 0,
+      "types": [
+        "Land"
+      ],
+      "subtypes": [],
+      "supertypes": [],
+      "text": "You have no maximum hand size.\n{T}: Add {C}.",
+      "imageUrl": "https://cards.scryfall.io/normal/front/e/2/e2a27742-08c1-4153-af7f-25a7a98f585e.jpg?1775942368",
+      "layout": "normal",
+      "allParts": []
     },
     {
       "name": "Revel in Riches",
@@ -168,7 +184,8 @@
         "png": "https://cards.scryfall.io/png/front/3/f/3fe2e358-4175-4cd6-9aa1-e54898df31f2.png?1568005043",
         "art_crop": "https://cards.scryfall.io/art_crop/front/3/f/3fe2e358-4175-4cd6-9aa1-e54898df31f2.jpg?1568005043",
         "border_crop": "https://cards.scryfall.io/border_crop/front/3/f/3fe2e358-4175-4cd6-9aa1-e54898df31f2.jpg?1568005043"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Idol of Oblivion",
@@ -193,7 +210,17 @@
         "png": "https://cards.scryfall.io/png/front/d/a/daed8456-011e-44e2-b180-6a8a75089257.png?1568003773",
         "art_crop": "https://cards.scryfall.io/art_crop/front/d/a/daed8456-011e-44e2-b180-6a8a75089257.jpg?1568003773",
         "border_crop": "https://cards.scryfall.io/border_crop/front/d/a/daed8456-011e-44e2-b180-6a8a75089257.jpg?1568003773"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Eldrazi",
+          "component": "token"
+        },
+        {
+          "name": "Idol of Oblivion",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Stomping Ground",
@@ -224,7 +251,8 @@
         "png": "https://cards.scryfall.io/png/front/9/2/92f1bb76-3999-494e-974a-66600fba54e1.png?1570827738",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/2/92f1bb76-3999-494e-974a-66600fba54e1.jpg?1570827738",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/2/92f1bb76-3999-494e-974a-66600fba54e1.jpg?1570827738"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Sign in Blood",
@@ -253,7 +281,8 @@
         "png": "https://cards.scryfall.io/png/front/9/f/9f9cead6-7806-4c51-abd1-62c3b8f366b5.png?1562791803",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/f/9f9cead6-7806-4c51-abd1-62c3b8f366b5.jpg?1562791803",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/f/9f9cead6-7806-4c51-abd1-62c3b8f366b5.jpg?1562791803"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Copperline Gorge",
@@ -281,7 +310,8 @@
         "png": "https://cards.scryfall.io/png/front/2/8/28f1d784-f286-418d-a712-bc07ad10d4a2.png?1562815756",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/8/28f1d784-f286-418d-a712-bc07ad10d4a2.jpg?1562815756",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/8/28f1d784-f286-418d-a712-bc07ad10d4a2.jpg?1562815756"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Mayhem Devil",
@@ -316,7 +346,8 @@
         "png": "https://cards.scryfall.io/png/front/1/7/17416926-168b-49b3-9231-acbb8f8a1d13.png?1557577188",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/7/17416926-168b-49b3-9231-acbb8f8a1d13.jpg?1557577188",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/7/17416926-168b-49b3-9231-acbb8f8a1d13.jpg?1557577188"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Heroic Intervention",
@@ -345,7 +376,8 @@
         "png": "https://cards.scryfall.io/png/front/b/3/b35e310c-8104-4871-b5ca-07f1bea1e7d5.png?1596311599",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/3/b35e310c-8104-4871-b5ca-07f1bea1e7d5.jpg?1596311599",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/3/b35e310c-8104-4871-b5ca-07f1bea1e7d5.jpg?1596311599"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Combat Celebrant",
@@ -379,7 +411,8 @@
         "png": "https://cards.scryfall.io/png/front/2/8/28b63c3d-2e55-4343-b49a-11fa602ec473.png?1543675529",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/8/28b63c3d-2e55-4343-b49a-11fa602ec473.jpg?1543675529",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/8/28b63c3d-2e55-4343-b49a-11fa602ec473.jpg?1543675529"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Vandalblast",
@@ -408,7 +441,8 @@
         "png": "https://cards.scryfall.io/png/front/5/9/5925c559-3e3c-481b-ba95-20a405cbffce.png?1562786728",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/9/5925c559-3e3c-481b-ba95-20a405cbffce.jpg?1562786728",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/9/5925c559-3e3c-481b-ba95-20a405cbffce.jpg?1562786728"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Dragonskull Summit",
@@ -436,7 +470,8 @@
         "png": "https://cards.scryfall.io/png/front/f/9/f99375bc-7465-4f20-897c-1bc61f65de61.png?1562666564",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/9/f99375bc-7465-4f20-897c-1bc61f65de61.jpg?1562666564",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/9/f99375bc-7465-4f20-897c-1bc61f65de61.jpg?1562666564"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Fangren Marauder",
@@ -469,7 +504,8 @@
         "png": "https://cards.scryfall.io/png/front/f/5/f5cf62a2-d03a-495d-924a-bf79524175fa.png?1562615957",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/5/f5cf62a2-d03a-495d-924a-bf79524175fa.jpg?1562615957",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/5/f5cf62a2-d03a-495d-924a-bf79524175fa.jpg?1562615957"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Evolving Wilds",
@@ -494,7 +530,8 @@
         "png": "https://cards.scryfall.io/png/front/8/e/8e3d6745-8904-4905-a98f-d43f18b51d6d.png?1615738130",
         "art_crop": "https://cards.scryfall.io/art_crop/front/8/e/8e3d6745-8904-4905-a98f-d43f18b51d6d.jpg?1615738130",
         "border_crop": "https://cards.scryfall.io/border_crop/front/8/e/8e3d6745-8904-4905-a98f-d43f18b51d6d.jpg?1615738130"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Aggravated Assault",
@@ -523,7 +560,8 @@
         "png": "https://cards.scryfall.io/png/front/c/9/c99c5707-d5f2-4675-bfca-e801e6b0f627.png?1562942627",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/9/c99c5707-d5f2-4675-bfca-e801e6b0f627.jpg?1562942627",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/9/c99c5707-d5f2-4675-bfca-e801e6b0f627.jpg?1562942627"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Savage Lands",
@@ -552,7 +590,8 @@
         "png": "https://cards.scryfall.io/png/front/9/f/9f658788-3667-4dd0-b9cd-04aaa9d7edd4.png?1562412790",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/f/9f658788-3667-4dd0-b9cd-04aaa9d7edd4.jpg?1562412790",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/f/9f658788-3667-4dd0-b9cd-04aaa9d7edd4.jpg?1562412790"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Reckless Fireweaver",
@@ -586,7 +625,8 @@
         "png": "https://cards.scryfall.io/png/front/6/3/63ffac51-62c4-4170-85b3-a43d7cfae7d7.png?1576382167",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/3/63ffac51-62c4-4170-85b3-a43d7cfae7d7.jpg?1576382167",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/3/63ffac51-62c4-4170-85b3-a43d7cfae7d7.jpg?1576382167"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Swiftfoot Boots",
@@ -613,7 +653,8 @@
         "png": "https://cards.scryfall.io/png/front/1/a/1ae84b5c-d3ad-48a3-9ccc-1dd76cee392c.png?1592711356",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/a/1ae84b5c-d3ad-48a3-9ccc-1dd76cee392c.jpg?1592711356",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/a/1ae84b5c-d3ad-48a3-9ccc-1dd76cee392c.jpg?1592711356"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Captain Lannery Storm",
@@ -649,7 +690,17 @@
         "png": "https://cards.scryfall.io/png/front/5/a/5ab86a8a-7a0a-473e-9a97-da2fe0ab866c.png?1562555989",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/a/5ab86a8a-7a0a-473e-9a97-da2fe0ab866c.jpg?1562555989",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/a/5ab86a8a-7a0a-473e-9a97-da2fe0ab866c.jpg?1562555989"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Captain Lannery Storm",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Treasure",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Rootbound Crag",
@@ -677,7 +728,8 @@
         "png": "https://cards.scryfall.io/png/front/b/6/b6f59e19-9ac1-4f86-893e-5b3364122fc6.png?1562562757",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/6/b6f59e19-9ac1-4f86-893e-5b3364122fc6.jpg?1562562757",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/6/b6f59e19-9ac1-4f86-893e-5b3364122fc6.jpg?1562562757"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Treasure Map // Treasure Cove",
@@ -702,7 +754,21 @@
         "png": "https://cards.scryfall.io/png/front/c/0/c0f9c733-0818-4a03-8f0c-a163d09e0fff.png?1562563368",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/0/c0f9c733-0818-4a03-8f0c-a163d09e0fff.jpg?1562563368",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/0/c0f9c733-0818-4a03-8f0c-a163d09e0fff.jpg?1562563368"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure Map // Treasure Cove",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Ixalan Checklist",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Grand Warlord Radha",
@@ -740,7 +806,8 @@
         "png": "https://cards.scryfall.io/png/front/9/8/986981fa-a744-45d8-81c7-68ef335c79e2.png?1562739940",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/8/986981fa-a744-45d8-81c7-68ef335c79e2.jpg?1562739940",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/8/986981fa-a744-45d8-81c7-68ef335c79e2.jpg?1562739940"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Woodland Cemetery",
@@ -768,7 +835,8 @@
         "png": "https://cards.scryfall.io/png/front/b/a/ba05cf47-9823-41f9-b893-321ea89e473e.png?1562741876",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/a/ba05cf47-9823-41f9-b893-321ea89e473e.jpg?1562741876",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/a/ba05cf47-9823-41f9-b893-321ea89e473e.jpg?1562741876"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Lightning Greaves",
@@ -795,7 +863,8 @@
         "png": "https://cards.scryfall.io/png/front/c/c/ccff131c-2a66-4ebf-97f1-774c9f41b222.png?1562623829",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/c/ccff131c-2a66-4ebf-97f1-774c9f41b222.jpg?1562623829",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/c/ccff131c-2a66-4ebf-97f1-774c9f41b222.jpg?1562623829"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Farseek",
@@ -824,7 +893,8 @@
         "png": "https://cards.scryfall.io/png/front/f/9/f9b69d33-96dd-4844-aefa-27a885cb2ffc.png?1562562178",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/9/f9b69d33-96dd-4844-aefa-27a885cb2ffc.jpg?1562562178",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/9/f9b69d33-96dd-4844-aefa-27a885cb2ffc.jpg?1562562178"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Parallel Lives",
@@ -853,7 +923,8 @@
         "png": "https://cards.scryfall.io/png/front/0/1/01033dae-fec1-41f2-b7f2-cc6a43331790.png?1562825348",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/1/01033dae-fec1-41f2-b7f2-cc6a43331790.jpg?1562825348",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/1/01033dae-fec1-41f2-b7f2-cc6a43331790.jpg?1562825348"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Fires of Yavimaya",
@@ -884,7 +955,8 @@
         "png": "https://cards.scryfall.io/png/front/0/d/0d4d0211-136e-4362-bf7c-b7e9499584bf.png?1562897706",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/d/0d4d0211-136e-4362-bf7c-b7e9499584bf.jpg?1562897706",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/d/0d4d0211-136e-4362-bf7c-b7e9499584bf.jpg?1562897706"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Hellkite Charger",
@@ -917,7 +989,8 @@
         "png": "https://cards.scryfall.io/png/front/e/7/e70c645d-d170-4a91-a6bb-0175ec900e93.png?1562617811",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/7/e70c645d-d170-4a91-a6bb-0175ec900e93.jpg?1562617811",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/7/e70c645d-d170-4a91-a6bb-0175ec900e93.jpg?1562617811"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Disciple of the Vault",
@@ -951,7 +1024,8 @@
         "png": "https://cards.scryfall.io/png/front/6/4/644359dc-3c4c-4291-876d-7390dc466877.png?1562145956",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/4/644359dc-3c4c-4291-876d-7390dc466877.jpg?1562145956",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/4/644359dc-3c4c-4291-876d-7390dc466877.jpg?1562145956"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Mass Hysteria",
@@ -980,7 +1054,8 @@
         "png": "https://cards.scryfall.io/png/front/1/4/1431354a-fcfa-4f67-a822-6dcc4d13ac3f.png?1710406471",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/4/1431354a-fcfa-4f67-a822-6dcc4d13ac3f.jpg?1710406471",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/4/1431354a-fcfa-4f67-a822-6dcc4d13ac3f.jpg?1710406471"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Command Tower",
@@ -1005,7 +1080,17 @@
         "png": "https://cards.scryfall.io/png/front/8/6/86424491-a372-40c4-bfb5-faa2b2d41d4c.png?1608911791",
         "art_crop": "https://cards.scryfall.io/art_crop/front/8/6/86424491-a372-40c4-bfb5-faa2b2d41d4c.jpg?1608911791",
         "border_crop": "https://cards.scryfall.io/border_crop/front/8/6/86424491-a372-40c4-bfb5-faa2b2d41d4c.jpg?1608911791"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Command Tower",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Tower Winder",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Tuktuk Rubblefort",
@@ -1038,7 +1123,8 @@
         "png": "https://cards.scryfall.io/png/front/0/2/02eedf9d-e26c-405c-aee5-1b3493dc5e9b.png?1604198284",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/2/02eedf9d-e26c-405c-aee5-1b3493dc5e9b.jpg?1604198284",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/2/02eedf9d-e26c-405c-aee5-1b3493dc5e9b.jpg?1604198284"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Moraug, Fury of Akoum",
@@ -1074,7 +1160,8 @@
         "png": "https://cards.scryfall.io/png/front/3/2/320fb49d-5985-45ff-9bf3-41af38082396.png?1607365434",
         "art_crop": "https://cards.scryfall.io/art_crop/front/3/2/320fb49d-5985-45ff-9bf3-41af38082396.jpg?1607365434",
         "border_crop": "https://cards.scryfall.io/border_crop/front/3/2/320fb49d-5985-45ff-9bf3-41af38082396.jpg?1607365434"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Vampiric Tutor",
@@ -1103,7 +1190,8 @@
         "png": "https://cards.scryfall.io/png/front/1/8/18bd50f2-c3ba-4217-a2d5-bb771e199706.png?1776775808",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/8/18bd50f2-c3ba-4217-a2d5-bb771e199706.jpg?1776775808",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/8/18bd50f2-c3ba-4217-a2d5-bb771e199706.jpg?1776775808"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Jeska's Will",
@@ -1132,7 +1220,8 @@
         "png": "https://cards.scryfall.io/png/front/4/e/4e91d96d-cc69-439b-b876-a7d57039022c.png?1608910286",
         "art_crop": "https://cards.scryfall.io/art_crop/front/4/e/4e91d96d-cc69-439b-b876-a7d57039022c.jpg?1608910286",
         "border_crop": "https://cards.scryfall.io/border_crop/front/4/e/4e91d96d-cc69-439b-b876-a7d57039022c.jpg?1608910286"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Nadier's Nightblade",
@@ -1166,7 +1255,8 @@
         "png": "https://cards.scryfall.io/png/front/1/1/11fbba08-0d93-4750-9dd6-d6a2779c6cf3.png?1608909827",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/1/11fbba08-0d93-4750-9dd6-d6a2779c6cf3.jpg?1608909827",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/1/11fbba08-0d93-4750-9dd6-d6a2779c6cf3.jpg?1608909827"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Juri, Master of the Revue",
@@ -1204,7 +1294,8 @@
         "png": "https://cards.scryfall.io/png/front/a/e/aec6b2b7-625a-451d-bc0b-4456f5bf2719.png?1608911166",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/e/aec6b2b7-625a-451d-bc0b-4456f5bf2719.jpg?1608911166",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/e/aec6b2b7-625a-451d-bc0b-4456f5bf2719.jpg?1608911166"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Terramorphic Expanse",
@@ -1229,7 +1320,8 @@
         "png": "https://cards.scryfall.io/png/front/c/2/c2b7a200-3da0-4714-ae1c-2e4847725416.png?1611940357",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/2/c2b7a200-3da0-4714-ae1c-2e4847725416.jpg?1611940357",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/2/c2b7a200-3da0-4714-ae1c-2e4847725416.jpg?1611940357"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Blightstep Pathway // Searstep Pathway",
@@ -1257,7 +1349,8 @@
         "png": "https://cards.scryfall.io/png/front/0/c/0ce39a19-f51d-4a35-ae80-5b82eb15fcff.png?1669839373",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/c/0ce39a19-f51d-4a35-ae80-5b82eb15fcff.jpg?1669839373",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/c/0ce39a19-f51d-4a35-ae80-5b82eb15fcff.jpg?1669839373"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Darkbore Pathway // Slitherbore Pathway",
@@ -1285,7 +1378,8 @@
         "png": "https://cards.scryfall.io/png/front/8/7/87a4e5fe-161f-42da-9ca2-67c8e8970e94.png?1669839402",
         "art_crop": "https://cards.scryfall.io/art_crop/front/8/7/87a4e5fe-161f-42da-9ca2-67c8e8970e94.jpg?1669839402",
         "border_crop": "https://cards.scryfall.io/border_crop/front/8/7/87a4e5fe-161f-42da-9ca2-67c8e8970e94.jpg?1669839402"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Goldspan Dragon",
@@ -1318,7 +1412,17 @@
         "png": "https://cards.scryfall.io/png/front/9/d/9d914868-9000-4df2-a818-0ef8a7f636ae.png?1665343456",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/d/9d914868-9000-4df2-a818-0ef8a7f636ae.jpg?1665343456",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/d/9d914868-9000-4df2-a818-0ef8a7f636ae.jpg?1665343456"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Goldspan Dragon",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Arcane Signet",
@@ -1343,7 +1447,8 @@
         "png": "https://cards.scryfall.io/png/front/0/1/01b186af-8825-4257-80fd-9c1ecdb21414.png?1625978253",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/1/01b186af-8825-4257-80fd-9c1ecdb21414.jpg?1625978253",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/1/01b186af-8825-4257-80fd-9c1ecdb21414.jpg?1625978253"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Hellkite Tyrant",
@@ -1376,7 +1481,8 @@
         "png": "https://cards.scryfall.io/png/front/6/7/67d15ee6-916f-4ac9-a4d2-4a9bd389d451.png?1625193869",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/7/67d15ee6-916f-4ac9-a4d2-4a9bd389d451.jpg?1625193869",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/7/67d15ee6-916f-4ac9-a4d2-4a9bd389d451.jpg?1625193869"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Sol Ring",
@@ -1401,7 +1507,8 @@
         "png": "https://cards.scryfall.io/png/front/4/c/4cbc6901-6a4a-4d0a-83ea-7eefa3b35021.png?1632893059",
         "art_crop": "https://cards.scryfall.io/art_crop/front/4/c/4cbc6901-6a4a-4d0a-83ea-7eefa3b35021.jpg?1632893059",
         "border_crop": "https://cards.scryfall.io/border_crop/front/4/c/4cbc6901-6a4a-4d0a-83ea-7eefa3b35021.jpg?1632893059"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Brass's Bounty",
@@ -1430,7 +1537,17 @@
         "png": "https://cards.scryfall.io/png/front/5/7/571797ef-1e44-4b1c-9c88-3d4c60358175.png?1625193554",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/7/571797ef-1e44-4b1c-9c88-3d4c60358175.jpg?1625193554",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/7/571797ef-1e44-4b1c-9c88-3d4c60358175.jpg?1625193554"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Brass's Bounty",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Rampant Growth",
@@ -1459,7 +1576,8 @@
         "png": "https://cards.scryfall.io/png/front/d/2/d2e16cbe-b52b-46d7-8532-2068684b3491.png?1625977236",
         "art_crop": "https://cards.scryfall.io/art_crop/front/d/2/d2e16cbe-b52b-46d7-8532-2068684b3491.jpg?1625977236",
         "border_crop": "https://cards.scryfall.io/border_crop/front/d/2/d2e16cbe-b52b-46d7-8532-2068684b3491.jpg?1625977236"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Chatterfang, Squirrel General",
@@ -1496,7 +1614,17 @@
         "png": "https://cards.scryfall.io/png/front/1/7/1785cf85-1ac0-4246-9b89-1a8221a8e1b2.png?1626097239",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/7/1785cf85-1ac0-4246-9b89-1a8221a8e1b2.jpg?1626097239",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/7/1785cf85-1ac0-4246-9b89-1a8221a8e1b2.jpg?1626097239"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Squirrel",
+          "component": "token"
+        },
+        {
+          "name": "Chatterfang, Squirrel General",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Academy Manufactor",
@@ -1526,7 +1654,25 @@
         "png": "https://cards.scryfall.io/png/front/9/0/90744c2c-6dd7-4623-8cbf-b138b83ee88f.png?1776915593",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/0/90744c2c-6dd7-4623-8cbf-b138b83ee88f.jpg?1776915593",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/0/90744c2c-6dd7-4623-8cbf-b138b83ee88f.jpg?1776915593"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Clue",
+          "component": "token"
+        },
+        {
+          "name": "Food",
+          "component": "token"
+        },
+        {
+          "name": "Academy Manufactor",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Urabrask the Hidden",
@@ -1562,7 +1708,8 @@
         "png": "https://cards.scryfall.io/png/front/f/6/f60f6330-f1ce-4a39-ab58-49bb5fa96081.png?1637248766",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/6/f60f6330-f1ce-4a39-ab58-49bb5fa96081.jpg?1637248766",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/6/f60f6330-f1ce-4a39-ab58-49bb5fa96081.jpg?1637248766"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Hoarding Ogre",
@@ -1595,7 +1742,17 @@
         "png": "https://cards.scryfall.io/png/front/d/f/df39eaac-b13f-4cb3-960d-8f7a0d590663.png?1627706327",
         "art_crop": "https://cards.scryfall.io/art_crop/front/d/f/df39eaac-b13f-4cb3-960d-8f7a0d590663.jpg?1627706327",
         "border_crop": "https://cards.scryfall.io/border_crop/front/d/f/df39eaac-b13f-4cb3-960d-8f7a0d590663.jpg?1627706327"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Hoarding Ogre",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Xorn",
@@ -1628,7 +1785,17 @@
         "png": "https://cards.scryfall.io/png/front/7/1/713a6502-5239-449a-b04a-c82d525f9916.png?1627711783",
         "art_crop": "https://cards.scryfall.io/art_crop/front/7/1/713a6502-5239-449a-b04a-c82d525f9916.jpg?1627711783",
         "border_crop": "https://cards.scryfall.io/border_crop/front/7/1/713a6502-5239-449a-b04a-c82d525f9916.jpg?1627711783"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Xorn",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Treasure",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Grim Hireling",
@@ -1662,7 +1829,17 @@
         "png": "https://cards.scryfall.io/png/front/0/8/08c6872d-4cb5-4a59-b1dd-38c107906660.png?1631585075",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/8/08c6872d-4cb5-4a59-b1dd-38c107906660.jpg?1631585075",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/8/08c6872d-4cb5-4a59-b1dd-38c107906660.jpg?1631585075"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Grim Hireling",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Wulfgar of Icewind Dale",
@@ -1700,7 +1877,8 @@
         "png": "https://cards.scryfall.io/png/front/8/0/80665af6-fd66-4684-94ec-1f04eb898c2a.png?1692183598",
         "art_crop": "https://cards.scryfall.io/art_crop/front/8/0/80665af6-fd66-4684-94ec-1f04eb898c2a.jpg?1692183598",
         "border_crop": "https://cards.scryfall.io/border_crop/front/8/0/80665af6-fd66-4684-94ec-1f04eb898c2a.jpg?1692183598"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Anger",
@@ -1733,7 +1911,8 @@
         "png": "https://cards.scryfall.io/png/front/0/c/0c7ce363-3f57-49ed-b89a-f12bb5227ab4.png?1631586892",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/c/0c7ce363-3f57-49ed-b89a-f12bb5227ab4.jpg?1631586892",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/c/0c7ce363-3f57-49ed-b89a-f12bb5227ab4.jpg?1631586892"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Marionette Master",
@@ -1767,7 +1946,17 @@
         "png": "https://cards.scryfall.io/png/front/d/d/dd21a925-c76f-4c1d-b5b8-8d3352730e5f.png?1631586656",
         "art_crop": "https://cards.scryfall.io/art_crop/front/d/d/dd21a925-c76f-4c1d-b5b8-8d3352730e5f.jpg?1631586656",
         "border_crop": "https://cards.scryfall.io/border_crop/front/d/d/dd21a925-c76f-4c1d-b5b8-8d3352730e5f.jpg?1631586656"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Servo",
+          "component": "token"
+        },
+        {
+          "name": "Marionette Master",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Terminate",
@@ -1798,7 +1987,8 @@
         "png": "https://cards.scryfall.io/png/front/4/c/4c942af8-e5c1-47e0-a662-d9ef531f0dad.png?1631588684",
         "art_crop": "https://cards.scryfall.io/art_crop/front/4/c/4c942af8-e5c1-47e0-a662-d9ef531f0dad.jpg?1631588684",
         "border_crop": "https://cards.scryfall.io/border_crop/front/4/c/4c942af8-e5c1-47e0-a662-d9ef531f0dad.jpg?1631588684"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Demonic Tutor",
@@ -1827,7 +2017,8 @@
         "png": "https://cards.scryfall.io/png/front/c/8/c8435923-d3eb-4366-a0d5-edf538f9f261.png?1559592886",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/8/c8435923-d3eb-4366-a0d5-edf538f9f261.jpg?1559592886",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/8/c8435923-d3eb-4366-a0d5-edf538f9f261.jpg?1559592886"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Phyrexian Arena",
@@ -1856,7 +2047,8 @@
         "png": "https://cards.scryfall.io/png/front/b/4/b4142d3b-9c17-4a26-949e-3fc3e600fd1c.png?1651951779",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/4/b4142d3b-9c17-4a26-949e-3fc3e600fd1c.jpg?1651951779",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/4/b4142d3b-9c17-4a26-949e-3fc3e600fd1c.jpg?1651951779"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Saryth, the Viper's Fang",
@@ -1892,7 +2084,8 @@
         "png": "https://cards.scryfall.io/png/front/3/a/3a07fd28-0b65-4ff0-96c6-7e88fc89b0a5.png?1636499036",
         "art_crop": "https://cards.scryfall.io/art_crop/front/3/a/3a07fd28-0b65-4ff0-96c6-7e88fc89b0a5.jpg?1636499036",
         "border_crop": "https://cards.scryfall.io/border_crop/front/3/a/3a07fd28-0b65-4ff0-96c6-7e88fc89b0a5.jpg?1636499036"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Ulvenwald Oddity // Ulvenwald Behemoth",
@@ -1925,7 +2118,8 @@
         "png": "https://cards.scryfall.io/png/front/5/f/5fdf5fc4-69c8-4a59-9095-c2feefb64371.png?1643593558",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/f/5fdf5fc4-69c8-4a59-9095-c2feefb64371.jpg?1643593558",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/f/5fdf5fc4-69c8-4a59-9095-c2feefb64371.jpg?1643593558"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Rakdos Charm",
@@ -1956,7 +2150,8 @@
         "png": "https://cards.scryfall.io/png/front/1/7/179d2088-2032-41c2-953e-f8ecbe135d77.png?1641603484",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/7/179d2088-2032-41c2-953e-f8ecbe135d77.jpg?1641603484",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/7/179d2088-2032-41c2-953e-f8ecbe135d77.jpg?1641603484"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Blood Crypt",
@@ -1987,7 +2182,8 @@
         "png": "https://cards.scryfall.io/png/front/8/b/8bd5828b-8dcd-4ce6-b834-ebe9cbaa12d1.png?1562789618",
         "art_crop": "https://cards.scryfall.io/art_crop/front/8/b/8bd5828b-8dcd-4ce6-b834-ebe9cbaa12d1.jpg?1562789618",
         "border_crop": "https://cards.scryfall.io/border_crop/front/8/b/8bd5828b-8dcd-4ce6-b834-ebe9cbaa12d1.jpg?1562789618"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Professional Face-Breaker",
@@ -2021,7 +2217,17 @@
         "png": "https://cards.scryfall.io/png/front/4/2/42acbf52-b137-44f0-a815-2817fe8d2da2.png?1664411677",
         "art_crop": "https://cards.scryfall.io/art_crop/front/4/2/42acbf52-b137-44f0-a815-2817fe8d2da2.jpg?1664411677",
         "border_crop": "https://cards.scryfall.io/border_crop/front/4/2/42acbf52-b137-44f0-a815-2817fe8d2da2.jpg?1664411677"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Professional Face-Breaker",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Treasure",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Bootleggers' Stash",
@@ -2050,7 +2256,17 @@
         "png": "https://cards.scryfall.io/png/front/8/0/80b5b7e1-52c2-4453-b3c0-efe2cebad6ce.png?1664412016",
         "art_crop": "https://cards.scryfall.io/art_crop/front/8/0/80b5b7e1-52c2-4453-b3c0-efe2cebad6ce.jpg?1664412016",
         "border_crop": "https://cards.scryfall.io/border_crop/front/8/0/80b5b7e1-52c2-4453-b3c0-efe2cebad6ce.jpg?1664412016"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Bootleggers' Stash",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Crew Captain",
@@ -2088,7 +2304,8 @@
         "png": "https://cards.scryfall.io/png/front/9/9/99806615-2f4a-4fe4-82f8-83445ae93a97.png?1664412905",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/9/99806615-2f4a-4fe4-82f8-83445ae93a97.jpg?1664412905",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/9/99806615-2f4a-4fe4-82f8-83445ae93a97.jpg?1664412905"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Jolene, the Plunder Queen",
@@ -2126,7 +2343,17 @@
         "png": "https://cards.scryfall.io/png/front/6/1/61c217d9-21d5-45ef-938a-138192a901f4.png?1673482382",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/1/61c217d9-21d5-45ef-938a-138192a901f4.jpg?1673482382",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/1/61c217d9-21d5-45ef-938a-138192a901f4.jpg?1673482382"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Jolene, the Plunder Queen",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Agent of the Iron Throne",
@@ -2159,7 +2386,8 @@
         "png": "https://cards.scryfall.io/png/front/5/a/5a5984d3-1e76-4d97-9373-b59cfa9c38ae.png?1674135910",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/a/5a5984d3-1e76-4d97-9373-b59cfa9c38ae.jpg?1674135910",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/a/5a5984d3-1e76-4d97-9373-b59cfa9c38ae.jpg?1674135910"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Descent into Avernus",
@@ -2188,7 +2416,17 @@
         "png": "https://cards.scryfall.io/png/front/f/a/faadf72f-b2d5-4271-8d5c-a586acf63453.png?1674136498",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/a/faadf72f-b2d5-4271-8d5c-a586acf63453.jpg?1674136498",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/a/faadf72f-b2d5-4271-8d5c-a586acf63453.jpg?1674136498"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Descent into Avernus",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Treasure",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Blood Money",
@@ -2217,7 +2455,17 @@
         "png": "https://cards.scryfall.io/png/front/5/d/5d45c18c-b8eb-465c-8dfc-fd6da73e25b5.png?1674135993",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/d/5d45c18c-b8eb-465c-8dfc-fd6da73e25b5.jpg?1674135993",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/d/5d45c18c-b8eb-465c-8dfc-fd6da73e25b5.jpg?1674135993"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Blood Money",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Ancient Copper Dragon",
@@ -2251,7 +2499,17 @@
         "png": "https://cards.scryfall.io/png/front/0/c/0c9ac08c-11ce-4e8a-8ea8-c18cfc745ac7.png?1674138301",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/c/0c9ac08c-11ce-4e8a-8ea8-c18cfc745ac7.jpg?1674138301",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/c/0c9ac08c-11ce-4e8a-8ea8-c18cfc745ac7.jpg?1674138301"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Ancient Copper Dragon",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Urabrask's Forge",
@@ -2280,7 +2538,17 @@
         "png": "https://cards.scryfall.io/png/front/7/d/7dd0ae70-db67-43d8-beab-e70c97794d7b.png?1675957416",
         "art_crop": "https://cards.scryfall.io/art_crop/front/7/d/7dd0ae70-db67-43d8-beab-e70c97794d7b.jpg?1675957416",
         "border_crop": "https://cards.scryfall.io/border_crop/front/7/d/7dd0ae70-db67-43d8-beab-e70c97794d7b.jpg?1675957416"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Phyrexian Horror",
+          "component": "token"
+        },
+        {
+          "name": "Urabrask's Forge",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Mirkwood Bats",
@@ -2313,7 +2581,8 @@
         "png": "https://cards.scryfall.io/png/front/1/5/15f035df-784a-4dc8-b7f5-77139a4e6e99.png?1686968575",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/5/15f035df-784a-4dc8-b7f5-77139a4e6e99.jpg?1686968575",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/5/15f035df-784a-4dc8-b7f5-77139a4e6e99.jpg?1686968575"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Crime Novelist",
@@ -2347,7 +2616,8 @@
         "png": "https://cards.scryfall.io/png/front/1/4/14a5cd7c-b0b1-4ffa-a806-bb0e73baffad.png?1706241850",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/4/14a5cd7c-b0b1-4ffa-a806-bb0e73baffad.jpg?1706241850",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/4/14a5cd7c-b0b1-4ffa-a806-bb0e73baffad.jpg?1706241850"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Gold Rush",
@@ -2376,7 +2646,17 @@
         "png": "https://cards.scryfall.io/png/front/1/5/15845be1-919d-4450-9de6-3552c52e8623.png?1712355933",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/5/15845be1-919d-4450-9de6-3552c52e8623.jpg?1712355933",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/5/15845be1-919d-4450-9de6-3552c52e8623.jpg?1712355933"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Gold Rush",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Marionette Apprentice",
@@ -2410,7 +2690,17 @@
         "png": "https://cards.scryfall.io/png/front/d/1/d16f8670-f038-400a-83e7-a53a7f8c47ac.png?1717012013",
         "art_crop": "https://cards.scryfall.io/art_crop/front/d/1/d16f8670-f038-400a-83e7-a53a7f8c47ac.jpg?1717012013",
         "border_crop": "https://cards.scryfall.io/border_crop/front/d/1/d16f8670-f038-400a-83e7-a53a7f8c47ac.jpg?1717012013"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Marionette Apprentice",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Servo",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Black Market Connections",
@@ -2439,7 +2729,21 @@
         "png": "https://cards.scryfall.io/png/front/9/b/9bac8176-d0db-4397-820d-acbdd3264377.png?1721424350",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/b/9bac8176-d0db-4397-820d-acbdd3264377.jpg?1721424350",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/b/9bac8176-d0db-4397-820d-acbdd3264377.jpg?1721424350"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Shapeshifter",
+          "component": "token"
+        },
+        {
+          "name": "Black Market Connections",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Alchemist's Talent",
@@ -2470,7 +2774,17 @@
         "png": "https://cards.scryfall.io/png/front/2/f/2fb8dace-c604-40fc-bbd4-5add5deb041a.png?1739656564",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/f/2fb8dace-c604-40fc-bbd4-5add5deb041a.jpg?1739656564",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/f/2fb8dace-c604-40fc-bbd4-5add5deb041a.jpg?1739656564"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Alchemist's Talent",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Loyal Apprentice",
@@ -2504,7 +2818,17 @@
         "png": "https://cards.scryfall.io/png/front/0/7/072e502a-c340-4f50-9f51-62d50242b17c.png?1738355824",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/7/072e502a-c340-4f50-9f51-62d50242b17c.jpg?1738355824",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/7/072e502a-c340-4f50-9f51-62d50242b17c.jpg?1738355824"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Thopter",
+          "component": "token"
+        },
+        {
+          "name": "Loyal Apprentice",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Magda, Brazen Outlaw",
@@ -2540,7 +2864,17 @@
         "png": "https://cards.scryfall.io/png/front/0/7/079e6263-e54c-4899-a336-5315909b9322.png?1631049453",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/7/079e6263-e54c-4899-a336-5315909b9322.jpg?1631049453",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/7/079e6263-e54c-4899-a336-5315909b9322.jpg?1631049453"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Magda, Brazen Outlaw",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Amulet of Vigor",
@@ -2582,7 +2916,8 @@
         "png": "https://cards.scryfall.io/png/front/8/5/85dffa3f-8e42-4638-bb28-b3604b069cfc.png?1644863455",
         "art_crop": "https://cards.scryfall.io/art_crop/front/8/5/85dffa3f-8e42-4638-bb28-b3604b069cfc.jpg?1644863455",
         "border_crop": "https://cards.scryfall.io/border_crop/front/8/5/85dffa3f-8e42-4638-bb28-b3604b069cfc.jpg?1644863455"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Mountain",
@@ -2613,7 +2948,8 @@
         "png": "https://cards.scryfall.io/png/front/9/6/9660fb20-f499-4f7a-9f25-e463f095ab90.png?1627837145",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/6/9660fb20-f499-4f7a-9f25-e463f095ab90.jpg?1627837145",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/6/9660fb20-f499-4f7a-9f25-e463f095ab90.jpg?1627837145"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Forest",
@@ -2644,7 +2980,17 @@
         "png": "https://cards.scryfall.io/png/front/6/c/6cdc5ca9-6d01-4ee3-8117-3c1e74320553.png?1627711008",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/c/6cdc5ca9-6d01-4ee3-8117-3c1e74320553.jpg?1627711008",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/c/6cdc5ca9-6d01-4ee3-8117-3c1e74320553.jpg?1627711008"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Forest",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Gilt-Leaf Alchemist",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Swamp",
@@ -2675,7 +3021,8 @@
         "png": "https://cards.scryfall.io/png/front/b/e/be87de91-aa10-4ed8-83a2-261b4f57e7db.png?1643595391",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/e/be87de91-aa10-4ed8-83a2-261b4f57e7db.jpg?1643595391",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/e/be87de91-aa10-4ed8-83a2-261b4f57e7db.jpg?1643595391"
-      }
+      },
+      "allParts": []
     }
   ],
   "commander": "Ognis, the Dragon's Lash"

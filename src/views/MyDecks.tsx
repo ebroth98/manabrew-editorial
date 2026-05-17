@@ -97,7 +97,11 @@ export default function MyDecks() {
       ...(selected.deck.planes ?? []),
     ];
     const toFetch = allCards
-      .filter((c) => (c.cmc === undefined || c.cmc === null) && !c.manaCost)
+      .filter((c) => {
+        const needsBasicMeta = (c.cmc === undefined || c.cmc === null) && !c.manaCost;
+        const needsAllParts = c.allParts === undefined;
+        return needsBasicMeta || needsAllParts;
+      })
       .map((c) => c.name);
 
     if (toFetch.length === 0) {

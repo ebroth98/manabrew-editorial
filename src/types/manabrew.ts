@@ -81,9 +81,16 @@ export interface GameCard extends CardIdentity, CardRulesSummary {
   isWarpExiled?: boolean;
 }
 
+export type AllPartsComponent = "token" | "combo_piece" | "meld_part" | "meld_result";
+
 export interface DeckCard extends CardIdentity, CardRulesSummary {
   uris: ScryfallImageUris;
   foil?: boolean;
+  /** Scryfall `all_parts` — entries this card references. `component` discriminates
+   *  tokens from combo pieces, meld parts/results, and the self-reference Scryfall
+   *  always includes. Token resolution is generic: name-only lookup against the
+   *  token archive; `component === "token"` is the gate. */
+  allParts?: Array<{ name: string; component: AllPartsComponent }>;
 }
 
 export interface DeckLabel {

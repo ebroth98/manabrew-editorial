@@ -26,6 +26,10 @@ function hasMetadata(entry) {
   return META_FIELDS.some((f) => f in entry);
 }
 
+function isFullyEnriched(entry) {
+  return hasMetadata(entry) && "allParts" in entry;
+}
+
 function parseTypeLine(typeLine) {
   if (!typeLine) return { supertypes: [], types: [], subtypes: [] };
   const [main, ...subParts] = typeLine.split("—").map((s) => s.trim());
@@ -62,6 +66,9 @@ function metadataFromScryfall(sc) {
     layout: sc.layout ?? "normal",
     power: front.power ?? sc.power,
     toughness: front.toughness ?? sc.toughness,
+    allParts: Array.isArray(sc.all_parts)
+      ? sc.all_parts.map((p) => ({ name: p.name, component: p.component }))
+      : [],
   };
 }
 
@@ -89,7 +96,7 @@ async function main() {
     const json = JSON.parse(fs.readFileSync(p, "utf-8"));
     fileData.push({ file: f, path: p, json });
     for (const card of json.cards || []) {
-      if (!FORCE && hasMetadata(card)) continue;
+      if (!FORCE && isFullyEnriched(card)) continue;
       const set = card.set?.toLowerCase();
       const cn = card.cardNumber?.toLowerCase();
       const key = `${card.name.toLowerCase()}::${set ?? ""}::${cn ?? ""}`;
@@ -162,7 +169,7 @@ async function main() {
   for (const { file, path: p, json } of fileData) {
     let touched = false;
     json.cards = (json.cards ?? []).map((card) => {
-      if (!FORCE && hasMetadata(card)) return card;
+      if (!FORCE && isFullyEnriched(card)) return card;
       const nameLow = card.name.toLowerCase();
       const setLow = (card.set ?? "").toLowerCase();
       const cnLow = (card.cardNumber ?? "").toLowerCase();
@@ -173,6 +180,12 @@ async function main() {
       if (!meta) return card;
       touched = true;
       writtenCards++;
+      // Already partially enriched (e.g. via import-deck.ts which writes `uris`):
+      // preserve the existing shape and only patch in `allParts` so we don't
+      // churn unrelated fields or drop the full `uris` object.
+      if (hasMetadata(card)) {
+        return { ...card, allParts: meta.allParts ?? [] };
+      }
       const ordered = { name: card.name };
       if (card.count !== undefined) ordered.count = card.count;
       if (card.set !== undefined) ordered.set = card.set;

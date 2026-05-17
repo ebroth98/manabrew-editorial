@@ -87,11 +87,17 @@ export function DeckStats({ cards: propCards }: DeckStatsProps) {
 
   return (
     <div className="border-t shrink-0">
-      {/* ── Toggle header ── */}
-      <button
-        type="button"
-        className="flex items-center gap-1.5 w-full px-3 py-2 hover:bg-muted/30 transition-colors text-left"
+      <div
+        role="button"
+        tabIndex={0}
+        className="flex items-center gap-1.5 w-full px-3 py-2 hover:bg-muted/30 transition-colors text-left cursor-pointer"
         onClick={() => setCollapsed((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setCollapsed((v) => !v);
+          }
+        }}
       >
         {collapsed ? (
           <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
@@ -125,7 +131,7 @@ export function DeckStats({ cards: propCards }: DeckStatsProps) {
             ))}
           </div>
         )}
-      </button>
+      </div>
 
       {/* ── Expandable content ── */}
       {!collapsed && (

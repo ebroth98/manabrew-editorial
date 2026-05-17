@@ -193,8 +193,19 @@ export function fetchImageElement(url: string): Promise<HTMLImageElement> {
     img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
-    img.src = url;
+    img.src = scryfallCorsImageUrl(url);
   });
+}
+
+function scryfallCorsImageUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (!["cards.scryfall.io", "backs.scryfall.io"].includes(parsed.hostname)) return url;
+    parsed.searchParams.set("manabrew_cors", "1");
+    return parsed.toString();
+  } catch {
+    return url;
+  }
 }
 
 export function normalizeManaCode(value: string): ManaCode | null {

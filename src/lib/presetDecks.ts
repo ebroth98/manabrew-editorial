@@ -1,4 +1,4 @@
-import type { Deck, DeckCard, DeckFormatId } from "@/types/manabrew";
+import type { AllPartsComponent, Deck, DeckCard, DeckFormatId } from "@/types/manabrew";
 import type { ScryfallImageUris } from "@/types/scryfall";
 import { frontFaceName } from "@/lib/scryfall.utils";
 
@@ -19,6 +19,7 @@ interface PresetDeckCardDefinition {
   layout?: string;
   power?: string;
   toughness?: string;
+  allParts?: Array<{ name: string; component: AllPartsComponent }>;
 }
 
 export interface PresetDeckDefinition {
@@ -58,6 +59,7 @@ export function expandPresetDeckDefinition(preset: PresetDeckDefinition): Deck {
         text: entry.text ?? "",
         uris: entry.uris,
         layout: entry.layout,
+        allParts: entry.allParts,
       };
 
       if (!commander && name === presetCommander) {

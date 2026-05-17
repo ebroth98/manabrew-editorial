@@ -90,7 +90,8 @@
         "png": "https://cards.scryfall.io/png/front/1/3/135de5c7-6ac9-4b68-8f1a-97f120a4b125.png?1745319958",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/3/135de5c7-6ac9-4b68-8f1a-97f120a4b125.jpg?1745319958",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/3/135de5c7-6ac9-4b68-8f1a-97f120a4b125.jpg?1745319958"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Ancient Tomb",
@@ -115,7 +116,8 @@
         "png": "https://cards.scryfall.io/png/front/b/d/bd3d4b4b-cf31-4f89-8140-9650edb03c7b.png?1764758774",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/d/bd3d4b4b-cf31-4f89-8140-9650edb03c7b.jpg?1764758774",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/d/bd3d4b4b-cf31-4f89-8140-9650edb03c7b.jpg?1764758774"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Force of Will",
@@ -144,7 +146,8 @@
         "png": "https://cards.scryfall.io/png/front/6/e/6e7b0e29-09d9-4b3e-ab94-f1f4a61d9159.png?1682714043",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/e/6e7b0e29-09d9-4b3e-ab94-f1f4a61d9159.jpg?1682714043",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/e/6e7b0e29-09d9-4b3e-ab94-f1f4a61d9159.jpg?1682714043"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "The One Ring",
@@ -171,7 +174,17 @@
         "png": "https://cards.scryfall.io/png/front/1/2/126ea71a-9a64-4d1e-a8ca-1efce3b8346f.png?1686972720",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/2/126ea71a-9a64-4d1e-a8ca-1efce3b8346f.jpg?1686972720",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/2/126ea71a-9a64-4d1e-a8ca-1efce3b8346f.jpg?1686972720"
-      }
+      },
+      "allParts": [
+        {
+          "name": "The One Ring",
+          "component": "combo_piece"
+        },
+        {
+          "name": "A-The One Ring",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Sink into Stupor // Soporific Springs",
@@ -200,7 +213,8 @@
         "png": "https://cards.scryfall.io/png/front/5/3/5358b87a-1a29-426d-b165-40c97da2c14d.png?1717013194",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/3/5358b87a-1a29-426d-b165-40c97da2c14d.jpg?1717013194",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/3/5358b87a-1a29-426d-b165-40c97da2c14d.jpg?1717013194"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Paradoxical Outcome",
@@ -229,7 +243,8 @@
         "png": "https://cards.scryfall.io/png/front/e/a/eaa2fc8b-6a5e-4092-a1b5-66b02e689edf.png?1723226701",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/a/eaa2fc8b-6a5e-4092-a1b5-66b02e689edf.jpg?1723226701",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/a/eaa2fc8b-6a5e-4092-a1b5-66b02e689edf.jpg?1723226701"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Mana Crypt",
@@ -268,7 +283,8 @@
         "png": "https://cards.scryfall.io/png/front/7/1/715e637a-dfd8-45a0-b1ea-53e4abd29307.png?1592517669",
         "art_crop": "https://cards.scryfall.io/art_crop/front/7/1/715e637a-dfd8-45a0-b1ea-53e4abd29307.jpg?1592517669",
         "border_crop": "https://cards.scryfall.io/border_crop/front/7/1/715e637a-dfd8-45a0-b1ea-53e4abd29307.jpg?1592517669"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Mox Opal",
@@ -295,7 +311,17 @@
         "png": "https://cards.scryfall.io/png/front/6/b/6be9b1d5-9ab8-4adb-ba54-2c0117e842fa.png?1562818716",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/b/6be9b1d5-9ab8-4adb-ba54-2c0117e842fa.jpg?1562818716",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/b/6be9b1d5-9ab8-4adb-ba54-2c0117e842fa.jpg?1562818716"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Mox Opal",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Quicksilver Lapidary",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Tolarian Academy",
@@ -324,7 +350,8 @@
         "png": "https://cards.scryfall.io/png/front/a/d/ad7ac9a5-340f-4509-826c-7b9416d47887.png?1562931623",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/d/ad7ac9a5-340f-4509-826c-7b9416d47887.jpg?1562931623",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/d/ad7ac9a5-340f-4509-826c-7b9416d47887.jpg?1562931623"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Mana Vault",
@@ -349,7 +376,8 @@
         "png": "https://cards.scryfall.io/png/front/5/c/5cbc686e-a8ef-40de-b79a-803ef42f8384.png?1559596660",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/c/5cbc686e-a8ef-40de-b79a-803ef42f8384.jpg?1559596660",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/c/5cbc686e-a8ef-40de-b79a-803ef42f8384.jpg?1559596660"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Ancestral Recall",
@@ -378,7 +406,8 @@
         "png": "https://cards.scryfall.io/png/front/2/d/2dd41293-d7c8-4422-9f0c-b3e96350f5c9.png?1559592144",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/d/2dd41293-d7c8-4422-9f0c-b3e96350f5c9.jpg?1559592144",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/d/2dd41293-d7c8-4422-9f0c-b3e96350f5c9.jpg?1559592144"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Black Lotus",
@@ -403,7 +432,8 @@
         "png": "https://cards.scryfall.io/png/front/4/a/4a2e428c-dd25-484c-bbc8-2d6ce10ef42c.png?1559591808",
         "art_crop": "https://cards.scryfall.io/art_crop/front/4/a/4a2e428c-dd25-484c-bbc8-2d6ce10ef42c.jpg?1559591808",
         "border_crop": "https://cards.scryfall.io/border_crop/front/4/a/4a2e428c-dd25-484c-bbc8-2d6ce10ef42c.jpg?1559591808"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Mox Emerald",
@@ -430,7 +460,17 @@
         "png": "https://cards.scryfall.io/png/front/a/4/a4db5af2-9caf-4493-b340-6d64021139e2.png?1559592068",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/4/a4db5af2-9caf-4493-b340-6d64021139e2.jpg?1559592068",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/4/a4db5af2-9caf-4493-b340-6d64021139e2.jpg?1559592068"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Mox Emerald",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Emerald Collector",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Mox Sapphire",
@@ -457,7 +497,17 @@
         "png": "https://cards.scryfall.io/png/front/f/7/f7d82f1d-631e-4668-9d10-7bf0ee515267.png?1559592066",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/7/f7d82f1d-631e-4668-9d10-7bf0ee515267.jpg?1559592066",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/7/f7d82f1d-631e-4668-9d10-7bf0ee515267.jpg?1559592066"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Sapphire Collector",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Mox Sapphire",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Mox Pearl",
@@ -484,7 +534,17 @@
         "png": "https://cards.scryfall.io/png/front/c/8/c84e8a0e-49a7-46f6-8a37-910e32753528.png?1559592233",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/8/c84e8a0e-49a7-46f6-8a37-910e32753528.jpg?1559592233",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/8/c84e8a0e-49a7-46f6-8a37-910e32753528.jpg?1559592233"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Mox Pearl",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Pearl Collector",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Mox Jet",
@@ -511,7 +571,17 @@
         "png": "https://cards.scryfall.io/png/front/7/0/70d6c02e-0f48-4fb0-94f3-1fc92ee1814f.png?1559591936",
         "art_crop": "https://cards.scryfall.io/art_crop/front/7/0/70d6c02e-0f48-4fb0-94f3-1fc92ee1814f.jpg?1559591936",
         "border_crop": "https://cards.scryfall.io/border_crop/front/7/0/70d6c02e-0f48-4fb0-94f3-1fc92ee1814f.jpg?1559591936"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Mox Jet",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Jet Collector",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Mox Ruby",
@@ -538,7 +608,17 @@
         "png": "https://cards.scryfall.io/png/front/2/1/21b7cbae-6647-4f36-b02d-5535ac88b1a6.png?1559592252",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/1/21b7cbae-6647-4f36-b02d-5535ac88b1a6.jpg?1559592252",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/1/21b7cbae-6647-4f36-b02d-5535ac88b1a6.jpg?1559592252"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Ruby Collector",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Mox Ruby",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Time Walk",
@@ -567,7 +647,8 @@
         "png": "https://cards.scryfall.io/png/front/a/d/ade7d00d-4e7b-46e9-ace1-63f628a589fc.png?1559592011",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/d/ade7d00d-4e7b-46e9-ace1-63f628a589fc.jpg?1559592011",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/d/ade7d00d-4e7b-46e9-ace1-63f628a589fc.jpg?1559592011"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Time Vault",
@@ -592,7 +673,8 @@
         "png": "https://cards.scryfall.io/png/front/0/b/0b64dd0f-2e99-41bd-87aa-f623582d64d0.png?1742288380",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/b/0b64dd0f-2e99-41bd-87aa-f623582d64d0.jpg?1742288380",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/b/0b64dd0f-2e99-41bd-87aa-f623582d64d0.jpg?1742288380"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Urza's Saga",
@@ -621,7 +703,17 @@
         "png": "https://cards.scryfall.io/png/front/c/1/c1e0f201-42cb-46a1-901a-65bb4fc18f6c.png?1667318301",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/1/c1e0f201-42cb-46a1-901a-65bb4fc18f6c.jpg?1667318301",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/1/c1e0f201-42cb-46a1-901a-65bb4fc18f6c.jpg?1667318301"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Urza's Saga",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Construct",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Sol Ring",
@@ -646,7 +738,8 @@
         "png": "https://cards.scryfall.io/png/front/e/1/e1187999-521d-4ed0-8673-6eb8f3c58bb8.png?1673485469",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/1/e1187999-521d-4ed0-8673-6eb8f3c58bb8.jpg?1673485469",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/1/e1187999-521d-4ed0-8673-6eb8f3c58bb8.jpg?1673485469"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Lodestone Golem",
@@ -676,7 +769,8 @@
         "png": "https://cards.scryfall.io/png/front/0/3/03bf39c3-9e25-42dc-8538-f903eceb0a74.png?1674091995",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/3/03bf39c3-9e25-42dc-8538-f903eceb0a74.jpg?1674091995",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/3/03bf39c3-9e25-42dc-8538-f903eceb0a74.jpg?1674091995"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Trinisphere",
@@ -701,7 +795,8 @@
         "png": "https://cards.scryfall.io/png/front/5/2/52ea8286-225b-4990-981a-6b8c49748794.png?1774863282",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/2/52ea8286-225b-4990-981a-6b8c49748794.jpg?1774863282",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/2/52ea8286-225b-4990-981a-6b8c49748794.jpg?1774863282"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Vexing Bauble",
@@ -726,7 +821,8 @@
         "png": "https://cards.scryfall.io/png/front/2/9/29f11089-658f-42e6-aeb0-09b512ad2479.png?1734350193",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/9/29f11089-658f-42e6-aeb0-09b512ad2479.jpg?1734350193",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/9/29f11089-658f-42e6-aeb0-09b512ad2479.jpg?1734350193"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Karn, the Great Creator",
@@ -755,7 +851,8 @@
         "png": "https://cards.scryfall.io/png/front/e/e/ee243dbe-83ee-40af-8e26-c1528166ef5a.png?1723251375",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/e/ee243dbe-83ee-40af-8e26-c1528166ef5a.jpg?1723251375",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/e/ee243dbe-83ee-40af-8e26-c1528166ef5a.jpg?1723251375"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Tinker",
@@ -784,7 +881,8 @@
         "png": "https://cards.scryfall.io/png/front/f/f/ff616131-289b-4eec-bef0-5f519d5a81a5.png?1778093339",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/f/ff616131-289b-4eec-bef0-5f519d5a81a5.jpg?1778093339",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/f/ff616131-289b-4eec-bef0-5f519d5a81a5.jpg?1778093339"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Grim Monolith",
@@ -809,7 +907,8 @@
         "png": "https://cards.scryfall.io/png/front/9/d/9ddc9fe1-17c8-4e1d-aeb8-c4214e881280.png?1562863767",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/d/9ddc9fe1-17c8-4e1d-aeb8-c4214e881280.jpg?1562863767",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/d/9ddc9fe1-17c8-4e1d-aeb8-c4214e881280.jpg?1562863767"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Tezzeret, Cruel Captain",
@@ -838,7 +937,17 @@
         "png": "https://cards.scryfall.io/png/front/0/2/02e8e540-8aa3-4e6a-9a11-c3949cab5f0f.png?1754473212",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/2/02e8e540-8aa3-4e6a-9a11-c3949cab5f0f.jpg?1754473212",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/2/02e8e540-8aa3-4e6a-9a11-c3949cab5f0f.jpg?1754473212"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Tezzeret, Cruel Captain",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Tezzeret, Cruel Captain Emblem",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Talon Gates of Madara",
@@ -865,7 +974,8 @@
         "png": "https://cards.scryfall.io/png/front/c/5/c565f8fe-acf7-40dd-8100-8f692d1e232c.png?1721159065",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/5/c565f8fe-acf7-40dd-8100-8f692d1e232c.jpg?1721159065",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/5/c565f8fe-acf7-40dd-8100-8f692d1e232c.jpg?1721159065"
-      }
+      },
+      "allParts": []
     }
   ]
 }

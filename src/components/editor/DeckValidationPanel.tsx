@@ -24,10 +24,17 @@ export function DeckValidationPanel() {
 
   return (
     <div className="border-t border-destructive/30 bg-destructive/5 shrink-0">
-      <button
-        type="button"
-        className="flex items-center gap-1.5 w-full px-3 py-2 hover:bg-destructive/10 transition-colors text-left"
+      <div
+        role="button"
+        tabIndex={0}
+        className="flex items-center gap-1.5 w-full px-3 py-2 hover:bg-destructive/10 transition-colors text-left cursor-pointer"
         onClick={() => setCollapsed((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setCollapsed((v) => !v);
+          }
+        }}
       >
         {collapsed ? (
           <ChevronRight className="h-3 w-3 text-destructive/60 shrink-0" />
@@ -39,7 +46,7 @@ export function DeckValidationPanel() {
           {count} {count === 1 ? "issue" : "issues"}
         </span>
         <span className="text-xs text-destructive/60">for {format.name}</span>
-      </button>
+      </div>
       {!collapsed && (
         <ul className="px-3 pb-2 space-y-0.5 ml-5">
           {validation.errors.map((err, i) => (

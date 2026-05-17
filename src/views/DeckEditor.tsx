@@ -15,10 +15,10 @@ import {
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { DROP_ZONE, DEFAULT_DECK_NAME } from "@/lib/constants";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DeckCard } from "@/types/manabrew";
 import { CardThumbnail } from "@/components/editor/deckEditor.primitives";
-import { useBlocker, useLocation } from "react-router";
+import { useBlocker, useLocation, useSearchParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -65,9 +65,7 @@ export default function DeckEditor() {
   const navigate = useNavigate();
 
   function handleOpenPreset(deck: DeckType) {
-    loadPresetDeck(deck);
-    setStateView("editor");
-    setReadonlyEnteredInPage(true);
+    setSearchParams({ deck: `preset:${deck.id ?? deck.name}` });
   }
 
   const presetSavedDecksUnfiltered: SavedDeck[] = presetDecks.map((deck) => ({
@@ -94,6 +92,8 @@ export default function DeckEditor() {
   }
   const hasUnsavedChanges = useDeckUnsavedChanges();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentDeckId = useDeckStore((s) => s.currentDeckId);
 
   const [stateView, setStateView] = useState<"list" | "editor">(() => {
     if (useDeckStore.getState().isReadOnly) return "editor";
@@ -126,6 +126,42 @@ export default function DeckEditor() {
     };
   }, []);
 
+  const restoredParamRef = useRef<string | null>(null);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const deckParam = searchParams.get("deck");
+    if (!deckParam) {
+      restoredParamRef.current = null;
+      return;
+    }
+    if (restoredParamRef.current === deckParam) return;
+
+    if (deckParam.startsWith("preset:")) {
+      const presetId = deckParam.slice("preset:".length);
+      const preset = presetDecks.find((d) => (d.id ?? d.name) === presetId);
+      if (!preset) return;
+      loadPresetDeck(preset);
+      setReadonlyEnteredInPage(true);
+      setStateView("editor");
+      restoredParamRef.current = deckParam;
+      return;
+    }
+
+    const saved = savedDecks.find((s) => s.id === deckParam);
+    if (!saved) return;
+    loadSavedDeck(deckParam);
+    setStateView("editor");
+    restoredParamRef.current = deckParam;
+  }, [searchParams, presetDecks, savedDecks, loadPresetDeck, loadSavedDeck]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    if (isReadOnly ? false : stateView !== "editor") return;
+    if (!currentDeckId) return;
+    if (searchParams.get("deck") === currentDeckId) return;
+    setSearchParams({ deck: currentDeckId }, { replace: true });
+  }, [currentDeckId, stateView, isReadOnly, searchParams, setSearchParams]);
+
   // ── Deck list handlers ────────────────────────────────────────────────────
 
   function toggleColor(color: string) {
@@ -144,11 +180,11 @@ export default function DeckEditor() {
   });
 
   function handleSelectDeck(id: string) {
-    loadSavedDeck(id);
-    setView("editor");
+    setSearchParams({ deck: id });
   }
 
   function handleNewDeck() {
+    setSearchParams({});
     clearDeck();
     setDeckName(DEFAULT_DECK_NAME);
     setView("editor");
@@ -159,6 +195,7 @@ export default function DeckEditor() {
       useDeckStore.getState().clearDeck();
       if (readonlyEnteredInPage) {
         setReadonlyEnteredInPage(false);
+        setSearchParams({});
         setView("list");
       } else {
         navigate(-1);
@@ -168,6 +205,7 @@ export default function DeckEditor() {
     if (hasUnsavedChanges) {
       setShowBackConfirm(true);
     } else {
+      setSearchParams({});
       setView("list");
     }
   }
@@ -485,6 +523,7 @@ export default function DeckEditor() {
                 onClick={() => {
                   revertDeckToLastSaved();
                   setShowBackConfirm(false);
+                  setSearchParams({});
                   setView("list");
                 }}
               >

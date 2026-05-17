@@ -34,7 +34,17 @@
         "png": "https://cards.scryfall.io/png/front/d/d/dd03651e-ada0-41dc-8722-0eba476943e3.png?1643589142",
         "art_crop": "https://cards.scryfall.io/art_crop/front/d/d/dd03651e-ada0-41dc-8722-0eba476943e3.jpg?1643589142",
         "border_crop": "https://cards.scryfall.io/border_crop/front/d/d/dd03651e-ada0-41dc-8722-0eba476943e3.jpg?1643589142"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Blood",
+          "component": "token"
+        },
+        {
+          "name": "Blood Fountain",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Cast Down",
@@ -63,7 +73,8 @@
         "png": "https://cards.scryfall.io/png/front/a/b/aba79021-39af-4e74-beb5-f2f508c865b2.png?1674136020",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/b/aba79021-39af-4e74-beb5-f2f508c865b2.jpg?1674136020",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/b/aba79021-39af-4e74-beb5-f2f508c865b2.jpg?1674136020"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Cleansing Wildfire",
@@ -92,7 +103,8 @@
         "png": "https://cards.scryfall.io/png/front/4/9/492d77e5-acc6-41b8-8930-f39d69234919.png?1604196948",
         "art_crop": "https://cards.scryfall.io/art_crop/front/4/9/492d77e5-acc6-41b8-8930-f39d69234919.jpg?1604196948",
         "border_crop": "https://cards.scryfall.io/border_crop/front/4/9/492d77e5-acc6-41b8-8930-f39d69234919.jpg?1604196948"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Drossforge Bridge",
@@ -121,7 +133,8 @@
         "png": "https://cards.scryfall.io/png/front/5/b/5b46b8d8-723a-4752-b97d-29ef83bd294c.png?1626099621",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/b/5b46b8d8-723a-4752-b97d-29ef83bd294c.jpg?1626099621",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/b/5b46b8d8-723a-4752-b97d-29ef83bd294c.jpg?1626099621"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Eviscerator's Insight",
@@ -150,7 +163,8 @@
         "png": "https://cards.scryfall.io/png/front/b/0/b00573bd-5bbb-4531-a0bb-a40f62b92b88.png?1717011960",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/0/b00573bd-5bbb-4531-a0bb-a40f62b92b88.jpg?1717011960",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/0/b00573bd-5bbb-4531-a0bb-a40f62b92b88.jpg?1717011960"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Fanatical Offering",
@@ -179,7 +193,17 @@
         "png": "https://cards.scryfall.io/png/front/d/8/d896dd52-b134-4b55-ab91-ccb05ecc50f4.png?1699044130",
         "art_crop": "https://cards.scryfall.io/art_crop/front/d/8/d896dd52-b134-4b55-ab91-ccb05ecc50f4.jpg?1699044130",
         "border_crop": "https://cards.scryfall.io/border_crop/front/d/8/d896dd52-b134-4b55-ab91-ccb05ecc50f4.jpg?1699044130"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Fanatical Offering",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Map",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Forest",
@@ -210,7 +234,17 @@
         "png": "https://cards.scryfall.io/png/front/3/2/3279314f-d639-4489-b2ab-3621bb3ca64b.png?1594737877",
         "art_crop": "https://cards.scryfall.io/art_crop/front/3/2/3279314f-d639-4489-b2ab-3621bb3ca64b.jpg?1594737877",
         "border_crop": "https://cards.scryfall.io/border_crop/front/3/2/3279314f-d639-4489-b2ab-3621bb3ca64b.jpg?1594737877"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Forest",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Gilt-Leaf Alchemist",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Galvanic Blast",
@@ -239,7 +273,8 @@
         "png": "https://cards.scryfall.io/png/front/0/c/0cf8cb1e-314a-4894-82df-f9812825f52e.png?1599706326",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/c/0cf8cb1e-314a-4894-82df-f9812825f52e.jpg?1599706326",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/c/0cf8cb1e-314a-4894-82df-f9812825f52e.jpg?1599706326"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Ichor Wellspring",
@@ -264,7 +299,8 @@
         "png": "https://cards.scryfall.io/png/front/1/c/1ccdb407-ac8f-4736-89d3-ab0d086096ea.png?1625978684",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/c/1ccdb407-ac8f-4736-89d3-ab0d086096ea.jpg?1625978684",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/c/1ccdb407-ac8f-4736-89d3-ab0d086096ea.jpg?1625978684"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Krark-Clan Shaman",
@@ -298,7 +334,8 @@
         "png": "https://cards.scryfall.io/png/front/9/7/975f9ea8-af2c-456f-acd0-ffa9ea0d98c1.png?1562151699",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/7/975f9ea8-af2c-456f-acd0-ffa9ea0d98c1.jpg?1562151699",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/7/975f9ea8-af2c-456f-acd0-ffa9ea0d98c1.jpg?1562151699"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Lembas",
@@ -325,7 +362,8 @@
         "png": "https://cards.scryfall.io/png/front/3/b/3b46aacf-b31a-4380-9e4b-82795fbaba3b.png?1686970202",
         "art_crop": "https://cards.scryfall.io/art_crop/front/3/b/3b46aacf-b31a-4380-9e4b-82795fbaba3b.jpg?1686970202",
         "border_crop": "https://cards.scryfall.io/border_crop/front/3/b/3b46aacf-b31a-4380-9e4b-82795fbaba3b.jpg?1686970202"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Makeshift Munitions",
@@ -354,7 +392,8 @@
         "png": "https://cards.scryfall.io/png/front/6/0/60715b6d-b223-431a-85d8-27d7c05469b2.png?1689998038",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/0/60715b6d-b223-431a-85d8-27d7c05469b2.jpg?1689998038",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/0/60715b6d-b223-431a-85d8-27d7c05469b2.jpg?1689998038"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Mountain",
@@ -385,7 +424,8 @@
         "png": "https://cards.scryfall.io/png/front/b/9/b92c8925-ecfc-4ece-b83a-f12e98a938ab.png?1594737848",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/9/b92c8925-ecfc-4ece-b83a-f12e98a938ab.jpg?1594737848",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/9/b92c8925-ecfc-4ece-b83a-f12e98a938ab.jpg?1594737848"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Nihil Spellbomb",
@@ -412,7 +452,8 @@
         "png": "https://cards.scryfall.io/png/front/e/5/e5892a23-efae-4731-9b8f-41c87960fe93.png?1562442193",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/5/e5892a23-efae-4731-9b8f-41c87960fe93.jpg?1562442193",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/5/e5892a23-efae-4731-9b8f-41c87960fe93.jpg?1562442193"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Nyxborn Hydra",
@@ -446,7 +487,8 @@
         "png": "https://cards.scryfall.io/png/front/9/0/902a969e-9f22-4e92-93eb-9d4536ca82e5.png?1717012540",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/0/902a969e-9f22-4e92-93eb-9d4536ca82e5.jpg?1717012540",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/0/902a969e-9f22-4e92-93eb-9d4536ca82e5.jpg?1717012540"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Pulse of Murasa",
@@ -475,7 +517,8 @@
         "png": "https://cards.scryfall.io/png/front/a/4/a4b9f8f4-d704-4f16-8495-cf8185285859.png?1625977175",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/4/a4b9f8f4-d704-4f16-8495-cf8185285859.jpg?1625977175",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/4/a4b9f8f4-d704-4f16-8495-cf8185285859.jpg?1625977175"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Refurbished Familiar",
@@ -510,7 +553,8 @@
         "png": "https://cards.scryfall.io/png/front/b/3/b338e078-629c-4cac-bd1d-e1f0a132728d.png?1717012055",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/3/b338e078-629c-4cac-bd1d-e1f0a132728d.jpg?1717012055",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/3/b338e078-629c-4cac-bd1d-e1f0a132728d.jpg?1717012055"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Slagwoods Bridge",
@@ -539,7 +583,8 @@
         "png": "https://cards.scryfall.io/png/front/e/5/e51b48e9-a75a-4acd-9462-5e1ac2b0d803.png?1626099860",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/5/e51b48e9-a75a-4acd-9462-5e1ac2b0d803.jpg?1626099860",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/5/e51b48e9-a75a-4acd-9462-5e1ac2b0d803.jpg?1626099860"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Swamp",
@@ -570,7 +615,8 @@
         "png": "https://cards.scryfall.io/png/front/3/0/30b3d647-3546-4ade-b395-f2370750a7a6.png?1594737824",
         "art_crop": "https://cards.scryfall.io/art_crop/front/3/0/30b3d647-3546-4ade-b395-f2370750a7a6.jpg?1594737824",
         "border_crop": "https://cards.scryfall.io/border_crop/front/3/0/30b3d647-3546-4ade-b395-f2370750a7a6.jpg?1594737824"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Toxin Analysis",
@@ -599,7 +645,17 @@
         "png": "https://cards.scryfall.io/png/front/0/e/0eda1aff-c1f4-4171-a800-605396cc8168.png?1706241766",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/e/0eda1aff-c1f4-4171-a800-605396cc8168.jpg?1706241766",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/e/0eda1aff-c1f4-4171-a800-605396cc8168.jpg?1706241766"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Toxin Analysis",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Clue",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Twisted Landscape",
@@ -628,7 +684,8 @@
         "png": "https://cards.scryfall.io/png/front/d/0/d0e3e7b3-7ba9-47a2-b46c-a40bffb445e2.png?1717013079",
         "art_crop": "https://cards.scryfall.io/art_crop/front/d/0/d0e3e7b3-7ba9-47a2-b46c-a40bffb445e2.jpg?1717013079",
         "border_crop": "https://cards.scryfall.io/border_crop/front/d/0/d0e3e7b3-7ba9-47a2-b46c-a40bffb445e2.jpg?1717013079"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Vault of Whispers",
@@ -656,7 +713,8 @@
         "png": "https://cards.scryfall.io/png/front/e/8/e85e4098-f872-4aa4-a71a-208b6090be28.png?1726285577",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/8/e85e4098-f872-4aa4-a71a-208b6090be28.jpg?1726285577",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/8/e85e4098-f872-4aa4-a71a-208b6090be28.jpg?1726285577"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Writhing Chrysalis",
@@ -689,7 +747,17 @@
         "png": "https://cards.scryfall.io/png/front/f/5/f54dbeb1-51f8-40e2-912a-ec25457de5a2.png?1717012884",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/5/f54dbeb1-51f8-40e2-912a-ec25457de5a2.jpg?1717012884",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/5/f54dbeb1-51f8-40e2-912a-ec25457de5a2.jpg?1717012884"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Eldrazi Spawn",
+          "component": "token"
+        },
+        {
+          "name": "Writhing Chrysalis",
+          "component": "combo_piece"
+        }
+      ]
     }
   ]
 }

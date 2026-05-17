@@ -48,7 +48,8 @@
         "png": "https://cards.scryfall.io/png/front/8/4/84c3b38c-a6f7-49a2-8c47-d91b6be0a967.png?1673305287",
         "art_crop": "https://cards.scryfall.io/art_crop/front/8/4/84c3b38c-a6f7-49a2-8c47-d91b6be0a967.jpg?1673305287",
         "border_crop": "https://cards.scryfall.io/border_crop/front/8/4/84c3b38c-a6f7-49a2-8c47-d91b6be0a967.jpg?1673305287"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Dark Ritual",
@@ -77,7 +78,8 @@
         "png": "https://cards.scryfall.io/png/front/f/a/fae25afd-0d16-431c-a85e-7ac91cef9050.png?1562595423",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/a/fae25afd-0d16-431c-a85e-7ac91cef9050.jpg?1562595423",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/a/fae25afd-0d16-431c-a85e-7ac91cef9050.jpg?1562595423"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Ulamog's Crusher",
@@ -106,7 +108,8 @@
         "png": "https://cards.scryfall.io/png/front/7/6/76bacedb-9fa8-4a21-b0eb-e7ead64360b4.png?1562705241",
         "art_crop": "https://cards.scryfall.io/art_crop/front/7/6/76bacedb-9fa8-4a21-b0eb-e7ead64360b4.jpg?1562705241",
         "border_crop": "https://cards.scryfall.io/border_crop/front/7/6/76bacedb-9fa8-4a21-b0eb-e7ead64360b4.jpg?1562705241"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Insolent Neonate",
@@ -139,7 +142,8 @@
         "png": "https://cards.scryfall.io/png/front/8/1/813104f6-e6e4-4709-8626-12fe4262a11f.png?1576384817",
         "art_crop": "https://cards.scryfall.io/art_crop/front/8/1/813104f6-e6e4-4709-8626-12fe4262a11f.jpg?1576384817",
         "border_crop": "https://cards.scryfall.io/border_crop/front/8/1/813104f6-e6e4-4709-8626-12fe4262a11f.jpg?1576384817"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Lotus Petal",
@@ -164,7 +168,8 @@
         "png": "https://cards.scryfall.io/png/front/6/c/6c877da3-68fa-41d0-8a24-8c79fcd8ecc1.png?1562054466",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/c/6c877da3-68fa-41d0-8a24-8c79fcd8ecc1.jpg?1562054466",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/c/6c877da3-68fa-41d0-8a24-8c79fcd8ecc1.jpg?1562054466"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Funeral Charm",
@@ -193,7 +198,8 @@
         "png": "https://cards.scryfall.io/png/front/e/7/e79d7240-2014-4838-bace-80666192a73e.png?1562279103",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/7/e79d7240-2014-4838-bace-80666192a73e.jpg?1562279103",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/7/e79d7240-2014-4838-bace-80666192a73e.jpg?1562279103"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Dread Return",
@@ -222,7 +228,8 @@
         "png": "https://cards.scryfall.io/png/front/9/6/96aa9e00-e73e-4a6e-9607-77533aac4be4.png?1598304655",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/6/96aa9e00-e73e-4a6e-9607-77533aac4be4.jpg?1598304655",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/6/96aa9e00-e73e-4a6e-9607-77533aac4be4.jpg?1598304655"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Exhume",
@@ -251,7 +258,8 @@
         "png": "https://cards.scryfall.io/png/front/5/f/5f1cdcba-a04a-4a2f-8bc1-0dd7fa03754d.png?1600714444",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/f/5f1cdcba-a04a-4a2f-8bc1-0dd7fa03754d.jpg?1600714444",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/f/5f1cdcba-a04a-4a2f-8bc1-0dd7fa03754d.jpg?1600714444"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Resentful Revelation",
@@ -280,7 +288,8 @@
         "png": "https://cards.scryfall.io/png/front/9/4/945006ea-c6a1-4ee5-abb2-387c2b6d3123.png?1748706186",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/4/945006ea-c6a1-4ee5-abb2-387c2b6d3123.jpg?1748706186",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/4/945006ea-c6a1-4ee5-abb2-387c2b6d3123.jpg?1748706186"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Bitter Reunion",
@@ -309,7 +318,8 @@
         "png": "https://cards.scryfall.io/png/front/3/4/345a1c80-41d6-43b1-83ab-1aa56dd06b1b.png?1674421082",
         "art_crop": "https://cards.scryfall.io/art_crop/front/3/4/345a1c80-41d6-43b1-83ab-1aa56dd06b1b.jpg?1674421082",
         "border_crop": "https://cards.scryfall.io/border_crop/front/3/4/345a1c80-41d6-43b1-83ab-1aa56dd06b1b.jpg?1674421082"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Rust Goliath",
@@ -341,7 +351,8 @@
         "png": "https://cards.scryfall.io/png/front/8/3/8348f73d-4226-4296-9d51-a2c497ee8270.png?1674421725",
         "art_crop": "https://cards.scryfall.io/art_crop/front/8/3/8348f73d-4226-4296-9d51-a2c497ee8270.jpg?1674421725",
         "border_crop": "https://cards.scryfall.io/border_crop/front/8/3/8348f73d-4226-4296-9d51-a2c497ee8270.jpg?1674421725"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Mountain",
@@ -372,7 +383,8 @@
         "png": "https://cards.scryfall.io/png/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.png?1730486024",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.jpg?1730486024",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.jpg?1730486024"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Swamp",
@@ -403,7 +415,8 @@
         "png": "https://cards.scryfall.io/png/front/0/2/02fe3fdf-1d21-4e35-b0f3-3bcde7b05e23.png?1730486023",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/2/02fe3fdf-1d21-4e35-b0f3-3bcde7b05e23.jpg?1730486023",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/2/02fe3fdf-1d21-4e35-b0f3-3bcde7b05e23.jpg?1730486023"
-      }
+      },
+      "allParts": []
     }
   ]
 }

@@ -36,7 +36,8 @@
         "png": "https://cards.scryfall.io/png/front/b/7/b7b598d0-535d-477d-a33d-d6a10ff5439a.png?1572894184",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/7/b7b598d0-535d-477d-a33d-d6a10ff5439a.jpg?1572894184",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/7/b7b598d0-535d-477d-a33d-d6a10ff5439a.jpg?1572894184"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Seasoned Pyromancer",
@@ -70,7 +71,17 @@
         "png": "https://cards.scryfall.io/png/front/1/4/1427f615-8430-426e-a669-f9fe12033ac4.png?1673147897",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/4/1427f615-8430-426e-a669-f9fe12033ac4.jpg?1673147897",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/4/1427f615-8430-426e-a669-f9fe12033ac4.jpg?1673147897"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Seasoned Pyromancer",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Elemental",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Goblin Bombardment",
@@ -99,7 +110,8 @@
         "png": "https://cards.scryfall.io/png/front/e/9/e92af114-ad34-4106-a7fa-5676dbcd4960.png?1692932670",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/9/e92af114-ad34-4106-a7fa-5676dbcd4960.jpg?1692932670",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/9/e92af114-ad34-4106-a7fa-5676dbcd4960.jpg?1692932670"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Thraben Charm",
@@ -128,7 +140,8 @@
         "png": "https://cards.scryfall.io/png/front/d/d/dd28a646-f38f-4cdf-948c-969cd979e5e6.png?1717011565",
         "art_crop": "https://cards.scryfall.io/art_crop/front/d/d/dd28a646-f38f-4cdf-948c-969cd979e5e6.jpg?1717011565",
         "border_crop": "https://cards.scryfall.io/border_crop/front/d/d/dd28a646-f38f-4cdf-948c-969cd979e5e6.jpg?1717011565"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Arena of Glory",
@@ -155,7 +168,8 @@
         "png": "https://cards.scryfall.io/png/front/d/d/dd148edc-9e43-41aa-bb50-f912115d3e72.png?1717047864",
         "art_crop": "https://cards.scryfall.io/art_crop/front/d/d/dd148edc-9e43-41aa-bb50-f912115d3e72.jpg?1717047864",
         "border_crop": "https://cards.scryfall.io/border_crop/front/d/d/dd148edc-9e43-41aa-bb50-f912115d3e72.jpg?1717047864"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Arid Mesa",
@@ -180,7 +194,8 @@
         "png": "https://cards.scryfall.io/png/front/c/9/c9a8cc61-7e36-4df7-9c89-c32fce129c5a.png?1593814974",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/9/c9a8cc61-7e36-4df7-9c89-c32fce129c5a.jpg?1593814974",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/9/c9a8cc61-7e36-4df7-9c89-c32fce129c5a.jpg?1593814974"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Marsh Flats",
@@ -205,7 +220,8 @@
         "png": "https://cards.scryfall.io/png/front/6/5/659039ed-c269-4c2d-bce6-91d143f0618e.png?1593815053",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/5/659039ed-c269-4c2d-bce6-91d143f0618e.jpg?1593815053",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/5/659039ed-c269-4c2d-bce6-91d143f0618e.jpg?1593815053"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Ragavan, Nimble Pilferer",
@@ -241,7 +257,21 @@
         "png": "https://cards.scryfall.io/png/front/f/c/fc898fec-4cc6-4587-b556-c5a8d38ccbd0.png?1682347338",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/c/fc898fec-4cc6-4587-b556-c5a8d38ccbd0.jpg?1682347338",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/c/fc898fec-4cc6-4587-b556-c5a8d38ccbd0.jpg?1682347338"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Ragavan, Nimble Pilferer",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Kari Zev, Crew of Two",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Ajani, Nacatl Pariah // Ajani, Nacatl Avenger",
@@ -278,7 +308,17 @@
         "png": "https://cards.scryfall.io/png/front/0/d/0d16e8e0-31b2-4389-afd6-783c501f6fa0.png?1770635063",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/d/0d16e8e0-31b2-4389-afd6-783c501f6fa0.jpg?1770635063",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/d/0d16e8e0-31b2-4389-afd6-783c501f6fa0.jpg?1770635063"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Ajani, Nacatl Pariah // Ajani, Nacatl Avenger",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Cat Warrior",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Windswept Heath",
@@ -303,7 +343,8 @@
         "png": "https://cards.scryfall.io/png/front/b/d/bd1d13f7-fd38-4f0b-a8e0-1eac78668117.png?1717013102",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/d/bd1d13f7-fd38-4f0b-a8e0-1eac78668117.jpg?1717013102",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/d/bd1d13f7-fd38-4f0b-a8e0-1eac78668117.jpg?1717013102"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Galvanic Discharge",
@@ -332,7 +373,21 @@
         "png": "https://cards.scryfall.io/png/front/3/2/32aa6e33-221f-414c-9b51-850d97a7e051.png?1717012186",
         "art_crop": "https://cards.scryfall.io/art_crop/front/3/2/32aa6e33-221f-414c-9b51-850d97a7e051.jpg?1717012186",
         "border_crop": "https://cards.scryfall.io/border_crop/front/3/2/32aa6e33-221f-414c-9b51-850d97a7e051.jpg?1717012186"
-      }
+      },
+      "allParts": [
+        {
+          "name": "A-Galvanic Discharge",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Energy Reserve",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Galvanic Discharge",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Guide of Souls",
@@ -366,7 +421,21 @@
         "png": "https://cards.scryfall.io/png/front/7/6/76c3cad2-1e25-4abe-878d-9194de6fcc27.png?1763472842",
         "art_crop": "https://cards.scryfall.io/art_crop/front/7/6/76c3cad2-1e25-4abe-878d-9194de6fcc27.jpg?1763472842",
         "border_crop": "https://cards.scryfall.io/border_crop/front/7/6/76c3cad2-1e25-4abe-878d-9194de6fcc27.jpg?1763472842"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Energy Reserve",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Guide of Souls",
+          "component": "combo_piece"
+        },
+        {
+          "name": "A-Guide of Souls",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Phlage, Titan of Fire's Fury",
@@ -404,7 +473,8 @@
         "png": "https://cards.scryfall.io/png/front/e/4/e419cd0b-2449-4cc5-9ead-b9e45e271700.png?1717012789",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/4/e419cd0b-2449-4cc5-9ead-b9e45e271700.jpg?1717012789",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/4/e419cd0b-2449-4cc5-9ead-b9e45e271700.jpg?1717012789"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Ocelot Pride",
@@ -437,7 +507,25 @@
         "png": "https://cards.scryfall.io/png/front/8/9/89cf6f57-230f-497e-a14e-ad1e8737fd42.png?1717011506",
         "art_crop": "https://cards.scryfall.io/art_crop/front/8/9/89cf6f57-230f-497e-a14e-ad1e8737fd42.jpg?1717011506",
         "border_crop": "https://cards.scryfall.io/border_crop/front/8/9/89cf6f57-230f-497e-a14e-ad1e8737fd42.jpg?1717011506"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Cat",
+          "component": "token"
+        },
+        {
+          "name": "City's Blessing",
+          "component": "combo_piece"
+        },
+        {
+          "name": "A-Ocelot Pride",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Ocelot Pride",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Blood Moon",
@@ -482,7 +570,25 @@
         "png": "https://cards.scryfall.io/png/front/2/4/24c0d87b-0049-4beb-b9cb-6f813b7aa7dc.png?1691108103",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/4/24c0d87b-0049-4beb-b9cb-6f813b7aa7dc.jpg?1691108103",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/4/24c0d87b-0049-4beb-b9cb-6f813b7aa7dc.jpg?1691108103"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Goblin Shaman",
+          "component": "token"
+        },
+        {
+          "name": "Copy",
+          "component": "token"
+        },
+        {
+          "name": "Fable of the Mirror-Breaker // Reflection of Kiki-Jiki",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Mountain",
@@ -513,7 +619,8 @@
         "png": "https://cards.scryfall.io/png/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.png?1730486024",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.jpg?1730486024",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.jpg?1730486024"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Voice of Victory",
@@ -547,7 +654,17 @@
         "png": "https://cards.scryfall.io/png/front/e/c/ec3de5f4-bb55-4ab9-995f-f3e0dc22c1bb.png?1758215927",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/c/ec3de5f4-bb55-4ab9-995f-f3e0dc22c1bb.jpg?1758215927",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/c/ec3de5f4-bb55-4ab9-995f-f3e0dc22c1bb.jpg?1758215927"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Warrior",
+          "component": "token"
+        },
+        {
+          "name": "Voice of Victory",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "The Legend of Roku // Avatar Roku",
@@ -578,7 +695,17 @@
         "png": "https://cards.scryfall.io/png/front/9/5/95f2f5af-d405-4534-8683-5a9001f997b4.png?1770463856",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/5/95f2f5af-d405-4534-8683-5a9001f997b4.jpg?1770463856",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/5/95f2f5af-d405-4534-8683-5a9001f997b4.jpg?1770463856"
-      }
+      },
+      "allParts": [
+        {
+          "name": "The Legend of Roku // Avatar Roku",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Dragon",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Elegant Parlor",
@@ -609,7 +736,8 @@
         "png": "https://cards.scryfall.io/png/front/e/a/ea5bb98e-5438-44eb-adcb-56352c4df589.png?1707509743",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/a/ea5bb98e-5438-44eb-adcb-56352c4df589.jpg?1707509743",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/a/ea5bb98e-5438-44eb-adcb-56352c4df589.jpg?1707509743"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Plains",
@@ -640,7 +768,8 @@
         "png": "https://cards.scryfall.io/png/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.png?1730485996",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.jpg?1730485996",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.jpg?1730485996"
-      }
+      },
+      "allParts": []
     }
   ]
 }

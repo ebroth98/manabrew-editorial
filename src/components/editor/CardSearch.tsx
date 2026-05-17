@@ -1068,7 +1068,7 @@ export function CardSearch({ standalone, onClose, previewSlot }: CardSearchProps
       </ScrollArea>
 
       {detailCard && <CardDetailModal card={detailCard} onClose={() => setDetailCard(null)} />}
-      <HoverCardPreview preview={preview} slot={previewSlot} pinned />
+      <HoverCardPreview preview={preview} slot={previewSlot} pinned imageSize="normal" />
     </div>
   );
 }

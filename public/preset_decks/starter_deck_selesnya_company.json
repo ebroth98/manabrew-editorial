@@ -39,7 +39,17 @@
         "png": "https://cards.scryfall.io/png/front/1/f/1f8a1386-77ca-46ae-8987-aaed435556ea.png?1580014838",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/f/1f8a1386-77ca-46ae-8987-aaed435556ea.jpg?1580014838",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/f/1f8a1386-77ca-46ae-8987-aaed435556ea.jpg?1580014838"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Llanowar Elves",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Marwyn's Kindred",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Temple Garden",
@@ -70,7 +80,8 @@
         "png": "https://cards.scryfall.io/png/front/2/b/2b9b0195-beda-403e-bc27-7ae3be9f318c.png?1572894210",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/b/2b9b0195-beda-403e-bc27-7ae3be9f318c.jpg?1572894210",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/b/2b9b0195-beda-403e-bc27-7ae3be9f318c.jpg?1572894210"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Elvish Mystic",
@@ -104,7 +115,8 @@
         "png": "https://cards.scryfall.io/png/front/e/d/ed7a0227-ac70-40fb-8198-a55eacf913fa.png?1631234818",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/d/ed7a0227-ac70-40fb-8198-a55eacf913fa.jpg?1631234818",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/d/ed7a0227-ac70-40fb-8198-a55eacf913fa.jpg?1631234818"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Brushland",
@@ -132,7 +144,8 @@
         "png": "https://cards.scryfall.io/png/front/1/8/18d236ce-3b78-403a-b5f9-4fb44123d85b.png?1674422171",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/8/18d236ce-3b78-403a-b5f9-4fb44123d85b.jpg?1674422171",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/8/18d236ce-3b78-403a-b5f9-4fb44123d85b.jpg?1674422171"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Razorverge Thicket",
@@ -160,7 +173,8 @@
         "png": "https://cards.scryfall.io/png/front/6/5/65b26f68-3a25-4c4e-bc76-a199ab479a50.png?1675957278",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/5/65b26f68-3a25-4c4e-bc76-a199ab479a50.jpg?1675957278",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/5/65b26f68-3a25-4c4e-bc76-a199ab479a50.jpg?1675957278"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Archon of Emeria",
@@ -193,7 +207,8 @@
         "png": "https://cards.scryfall.io/png/front/1/9/192eab08-3fec-46cb-9237-2866e3bd08b8.png?1723226200",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/9/192eab08-3fec-46cb-9237-2866e3bd08b8.jpg?1723226200",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/9/192eab08-3fec-46cb-9237-2866e3bd08b8.jpg?1723226200"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Collected Company",
@@ -222,7 +237,8 @@
         "png": "https://cards.scryfall.io/png/front/f/4/f41a69ae-a0c4-4053-a795-940d76226e08.png?1723223463",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/4/f41a69ae-a0c4-4053-a795-940d76226e08.jpg?1723223463",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/4/f41a69ae-a0c4-4053-a795-940d76226e08.jpg?1723223463"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Enduring Innocence",
@@ -257,7 +273,8 @@
         "png": "https://cards.scryfall.io/png/front/0/8/08f79439-b8f8-418f-9772-26d81844749e.png?1726285879",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/8/08f79439-b8f8-418f-9772-26d81844749e.jpg?1726285879",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/8/08f79439-b8f8-418f-9772-26d81844749e.jpg?1726285879"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Badgermole Cub",
@@ -291,7 +308,8 @@
         "png": "https://cards.scryfall.io/png/front/3/4/340c5799-4964-44dd-8c48-8f3f3aba5211.png?1764121140",
         "art_crop": "https://cards.scryfall.io/art_crop/front/3/4/340c5799-4964-44dd-8c48-8f3f3aba5211.jpg?1764121140",
         "border_crop": "https://cards.scryfall.io/border_crop/front/3/4/340c5799-4964-44dd-8c48-8f3f3aba5211.jpg?1764121140"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Skyclave Apparition",
@@ -325,7 +343,17 @@
         "png": "https://cards.scryfall.io/png/front/e/6/e671de25-c47c-48a1-919b-6aa30dab142f.png?1775940818",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/6/e671de25-c47c-48a1-919b-6aa30dab142f.jpg?1775940818",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/6/e671de25-c47c-48a1-919b-6aa30dab142f.jpg?1775940818"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Skyclave Apparition",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Illusion",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Thalia, Guardian of Thraben",
@@ -361,7 +389,8 @@
         "png": "https://cards.scryfall.io/png/front/1/8/1830002a-b512-4e51-b3fa-0137d2b4c749.png?1644976580",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/8/1830002a-b512-4e51-b3fa-0137d2b4c749.jpg?1644976580",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/8/1830002a-b512-4e51-b3fa-0137d2b4c749.jpg?1644976580"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Plains",
@@ -392,7 +421,8 @@
         "png": "https://cards.scryfall.io/png/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.png?1730485996",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.jpg?1730485996",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.jpg?1730485996"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Ouroboroid",
@@ -426,7 +456,8 @@
         "png": "https://cards.scryfall.io/png/front/2/0/209c591a-4ab2-4e89-9523-a7b766cf4e51.png?1752947376",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/0/209c591a-4ab2-4e89-9523-a7b766cf4e51.jpg?1752947376",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/0/209c591a-4ab2-4e89-9523-a7b766cf4e51.jpg?1752947376"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Boseiju, Who Endures",
@@ -455,7 +486,8 @@
         "png": "https://cards.scryfall.io/png/front/2/1/2135ac5a-187b-4dc9-8f82-34e8d1603416.png?1654568912",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/1/2135ac5a-187b-4dc9-8f82-34e8d1603416.jpg?1654568912",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/1/2135ac5a-187b-4dc9-8f82-34e8d1603416.jpg?1654568912"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Eiganjo, Seat of the Empire",
@@ -484,7 +516,8 @@
         "png": "https://cards.scryfall.io/png/front/c/3/c375a022-5b57-496d-a802-e4ea8376e9e4.png?1654568932",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/3/c375a022-5b57-496d-a802-e4ea8376e9e4.jpg?1654568932",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/3/c375a022-5b57-496d-a802-e4ea8376e9e4.jpg?1654568932"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Forest",
@@ -515,7 +548,17 @@
         "png": "https://cards.scryfall.io/png/front/7/d/7df94d2c-7c1f-4461-8f70-c2bd4ebb95be.png?1730486044",
         "art_crop": "https://cards.scryfall.io/art_crop/front/7/d/7df94d2c-7c1f-4461-8f70-c2bd4ebb95be.jpg?1730486044",
         "border_crop": "https://cards.scryfall.io/border_crop/front/7/d/7df94d2c-7c1f-4461-8f70-c2bd4ebb95be.jpg?1730486044"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Forest",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Gilt-Leaf Alchemist",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "The Wandering Emperor",
@@ -546,7 +589,17 @@
         "png": "https://cards.scryfall.io/png/front/f/9/f90b3111-0a0d-4bc4-b4e2-fa9614b0ad7e.png?1675617748",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/9/f90b3111-0a0d-4bc4-b4e2-fa9614b0ad7e.jpg?1675617748",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/9/f90b3111-0a0d-4bc4-b4e2-fa9614b0ad7e.jpg?1675617748"
-      }
+      },
+      "allParts": [
+        {
+          "name": "The Wandering Emperor",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Samurai",
+          "component": "token"
+        }
+      ]
     },
     {
       "name": "Elspeth, Storm Slayer",
@@ -579,7 +632,17 @@
         "png": "https://cards.scryfall.io/png/front/7/3/73a065e3-b530-4e62-ab3c-4f6f908184ec.png?1743203994",
         "art_crop": "https://cards.scryfall.io/art_crop/front/7/3/73a065e3-b530-4e62-ab3c-4f6f908184ec.jpg?1743203994",
         "border_crop": "https://cards.scryfall.io/border_crop/front/7/3/73a065e3-b530-4e62-ab3c-4f6f908184ec.jpg?1743203994"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Soldier",
+          "component": "token"
+        },
+        {
+          "name": "Elspeth, Storm Slayer",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Starting Town",
@@ -606,7 +669,8 @@
         "png": "https://cards.scryfall.io/png/front/f/c/fc7d1912-7e27-49ef-bd98-375d975a42b0.png?1748706861",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/c/fc7d1912-7e27-49ef-bd98-375d975a42b0.jpg?1748706861",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/c/fc7d1912-7e27-49ef-bd98-375d975a42b0.jpg?1748706861"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Abandoned Air Temple",
@@ -633,7 +697,8 @@
         "png": "https://cards.scryfall.io/png/front/9/c/9c0433f9-8f1e-4a19-a83f-a41925f1b1a9.png?1764121937",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/c/9c0433f9-8f1e-4a19-a83f-a41925f1b1a9.jpg?1764121937",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/c/9c0433f9-8f1e-4a19-a83f-a41925f1b1a9.jpg?1764121937"
-      }
+      },
+      "allParts": []
     }
   ]
 }

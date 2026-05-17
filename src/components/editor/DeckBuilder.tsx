@@ -92,7 +92,7 @@ import {
   computeGroupedStackColumns,
 } from "./deckBuilder.utils";
 import { TokenSection } from "./TokenSection";
-import { TokenPickerModal } from "./TokenPickerModal";
+import { useDerivedTokens, mergeDerivedAndCustomized } from "@/hooks/useDerivedTokens";
 
 import {
   buildDeckSnapshot,
@@ -268,7 +268,6 @@ export function DeckBuilder({
 } = {}) {
   const [printPickerCard, setPrintPickerCard] = useState<string | null>(null);
   const [tokenPrintPickerName, setTokenPrintPickerName] = useState<string | null>(null);
-  const [tokenPickerOpen, setTokenPickerOpen] = useState(false);
   const [detailCard, setDetailCard] = useState<ScryfallCard | null>(null);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [importDialogMode, setImportDialogMode] = useState<ImportDeckDialogMode | null>(null);
@@ -301,9 +300,14 @@ export function DeckBuilder({
     setStackPositions,
     updatePrint,
     toggleFoil,
-    addToken,
     removeToken,
   } = useDeckStore();
+
+  const derivedTokens = useDerivedTokens(currentDeck);
+  const mergedTokens = useMemo(
+    () => mergeDerivedAndCustomized(derivedTokens, currentDeck.tokens),
+    [derivedTokens, currentDeck.tokens],
+  );
 
   const [editingName, setEditingName] = useState(false);
   const [deckFilter, setDeckFilter] = useState("");
@@ -387,16 +391,17 @@ export function DeckBuilder({
     id: DROP_ZONE.MAYBE,
   });
 
-  // Auto-enrich cards missing CMC/mana data
+  // Auto-enrich cards missing CMC/mana data, or missing the allParts contract
+  // (legacy saved decks predate this field).
   useEffect(() => {
     const allCards = [...currentDeck.cards, ...supplementaryCards];
     const toFetch = allCards
-      .filter(
-        (c) =>
-          (c.cmc === undefined || c.cmc === null) &&
-          !c.manaCost &&
-          !enrichedNamesRef.current.has(c.name.toLowerCase()),
-      )
+      .filter((c) => {
+        if (enrichedNamesRef.current.has(c.name.toLowerCase())) return false;
+        const needsBasicMeta = (c.cmc === undefined || c.cmc === null) && !c.manaCost;
+        const needsAllParts = c.allParts === undefined;
+        return needsBasicMeta || needsAllParts;
+      })
       .map((c) => c.name);
     if (toFetch.length === 0) return;
     const uniqueNames = [...new Set(toFetch)];
@@ -605,6 +610,7 @@ export function DeckBuilder({
   }
 
   function handleShowInfo(cardName: string) {
+    if (isReadOnly) return;
     // Find the card in the deck to pass its stored setCode for accurate printing
     const allCards = [
       ...currentDeck.cards,
@@ -612,7 +618,7 @@ export function DeckBuilder({
       ...(currentDeck.commanders ?? []),
     ];
     const deckCard = allCards.find((c) => c.name === cardName);
-    const token = currentDeck.tokens?.find((t) => t.name === cardName);
+    const token = mergedTokens.find((t) => t.name === cardName);
     const lookup = deckCard
       ? {
           name: deckCard.name,
@@ -914,23 +920,12 @@ export function DeckBuilder({
   return (
     <div className="flex flex-col h-full w-full relative">
       {isReadOnly && (
-        <div className="px-3 py-2 border-b shrink-0 flex items-center gap-2 bg-muted/40">
-          {onBack && (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-7 w-7 shrink-0"
-              title="Back to My Decks"
-              onClick={onBack}
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          <Bookmark className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground shrink-0">
+        <div className="px-3 py-2 border-b border-warning/40 shrink-0 flex items-center gap-2 bg-warning/10">
+          <Bookmark className="h-3.5 w-3.5 text-warning shrink-0" />
+          <span className="text-xs font-semibold uppercase tracking-wide text-warning shrink-0">
             Preset deck — read only
           </span>
-          <span className="text-xs text-muted-foreground truncate flex-1">
+          <span className="text-xs text-warning/70 truncate flex-1">
             Browse the cards below. Editing is locked.
           </span>
           <Button size="sm" className="h-7 shrink-0" onClick={handleImportPresetToMyDecks}>
@@ -941,18 +936,28 @@ export function DeckBuilder({
       )}
       <fieldset disabled={isReadOnly} className="contents">
         {/* ── Header: deck identity + quick add + save ── */}
-        <div className="px-3 py-1.5 border-b shrink-0 flex items-center gap-2">
-          {/* Back to deck list */}
+        <div
+          className={cn(
+            "px-3 py-1.5 border-b shrink-0 flex items-center gap-2",
+            isReadOnly && "bg-muted/15",
+          )}
+        >
           {onBack && (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-7 w-7 shrink-0"
+            <div
+              role="button"
+              tabIndex={0}
+              className="h-7 w-7 shrink-0 rounded-md inline-flex items-center justify-center cursor-pointer hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               title="Back to My Decks"
               onClick={() => guardUnsaved(onBack)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  guardUnsaved(onBack);
+                }
+              }}
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-            </Button>
+            </div>
           )}
 
           {/* Left: My Decks + deck name + format */}
@@ -1193,7 +1198,18 @@ export function DeckBuilder({
               <Search className="h-3.5 w-3.5" />
             </Button>
           )}
-          {isDeckLegal ? (
+          {isReadOnly ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled
+              className="h-7 shrink-0 gap-1 text-xs text-muted-foreground/60"
+              title="Preset deck — import to enable editing"
+            >
+              <Save className="h-3.5 w-3.5" />
+              Save
+            </Button>
+          ) : isDeckLegal ? (
             <Button
               size="sm"
               variant="default"
@@ -1386,7 +1402,7 @@ export function DeckBuilder({
       </div>
 
       <fieldset disabled={isReadOnly} className="contents">
-        <div className="flex-1 min-h-0 flex">
+        <div className={cn("flex-1 min-h-0 flex", isReadOnly && "opacity-60 bg-muted/15")}>
           <div
             ref={setMainDropRef}
             className={cn(
@@ -1534,16 +1550,19 @@ export function DeckBuilder({
 
         <DeckValidationPanel />
         <TokenSection
-          tokens={currentDeck.tokens ?? []}
+          tokens={mergedTokens}
           cardSize={cardSize}
           onShowInfo={handleShowInfo}
           onPickPrint={setTokenPrintPickerName}
-          onAddToken={() => setTokenPickerOpen(true)}
           onRemoveToken={removeToken}
+          onHover={(token, e) =>
+            preview.handleMouseEnter(token as unknown as GameCard, e, { useDelay: true })
+          }
+          onLeave={preview.handleMouseLeave}
         />
         <DeckStats />
 
-        <HoverCardPreview preview={preview} slot={previewSlot} pinned />
+        <HoverCardPreview preview={preview} slot={previewSlot} pinned imageSize="normal" />
         <PrintPickerModal cardName={printPickerCard} onClose={() => setPrintPickerCard(null)} />
         <PrintPickerModal
           cardName={tokenPrintPickerName}
@@ -1552,11 +1571,6 @@ export function DeckBuilder({
             if (tokenPrintPickerName) updatePrint(tokenPrintPickerName, sc);
           }}
           isToken
-        />
-        <TokenPickerModal
-          open={tokenPickerOpen}
-          onClose={() => setTokenPickerOpen(false)}
-          onSelect={addToken}
         />
         {detailCard && (
           <CardDetailModal
@@ -1582,9 +1596,7 @@ export function DeckBuilder({
               customTags: currentDeck.customTags,
               onTagCard: tagCard,
               onAddTag: addCustomTag,
-              isToken: detailCard
-                ? (currentDeck.tokens?.some((t) => t.name === detailCard.name) ?? false)
-                : false,
+              isToken: detailCard ? mergedTokens.some((t) => t.name === detailCard.name) : false,
               onUpdateTokenPrint: updatePrint,
             }}
           />

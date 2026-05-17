@@ -35,6 +35,7 @@ interface CardPreviewProps {
   onMouseLeave?: () => void;
   isSticky?: boolean;
   slot?: HTMLElement | null;
+  imageSize?: "normal" | "large";
 }
 
 const { w: CARD_W, h: CARD_H } = FLASH_CARD_SIZE;
@@ -187,6 +188,7 @@ export function CardPreview({
   onMouseLeave,
   isSticky = false,
   slot,
+  imageSize = "large",
 }: CardPreviewProps) {
   const hasActions = actions && actions.length > 0 && onSelectAction;
   const showSidePanel = hasActions;
@@ -198,9 +200,9 @@ export function CardPreview({
   // Fall back to that case instead of going through `asDeckCard`.
   const deckCard: DeckCard = deck ? asDeckCard(deck, card) : (card as unknown as DeckCard);
   const isLoading = false;
-  const imageUrl = deckCard.uris.large;
+  const imageUrl = deckCard.uris[imageSize];
   const doubleFacedData = {
-    frontImageUrl: deckCard.uris.large,
+    frontImageUrl: deckCard.uris[imageSize],
     backImageUrl: null,
     frontName: deckCard.name,
     backName: undefined,

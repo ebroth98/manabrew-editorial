@@ -427,7 +427,6 @@ export const useScryfallStore = create<ScryfallState>()(
           const uris = entry.card?.uris;
           if (!uris?.normal) continue;
           const img = new Image();
-          img.crossOrigin = "anonymous";
           img.src = uris.normal;
         }
       },

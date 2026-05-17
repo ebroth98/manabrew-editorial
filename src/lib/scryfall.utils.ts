@@ -76,5 +76,6 @@ export function scryfallToDeckCard(sc: ScryfallCard): DeckCard {
     uris,
     isDoubleFaced: detectIsDoubleFaced(sc) || undefined,
     layout: sc.layout || undefined,
+    allParts: sc.all_parts?.map((p) => ({ name: p.name, component: p.component })) ?? [],
   };
 }

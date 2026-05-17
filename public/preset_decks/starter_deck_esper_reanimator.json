@@ -36,7 +36,8 @@
         "png": "https://cards.scryfall.io/png/front/c/e/ced4c824-2dfc-42ae-84e6-09f8e3f51b5b.png?1584832255",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/e/ced4c824-2dfc-42ae-84e6-09f8e3f51b5b.jpg?1584832255",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/e/ced4c824-2dfc-42ae-84e6-09f8e3f51b5b.jpg?1584832255"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Overgrown Tomb",
@@ -67,7 +68,8 @@
         "png": "https://cards.scryfall.io/png/front/e/f/eff1f52c-5c43-4260-aaa0-6920846a191c.png?1572894177",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/f/eff1f52c-5c43-4260-aaa0-6920846a191c.jpg?1572894177",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/f/eff1f52c-5c43-4260-aaa0-6920846a191c.jpg?1572894177"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Griselbrand",
@@ -102,7 +104,8 @@
         "png": "https://cards.scryfall.io/png/front/a/6/a624eff1-9347-4a99-8986-a2312258791c.png?1773087051",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/6/a624eff1-9347-4a99-8986-a2312258791c.jpg?1773087051",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/6/a624eff1-9347-4a99-8986-a2312258791c.jpg?1773087051"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Meticulous Archive",
@@ -133,7 +136,8 @@
         "png": "https://cards.scryfall.io/png/front/6/5/652236c2-84ef-45e4-b5fc-ed6170bc3d6c.png?1759236529",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/5/652236c2-84ef-45e4-b5fc-ed6170bc3d6c.jpg?1759236529",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/5/652236c2-84ef-45e4-b5fc-ed6170bc3d6c.jpg?1759236529"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Shadowy Backstreet",
@@ -164,7 +168,8 @@
         "png": "https://cards.scryfall.io/png/front/6/9/69c1b656-1d67-499c-bf0f-417682a86c7d.png?1759236532",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/9/69c1b656-1d67-499c-bf0f-417682a86c7d.jpg?1759236532",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/9/69c1b656-1d67-499c-bf0f-417682a86c7d.jpg?1759236532"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Cephalid Coliseum",
@@ -191,7 +196,8 @@
         "png": "https://cards.scryfall.io/png/front/2/c/2cb9c743-8793-48e6-bb3d-0d9b76fd1a62.png?1718220908",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/c/2cb9c743-8793-48e6-bb3d-0d9b76fd1a62.jpg?1718220908",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/c/2cb9c743-8793-48e6-bb3d-0d9b76fd1a62.jpg?1718220908"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Island",
@@ -222,7 +228,8 @@
         "png": "https://cards.scryfall.io/png/front/0/e/0e443748-edf1-4499-9507-3649dd57ee95.png?1730486011",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/e/0e443748-edf1-4499-9507-3649dd57ee95.jpg?1730486011",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/e/0e443748-edf1-4499-9507-3649dd57ee95.jpg?1730486011"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Plains",
@@ -253,7 +260,8 @@
         "png": "https://cards.scryfall.io/png/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.png?1730485996",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.jpg?1730485996",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/4/a4446149-341b-449b-86e2-2b6b47b7a75e.jpg?1730485996"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Swamp",
@@ -284,7 +292,8 @@
         "png": "https://cards.scryfall.io/png/front/0/2/02fe3fdf-1d21-4e35-b0f3-3bcde7b05e23.png?1730486023",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/2/02fe3fdf-1d21-4e35-b0f3-3bcde7b05e23.jpg?1730486023",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/2/02fe3fdf-1d21-4e35-b0f3-3bcde7b05e23.jpg?1730486023"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Watery Grave",
@@ -315,7 +324,8 @@
         "png": "https://cards.scryfall.io/png/front/5/b/5b8170dc-6a90-46fc-9989-7575f3d402b5.png?1752947617",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/b/5b8170dc-6a90-46fc-9989-7575f3d402b5.jpg?1752947617",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/b/5b8170dc-6a90-46fc-9989-7575f3d402b5.jpg?1752947617"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Hallowed Fountain",
@@ -346,7 +356,8 @@
         "png": "https://cards.scryfall.io/png/front/e/0/e056b55f-82ed-4fe0-ab0c-bb20fa4a218a.png?1759144845",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/0/e056b55f-82ed-4fe0-ab0c-bb20fa4a218a.jpg?1759144845",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/0/e056b55f-82ed-4fe0-ab0c-bb20fa4a218a.jpg?1759144845"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Undercity Sewers",
@@ -377,7 +388,8 @@
         "png": "https://cards.scryfall.io/png/front/1/9/19545db3-8be5-41e5-8d13-dec4f96fe624.png?1771346946",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/9/19545db3-8be5-41e5-8d13-dec4f96fe624.jpg?1771346946",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/9/19545db3-8be5-41e5-8d13-dec4f96fe624.jpg?1771346946"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Goryo's Vengeance",
@@ -408,7 +420,8 @@
         "png": "https://cards.scryfall.io/png/front/6/2/6261205d-3506-4f0a-98ce-690f40df7a5a.png?1547516898",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/2/6261205d-3506-4f0a-98ce-690f40df7a5a.jpg?1547516898",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/2/6261205d-3506-4f0a-98ce-690f40df7a5a.jpg?1547516898"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Ephemerate",
@@ -437,7 +450,8 @@
         "png": "https://cards.scryfall.io/png/front/2/d/2da5f3f8-5eef-498f-ba2c-2f3fbc3745aa.png?1562201088",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/d/2da5f3f8-5eef-498f-ba2c-2f3fbc3745aa.jpg?1562201088",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/d/2da5f3f8-5eef-498f-ba2c-2f3fbc3745aa.jpg?1562201088"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Prismatic Ending",
@@ -466,7 +480,8 @@
         "png": "https://cards.scryfall.io/png/front/8/2/825969b9-3c70-4fca-8cab-696e9ca7cdb2.png?1626093920",
         "art_crop": "https://cards.scryfall.io/art_crop/front/8/2/825969b9-3c70-4fca-8cab-696e9ca7cdb2.jpg?1626093920",
         "border_crop": "https://cards.scryfall.io/border_crop/front/8/2/825969b9-3c70-4fca-8cab-696e9ca7cdb2.jpg?1626093920"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Solitude",
@@ -500,7 +515,8 @@
         "png": "https://cards.scryfall.io/png/front/4/7/47a6234f-309f-4e03-9263-66da48b57153.png?1763472875",
         "art_crop": "https://cards.scryfall.io/art_crop/front/4/7/47a6234f-309f-4e03-9263-66da48b57153.jpg?1763472875",
         "border_crop": "https://cards.scryfall.io/border_crop/front/4/7/47a6234f-309f-4e03-9263-66da48b57153.jpg?1763472875"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Faithful Mending",
@@ -531,7 +547,8 @@
         "png": "https://cards.scryfall.io/png/front/5/0/50752ca9-ea85-4c4b-9bf5-4f8759a7dcec.png?1636684159",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/0/50752ca9-ea85-4c4b-9bf5-4f8759a7dcec.jpg?1636684159",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/0/50752ca9-ea85-4c4b-9bf5-4f8759a7dcec.jpg?1636684159"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Atraxa, Grand Unifier",
@@ -573,7 +590,8 @@
         "png": "https://cards.scryfall.io/png/front/e/3/e3452853-fa92-495b-86a0-08c234356460.png?1675700353",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/3/e3452853-fa92-495b-86a0-08c234356460.jpg?1675700353",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/3/e3452853-fa92-495b-86a0-08c234356460.jpg?1675700353"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Polluted Delta",
@@ -598,7 +616,8 @@
         "png": "https://cards.scryfall.io/png/front/6/e/6e288374-2b71-4ace-b1d2-a19fee6cb4af.png?1717013017",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/e/6e288374-2b71-4ace-b1d2-a19fee6cb4af.jpg?1717013017",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/e/6e288374-2b71-4ace-b1d2-a19fee6cb4af.jpg?1717013017"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Psychic Frog",
@@ -633,7 +652,8 @@
         "png": "https://cards.scryfall.io/png/front/6/8/68924203-c3d9-41ce-8ca8-c6dd491eb3ca.png?1737917460",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/8/68924203-c3d9-41ce-8ca8-c6dd491eb3ca.jpg?1737917460",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/8/68924203-c3d9-41ce-8ca8-c6dd491eb3ca.jpg?1737917460"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Quantum Riddler",
@@ -666,7 +686,8 @@
         "png": "https://cards.scryfall.io/png/front/f/9/f9ac9036-9e8d-43b8-b930-693971fe802f.png?1754252677",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/9/f9ac9036-9e8d-43b8-b930-693971fe802f.jpg?1754252677",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/9/f9ac9036-9e8d-43b8-b930-693971fe802f.jpg?1754252677"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Marsh Flats",
@@ -691,7 +712,8 @@
         "png": "https://cards.scryfall.io/png/front/6/5/659039ed-c269-4c2d-bce6-91d143f0618e.png?1593815053",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/5/659039ed-c269-4c2d-bce6-91d143f0618e.jpg?1593815053",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/5/659039ed-c269-4c2d-bce6-91d143f0618e.jpg?1593815053"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Flooded Strand",
@@ -716,7 +738,17 @@
         "png": "https://cards.scryfall.io/png/front/8/f/8f85e12c-196b-4459-b81f-0c9c854e9f57.png?1717012985",
         "art_crop": "https://cards.scryfall.io/art_crop/front/8/f/8f85e12c-196b-4459-b81f-0c9c854e9f57.jpg?1717012985",
         "border_crop": "https://cards.scryfall.io/border_crop/front/8/f/8f85e12c-196b-4459-b81f-0c9c854e9f57.jpg?1717012985"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Preponderant Pearl",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Flooded Strand",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Thoughtseize",
@@ -745,7 +777,8 @@
         "png": "https://cards.scryfall.io/png/front/5/e/5e85d5db-ced3-406d-90d2-e506a9332468.png?1712353469",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/e/5e85d5db-ced3-406d-90d2-e506a9332468.jpg?1712353469",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/e/5e85d5db-ced3-406d-90d2-e506a9332468.jpg?1712353469"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Force of Negation",
@@ -774,7 +807,8 @@
         "png": "https://cards.scryfall.io/png/front/c/b/cb795f86-3721-4ae5-9893-49d7d9973f86.png?1764117866",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/b/cb795f86-3721-4ae5-9893-49d7d9973f86.jpg?1764117866",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/b/cb795f86-3721-4ae5-9893-49d7d9973f86.jpg?1764117866"
-      }
+      },
+      "allParts": []
     }
   ]
 }

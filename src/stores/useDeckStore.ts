@@ -5,6 +5,7 @@ import type { ScryfallCard } from "@/types/scryfall";
 import { STORAGE_KEYS, DEFAULT_DECK_NAME } from "@/lib/constants";
 import { getFormat, BASIC_LAND_NAMES, canBePartners, allowsAnyNumberOfCopies } from "@/lib/formats";
 import { chooseImageUrisForCard } from "@/stores/useScryfallStore";
+import { collectAllPartsNames } from "@/lib/decks";
 
 /** Migrate legacy "constructed" format id to "standard". */
 function migrateFormatId(id: string): DeckFormatId {
@@ -23,6 +24,17 @@ function patchCardsByName(cards: DeckCard[], updates: Map<string, Partial<DeckCa
       updates.get(getCardUpdateKey(c.name, c.setCode)) ?? updates.get(getCardUpdateKey(c.name));
     return patch ? { ...c, ...patch } : c;
   });
+}
+
+/** Drop entries from `deck.tokens` whose name isn't produced by any remaining
+ *  card's `allParts`. Called after every card removal so that a customized
+ *  token print auto-cleans when its source leaves the deck. */
+function pruneOrphanedTokens(deck: Deck): Deck {
+  if (!deck.tokens || deck.tokens.length === 0) return deck;
+  const produced = collectAllPartsNames(deck);
+  const tokens = deck.tokens.filter((t) => produced.has(t.name.toLowerCase()));
+  if (tokens.length === deck.tokens.length) return deck;
+  return { ...deck, tokens: tokens.length > 0 ? tokens : undefined };
 }
 
 function isAttractionCard(card: DeckCard): boolean {
@@ -251,7 +263,7 @@ export const useDeckStore = create<DeckState>()(
             if (idx === -1) return state;
             const maybeboard = [...(state.currentDeck.maybeboard ?? [])];
             maybeboard.splice(idx, 1);
-            return { currentDeck: { ...state.currentDeck, maybeboard } };
+            return { currentDeck: pruneOrphanedTokens({ ...state.currentDeck, maybeboard }) };
           }),
         addToPool: (card) =>
           set((state) => ({
@@ -263,7 +275,9 @@ export const useDeckStore = create<DeckState>()(
             if (index === -1) return state;
             const newCards = [...state.currentDeck.cards];
             newCards.splice(index, 1);
-            return { currentDeck: { ...state.currentDeck, cards: newCards } };
+            return {
+              currentDeck: pruneOrphanedTokens({ ...state.currentDeck, cards: newCards }),
+            };
           }),
         removeFromSide: (cardId) =>
           set((state) => {
@@ -272,31 +286,31 @@ export const useDeckStore = create<DeckState>()(
             if (sideIndex !== -1) {
               const sideboard = [...deck.sideboard];
               sideboard.splice(sideIndex, 1);
-              return { currentDeck: { ...deck, sideboard } };
+              return { currentDeck: pruneOrphanedTokens({ ...deck, sideboard }) };
             }
             const attractionIndex = (deck.attractions ?? []).findIndex((c) => c.id === cardId);
             if (attractionIndex !== -1) {
               const attractions = [...(deck.attractions ?? [])];
               attractions.splice(attractionIndex, 1);
-              return { currentDeck: { ...deck, attractions } };
+              return { currentDeck: pruneOrphanedTokens({ ...deck, attractions }) };
             }
             const contraptionIndex = (deck.contraptions ?? []).findIndex((c) => c.id === cardId);
             if (contraptionIndex !== -1) {
               const contraptions = [...(deck.contraptions ?? [])];
               contraptions.splice(contraptionIndex, 1);
-              return { currentDeck: { ...deck, contraptions } };
+              return { currentDeck: pruneOrphanedTokens({ ...deck, contraptions }) };
             }
             const schemeIndex = (deck.schemes ?? []).findIndex((c) => c.id === cardId);
             if (schemeIndex !== -1) {
               const schemes = [...(deck.schemes ?? [])];
               schemes.splice(schemeIndex, 1);
-              return { currentDeck: { ...deck, schemes } };
+              return { currentDeck: pruneOrphanedTokens({ ...deck, schemes }) };
             }
             const planeIndex = (deck.planes ?? []).findIndex((c) => c.id === cardId);
             if (planeIndex !== -1) {
               const planes = [...(deck.planes ?? [])];
               planes.splice(planeIndex, 1);
-              return { currentDeck: { ...deck, planes } };
+              return { currentDeck: pruneOrphanedTokens({ ...deck, planes }) };
             }
             return state;
           }),

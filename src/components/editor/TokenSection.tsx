@@ -6,8 +6,8 @@
  * Image resolution: uses token DeckCard URIs from the deck store.
  */
 
-import { useState } from "react";
-import { ChevronDown, ChevronRight, Palette, Plus, X } from "lucide-react";
+import { useState, type MouseEvent } from "react";
+import { ChevronDown, ChevronRight, Palette, X } from "lucide-react";
 import { CARD_WIDTH_MAP } from "./deckBuilder.utils";
 import { ScryfallImg } from "@/components/ScryfallImg";
 import type { DeckCard } from "@/types/manabrew";
@@ -19,8 +19,9 @@ export interface TokenSectionProps {
   cardSize: number;
   onShowInfo?: (tokenName: string) => void;
   onPickPrint?: (tokenName: string) => void;
-  onAddToken?: () => void;
   onRemoveToken?: (tokenName: string) => void;
+  onHover?: (token: DeckCard, e: MouseEvent) => void;
+  onLeave?: () => void;
 }
 
 export function TokenSection({
@@ -28,8 +29,9 @@ export function TokenSection({
   cardSize,
   onShowInfo,
   onPickPrint,
-  onAddToken,
   onRemoveToken,
+  onHover,
+  onLeave,
 }: TokenSectionProps) {
   const [collapsed, setCollapsed] = useState(tokens.length === 0);
 
@@ -39,10 +41,17 @@ export function TokenSection({
     <div className="border-t shrink-0">
       {/* ── Toggle header ── */}
       <div className="flex items-center gap-1.5 w-full px-3 py-2 hover:bg-muted/30 transition-colors">
-        <button
-          type="button"
-          className="flex items-center gap-1.5 flex-1 text-left"
+        <div
+          role="button"
+          tabIndex={0}
+          className="flex items-center gap-1.5 flex-1 text-left cursor-pointer"
           onClick={() => setCollapsed((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setCollapsed((v) => !v);
+            }
+          }}
         >
           {collapsed ? (
             <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
@@ -67,19 +76,7 @@ export function TokenSection({
               )}
             </div>
           )}
-        </button>
-
-        {onAddToken && (
-          <button
-            type="button"
-            className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-0.5 rounded border border-transparent hover:border-border"
-            onClick={onAddToken}
-            title="Add token"
-          >
-            <Plus className="h-3 w-3" />
-            Add
-          </button>
-        )}
+        </div>
       </div>
 
       {/* ── Expandable content ── */}
@@ -87,8 +84,7 @@ export function TokenSection({
         <div className="px-3 pb-3 max-h-[300px] overflow-y-auto">
           {tokens.length === 0 ? (
             <div className="text-xs text-muted-foreground py-3">
-              No tokens pinned. Click <span className="font-medium">Add</span> to specify a token
-              print this deck should use.
+              No tokens produced by this deck.
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
@@ -103,6 +99,8 @@ export function TokenSection({
                     onShowInfo={onShowInfo}
                     onPickPrint={onPickPrint}
                     onRemove={onRemoveToken}
+                    onHover={onHover}
+                    onLeave={onLeave}
                   />
                 </div>
               ))}
@@ -134,14 +132,23 @@ function TokenGridCard({
   onShowInfo,
   onPickPrint,
   onRemove,
+  onHover,
+  onLeave,
 }: {
   token: DeckCard;
   onShowInfo?: (name: string) => void;
   onPickPrint?: (name: string) => void;
   onRemove?: (name: string) => void;
+  onHover?: (token: DeckCard, e: MouseEvent) => void;
+  onLeave?: () => void;
 }) {
   return (
-    <div className="relative group cursor-pointer" onClick={() => onShowInfo?.(token.name)}>
+    <div
+      className="relative group cursor-pointer"
+      onClick={() => onShowInfo?.(token.name)}
+      onMouseEnter={(e) => onHover?.(token, e)}
+      onMouseLeave={() => onLeave?.()}
+    >
       <ScryfallImg
         src={token.uris.normal}
         alt={token.name}

@@ -36,7 +36,8 @@
         "png": "https://cards.scryfall.io/png/front/4/b/4be96696-aff8-4ef9-97dc-8221ef745de9.png?1594737767",
         "art_crop": "https://cards.scryfall.io/art_crop/front/4/b/4be96696-aff8-4ef9-97dc-8221ef745de9.jpg?1594737767",
         "border_crop": "https://cards.scryfall.io/border_crop/front/4/b/4be96696-aff8-4ef9-97dc-8221ef745de9.jpg?1594737767"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Idyllic Grange",
@@ -65,7 +66,8 @@
         "png": "https://cards.scryfall.io/png/front/c/a/ca2c611c-3a6f-44b0-9daa-837a465845e0.png?1572491225",
         "art_crop": "https://cards.scryfall.io/art_crop/front/c/a/ca2c611c-3a6f-44b0-9daa-837a465845e0.jpg?1572491225",
         "border_crop": "https://cards.scryfall.io/border_crop/front/c/a/ca2c611c-3a6f-44b0-9daa-837a465845e0.jpg?1572491225"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Thraben Inspector",
@@ -99,7 +101,17 @@
         "png": "https://cards.scryfall.io/png/front/0/8/08a5007f-06a0-40fa-a252-c38baa6b5c6f.png?1736467608",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/8/08a5007f-06a0-40fa-a252-c38baa6b5c6f.jpg?1736467608",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/8/08a5007f-06a0-40fa-a252-c38baa6b5c6f.jpg?1736467608"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Clue",
+          "component": "token"
+        },
+        {
+          "name": "Thraben Inspector",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Novice Inspector",
@@ -133,7 +145,17 @@
         "png": "https://cards.scryfall.io/png/front/0/a/0ad38866-fc5f-4f62-89c1-afc0f50765aa.png?1706241527",
         "art_crop": "https://cards.scryfall.io/art_crop/front/0/a/0ad38866-fc5f-4f62-89c1-afc0f50765aa.jpg?1706241527",
         "border_crop": "https://cards.scryfall.io/border_crop/front/0/a/0ad38866-fc5f-4f62-89c1-afc0f50765aa.jpg?1706241527"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Clue",
+          "component": "token"
+        },
+        {
+          "name": "Novice Inspector",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Lunarch Veteran",
@@ -167,7 +189,8 @@
         "png": "https://cards.scryfall.io/png/front/4/3/438e3302-daf9-436b-8b08-24b3f33295f6.png?1736467543",
         "art_crop": "https://cards.scryfall.io/art_crop/front/4/3/438e3302-daf9-436b-8b08-24b3f33295f6.jpg?1736467543",
         "border_crop": "https://cards.scryfall.io/border_crop/front/4/3/438e3302-daf9-436b-8b08-24b3f33295f6.jpg?1736467543"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Kor Skyfisher",
@@ -201,7 +224,8 @@
         "png": "https://cards.scryfall.io/png/front/d/7/d7501662-1216-4e08-bd2b-e0a459057942.png?1593812836",
         "art_crop": "https://cards.scryfall.io/art_crop/front/d/7/d7501662-1216-4e08-bd2b-e0a459057942.jpg?1593812836",
         "border_crop": "https://cards.scryfall.io/border_crop/front/d/7/d7501662-1216-4e08-bd2b-e0a459057942.jpg?1593812836"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Raffine's Informant",
@@ -235,7 +259,8 @@
         "png": "https://cards.scryfall.io/png/front/4/e/4e64ff87-2099-4360-94f6-164277b7b514.png?1664409896",
         "art_crop": "https://cards.scryfall.io/art_crop/front/4/e/4e64ff87-2099-4360-94f6-164277b7b514.jpg?1664409896",
         "border_crop": "https://cards.scryfall.io/border_crop/front/4/e/4e64ff87-2099-4360-94f6-164277b7b514.jpg?1664409896"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Militia Bugler",
@@ -269,7 +294,8 @@
         "png": "https://cards.scryfall.io/png/front/5/f/5fe9413b-5702-4998-aed7-d3a1102a8d7e.png?1673147040",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/f/5fe9413b-5702-4998-aed7-d3a1102a8d7e.jpg?1673147040",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/f/5fe9413b-5702-4998-aed7-d3a1102a8d7e.jpg?1673147040"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Battle Screech",
@@ -298,7 +324,17 @@
         "png": "https://cards.scryfall.io/png/front/9/0/90301f8c-f7af-4179-8faf-9901931bba8d.png?1689995590",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/0/90301f8c-f7af-4179-8faf-9901931bba8d.jpg?1689995590",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/0/90301f8c-f7af-4179-8faf-9901931bba8d.jpg?1689995590"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Bird",
+          "component": "token"
+        },
+        {
+          "name": "Battle Screech",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Thraben Charm",
@@ -327,7 +363,8 @@
         "png": "https://cards.scryfall.io/png/front/d/d/dd28a646-f38f-4cdf-948c-969cd979e5e6.png?1717011565",
         "art_crop": "https://cards.scryfall.io/art_crop/front/d/d/dd28a646-f38f-4cdf-948c-969cd979e5e6.jpg?1717011565",
         "border_crop": "https://cards.scryfall.io/border_crop/front/d/d/dd28a646-f38f-4cdf-948c-969cd979e5e6.jpg?1717011565"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Guardians' Pledge",
@@ -356,7 +393,8 @@
         "png": "https://cards.scryfall.io/png/front/e/7/e7e6105c-8633-46f7-a7ca-2a5c36c6d548.png?1562663898",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/7/e7e6105c-8633-46f7-a7ca-2a5c36c6d548.jpg?1562663898",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/7/e7e6105c-8633-46f7-a7ca-2a5c36c6d548.jpg?1562663898"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Prismatic Strands",
@@ -385,7 +423,8 @@
         "png": "https://cards.scryfall.io/png/front/e/f/efd85985-abc1-430a-9210-63109c90a82d.png?1568003874",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/f/efd85985-abc1-430a-9210-63109c90a82d.jpg?1568003874",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/f/efd85985-abc1-430a-9210-63109c90a82d.jpg?1568003874"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Ramosian Rally",
@@ -414,7 +453,8 @@
         "png": "https://cards.scryfall.io/png/front/7/f/7fc0ff04-43e7-4a0d-b7e2-8bab72cc6cc0.png?1562381822",
         "art_crop": "https://cards.scryfall.io/art_crop/front/7/f/7fc0ff04-43e7-4a0d-b7e2-8bab72cc6cc0.jpg?1562381822",
         "border_crop": "https://cards.scryfall.io/border_crop/front/7/f/7fc0ff04-43e7-4a0d-b7e2-8bab72cc6cc0.jpg?1562381822"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Leonardo, Big Brother",
@@ -451,7 +491,8 @@
         "png": "https://cards.scryfall.io/png/front/e/8/e802838f-cc8c-4313-8c3b-32a6a7248e64.png?1771502512",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/8/e802838f-cc8c-4313-8c3b-32a6a7248e64.jpg?1771502512",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/8/e802838f-cc8c-4313-8c3b-32a6a7248e64.jpg?1771502512"
-      }
+      },
+      "allParts": []
     }
   ]
 }

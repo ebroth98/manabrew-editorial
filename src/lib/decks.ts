@@ -51,6 +51,56 @@ export function getDeckCardPool(deck: Deck): DeckCard[] {
   ];
 }
 
+/** Cards whose `allParts` contributes to the deck's derived token list. */
+function getTokenSourceCards(deck: Deck): DeckCard[] {
+  return [
+    ...deck.cards,
+    ...deck.sideboard,
+    ...(deck.attractions ?? []),
+    ...(deck.contraptions ?? []),
+    ...(deck.schemes ?? []),
+    ...(deck.planes ?? []),
+    ...(deck.commanders ?? []),
+    ...(deck.companion ? [deck.companion] : []),
+    ...(deck.maybeboard ?? []),
+  ];
+}
+
+/** Set of lowercased token names produced by anything currently in the deck.
+ *  Filtered to `component === "token"` so combo_piece / meld_part / meld_result
+ *  entries don't keep an orphaned customized token alive. */
+export function collectAllPartsNames(deck: Deck): Set<string> {
+  const out = new Set<string>();
+  for (const card of getTokenSourceCards(deck)) {
+    for (const part of card.allParts ?? []) {
+      if (part.component !== "token") continue;
+      out.add(part.name.toLowerCase());
+    }
+  }
+  return out;
+}
+
+/** Derive the token list from each card's `allParts`. Filters to
+ *  `component === "token"` (Scryfall also lists the source card itself,
+ *  combo pieces, and meld parts/results — none of which are tokens).
+ *  Resolves each name against the token archive. Deduped by name. */
+export function deriveTokens(deck: Deck): DeckCard[] {
+  const seen = new Set<string>();
+  const out: DeckCard[] = [];
+  for (const card of getTokenSourceCards(deck)) {
+    for (const part of card.allParts ?? []) {
+      if (part.component !== "token") continue;
+      const key = part.name.toLowerCase();
+      if (seen.has(key)) continue;
+      const token = peekArchivedToken({ name: part.name });
+      if (!token) continue;
+      seen.add(key);
+      out.push(token);
+    }
+  }
+  return out;
+}
+
 export function getDeckCardNames(deck: Deck): string[] {
   return [...deck.cards, ...(deck.commanders ?? [])].map((c) => c.name);
 }

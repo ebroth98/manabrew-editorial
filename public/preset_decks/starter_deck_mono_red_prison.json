@@ -30,7 +30,8 @@
         "png": "https://cards.scryfall.io/png/front/a/7/a7a8b6b8-b95f-4014-b17a-a6d44d965995.png?1593864142",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/7/a7a8b6b8-b95f-4014-b17a-a6d44d965995.jpg?1593864142",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/7/a7a8b6b8-b95f-4014-b17a-a6d44d965995.jpg?1593864142"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Ancient Tomb",
@@ -55,7 +56,8 @@
         "png": "https://cards.scryfall.io/png/front/b/d/bd3d4b4b-cf31-4f89-8140-9650edb03c7b.png?1764758774",
         "art_crop": "https://cards.scryfall.io/art_crop/front/b/d/bd3d4b4b-cf31-4f89-8140-9650edb03c7b.jpg?1764758774",
         "border_crop": "https://cards.scryfall.io/border_crop/front/b/d/bd3d4b4b-cf31-4f89-8140-9650edb03c7b.jpg?1764758774"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Magus of the Moon",
@@ -89,7 +91,8 @@
         "png": "https://cards.scryfall.io/png/front/7/c/7c9bd75c-9606-4607-bfa6-d6acdee12820.png?1770635233",
         "art_crop": "https://cards.scryfall.io/art_crop/front/7/c/7c9bd75c-9606-4607-bfa6-d6acdee12820.jpg?1770635233",
         "border_crop": "https://cards.scryfall.io/border_crop/front/7/c/7c9bd75c-9606-4607-bfa6-d6acdee12820.jpg?1770635233"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Void Mirror",
@@ -114,7 +117,8 @@
         "png": "https://cards.scryfall.io/png/front/6/f/6f906219-7a6a-427b-93c4-4d958cbd171c.png?1626099451",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/f/6f906219-7a6a-427b-93c4-4d958cbd171c.jpg?1626099451",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/f/6f906219-7a6a-427b-93c4-4d958cbd171c.jpg?1626099451"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Blood Moon",
@@ -159,7 +163,25 @@
         "png": "https://cards.scryfall.io/png/front/2/4/24c0d87b-0049-4beb-b9cb-6f813b7aa7dc.png?1691108103",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/4/24c0d87b-0049-4beb-b9cb-6f813b7aa7dc.jpg?1691108103",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/4/24c0d87b-0049-4beb-b9cb-6f813b7aa7dc.jpg?1691108103"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Treasure",
+          "component": "token"
+        },
+        {
+          "name": "Goblin Shaman",
+          "component": "token"
+        },
+        {
+          "name": "Copy",
+          "component": "token"
+        },
+        {
+          "name": "Fable of the Mirror-Breaker // Reflection of Kiki-Jiki",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "The One Ring",
@@ -186,7 +208,17 @@
         "png": "https://cards.scryfall.io/png/front/1/2/126ea71a-9a64-4d1e-a8ca-1efce3b8346f.png?1686972720",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/2/126ea71a-9a64-4d1e-a8ca-1efce3b8346f.jpg?1686972720",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/2/126ea71a-9a64-4d1e-a8ca-1efce3b8346f.jpg?1686972720"
-      }
+      },
+      "allParts": [
+        {
+          "name": "The One Ring",
+          "component": "combo_piece"
+        },
+        {
+          "name": "A-The One Ring",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Broadside Bombardiers",
@@ -220,7 +252,8 @@
         "png": "https://cards.scryfall.io/png/front/9/7/9721f8da-39ed-4ada-a571-61e08a86032b.png?1758103888",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/7/9721f8da-39ed-4ada-a571-61e08a86032b.jpg?1758103888",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/7/9721f8da-39ed-4ada-a571-61e08a86032b.jpg?1758103888"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Sundering Eruption // Volcanic Fissure",
@@ -249,7 +282,8 @@
         "png": "https://cards.scryfall.io/png/front/5/0/50686ac7-346c-43d1-bdaa-28d46a12ad93.png?1717013301",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/0/50686ac7-346c-43d1-bdaa-28d46a12ad93.jpg?1717013301",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/0/50686ac7-346c-43d1-bdaa-28d46a12ad93.jpg?1717013301"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Pyrogoyf",
@@ -282,7 +316,8 @@
         "png": "https://cards.scryfall.io/png/front/f/a/fa87bf1e-2062-4983-b1c4-98bffea69a4c.png?1721158937",
         "art_crop": "https://cards.scryfall.io/art_crop/front/f/a/fa87bf1e-2062-4983-b1c4-98bffea69a4c.jpg?1721158937",
         "border_crop": "https://cards.scryfall.io/border_crop/front/f/a/fa87bf1e-2062-4983-b1c4-98bffea69a4c.jpg?1721158937"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Chalice of the Void",
@@ -307,7 +342,8 @@
         "png": "https://cards.scryfall.io/png/front/1/e/1e472d9d-4e00-4f01-9daa-559e630403cc.png?1561966405",
         "art_crop": "https://cards.scryfall.io/art_crop/front/1/e/1e472d9d-4e00-4f01-9daa-559e630403cc.jpg?1561966405",
         "border_crop": "https://cards.scryfall.io/border_crop/front/1/e/1e472d9d-4e00-4f01-9daa-559e630403cc.jpg?1561966405"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Black Lotus",
@@ -332,7 +368,8 @@
         "png": "https://cards.scryfall.io/png/front/4/a/4a2e428c-dd25-484c-bbc8-2d6ce10ef42c.png?1559591808",
         "art_crop": "https://cards.scryfall.io/art_crop/front/4/a/4a2e428c-dd25-484c-bbc8-2d6ce10ef42c.jpg?1559591808",
         "border_crop": "https://cards.scryfall.io/border_crop/front/4/a/4a2e428c-dd25-484c-bbc8-2d6ce10ef42c.jpg?1559591808"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Mox Ruby",
@@ -359,7 +396,17 @@
         "png": "https://cards.scryfall.io/png/front/2/1/21b7cbae-6647-4f36-b02d-5535ac88b1a6.png?1559592252",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/1/21b7cbae-6647-4f36-b02d-5535ac88b1a6.jpg?1559592252",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/1/21b7cbae-6647-4f36-b02d-5535ac88b1a6.jpg?1559592252"
-      }
+      },
+      "allParts": [
+        {
+          "name": "Ruby Collector",
+          "component": "combo_piece"
+        },
+        {
+          "name": "Mox Ruby",
+          "component": "combo_piece"
+        }
+      ]
     },
     {
       "name": "Sol Ring",
@@ -384,7 +431,8 @@
         "png": "https://cards.scryfall.io/png/front/e/1/e1187999-521d-4ed0-8673-6eb8f3c58bb8.png?1673485469",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/1/e1187999-521d-4ed0-8673-6eb8f3c58bb8.jpg?1673485469",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/1/e1187999-521d-4ed0-8673-6eb8f3c58bb8.jpg?1673485469"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Trinisphere",
@@ -409,7 +457,8 @@
         "png": "https://cards.scryfall.io/png/front/5/2/52ea8286-225b-4990-981a-6b8c49748794.png?1774863282",
         "art_crop": "https://cards.scryfall.io/art_crop/front/5/2/52ea8286-225b-4990-981a-6b8c49748794.jpg?1774863282",
         "border_crop": "https://cards.scryfall.io/border_crop/front/5/2/52ea8286-225b-4990-981a-6b8c49748794.jpg?1774863282"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Vexing Bauble",
@@ -434,7 +483,8 @@
         "png": "https://cards.scryfall.io/png/front/2/9/29f11089-658f-42e6-aeb0-09b512ad2479.png?1734350193",
         "art_crop": "https://cards.scryfall.io/art_crop/front/2/9/29f11089-658f-42e6-aeb0-09b512ad2479.jpg?1734350193",
         "border_crop": "https://cards.scryfall.io/border_crop/front/2/9/29f11089-658f-42e6-aeb0-09b512ad2479.jpg?1734350193"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Karn, the Great Creator",
@@ -463,7 +513,8 @@
         "png": "https://cards.scryfall.io/png/front/e/e/ee243dbe-83ee-40af-8e26-c1528166ef5a.png?1723251375",
         "art_crop": "https://cards.scryfall.io/art_crop/front/e/e/ee243dbe-83ee-40af-8e26-c1528166ef5a.jpg?1723251375",
         "border_crop": "https://cards.scryfall.io/border_crop/front/e/e/ee243dbe-83ee-40af-8e26-c1528166ef5a.jpg?1723251375"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Simian Spirit Guide",
@@ -497,7 +548,8 @@
         "png": "https://cards.scryfall.io/png/front/9/d/9d367aa4-e85f-402e-b781-527808edcc0a.png?1723227163",
         "art_crop": "https://cards.scryfall.io/art_crop/front/9/d/9d367aa4-e85f-402e-b781-527808edcc0a.jpg?1723227163",
         "border_crop": "https://cards.scryfall.io/border_crop/front/9/d/9d367aa4-e85f-402e-b781-527808edcc0a.jpg?1723227163"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Hexing Squelcher",
@@ -531,7 +583,8 @@
         "png": "https://cards.scryfall.io/png/front/6/7/674960ce-ff33-4d5e-a24a-a4582b2e9809.png?1767658306",
         "art_crop": "https://cards.scryfall.io/art_crop/front/6/7/674960ce-ff33-4d5e-a24a-a4582b2e9809.jpg?1767658306",
         "border_crop": "https://cards.scryfall.io/border_crop/front/6/7/674960ce-ff33-4d5e-a24a-a4582b2e9809.jpg?1767658306"
-      }
+      },
+      "allParts": []
     },
     {
       "name": "Mountain",
@@ -562,7 +615,8 @@
         "png": "https://cards.scryfall.io/png/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.png?1730486024",
         "art_crop": "https://cards.scryfall.io/art_crop/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.jpg?1730486024",
         "border_crop": "https://cards.scryfall.io/border_crop/front/a/3/a3a4da7d-a703-4f91-9ef7-ce269c0b63fb.jpg?1730486024"
-      }
+      },
+      "allParts": []
     }
   ]
 }
