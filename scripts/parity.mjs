@@ -16,7 +16,7 @@ const extraArgs = process.argv.slice(3).join(" ");
 
 if (!name) {
   const registry = JSON.parse(readFileSync(registryPath, "utf-8"));
-  console.error("Usage: npm run parity <test-name> [extra-args]\n");
+  console.error("Usage: yarn parity <test-name> [extra-args]\n");
   console.error("Available tests:");
   for (const entry of registry) {
     console.error(`  - ${entry.name}`);

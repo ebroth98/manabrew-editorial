@@ -1,4 +1,4 @@
-name: Parity regression
+name: Regression Test
 
 on:
   pull_request:
@@ -14,7 +14,7 @@ on:
       - "!forge-engine/**/*.md"
       - "Cargo.toml"
       - "Cargo.lock"
-      - ".github/workflows/parity-self-hosted.yml"
+      - ".github/workflows/regression.yml"
       - "scripts/parity-rust-vs-rust.mjs"
       - "scripts/parity-classify-entries.mjs"
   workflow_dispatch:

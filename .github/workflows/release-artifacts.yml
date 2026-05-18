@@ -94,10 +94,10 @@ jobs:
       - run: yarn
 
       - name: Build WASM + bundle cards
-        run: npm run build:wasm
+        run: yarn build:wasm
 
       - name: Tauri build (macOS)
-        run: npm run tauri -- build
+        run: yarn tauri -- build
 
       - name: Upload .dmg
         uses: actions/upload-artifact@v4
@@ -195,10 +195,10 @@ jobs:
       - run: yarn
 
       - name: Build WASM + bundle cards
-        run: npm run build:wasm
+        run: yarn build:wasm
 
       - name: Tauri build (Windows)
-        run: npm run tauri -- build
+        run: yarn tauri -- build
 
       - name: Upload .exe
         uses: actions/upload-artifact@v4

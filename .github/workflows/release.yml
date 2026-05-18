@@ -1,4 +1,4 @@
-name: Release Please
+name: Release
 
 # Watches `main` for Conventional Commits, opens/updates a "Release PR" that
 # bumps the version in package.json, src-tauri/tauri.conf.json and

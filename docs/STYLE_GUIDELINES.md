@@ -313,6 +313,6 @@ and add a semantic theme key instead.
 
 Before committing UI changes:
 
-1. `npx tsc -p tsconfig.app.json --noEmit` — must pass with zero errors
-2. `npm run tauri dev` — app must build and render correctly
+1. `yarn tsc -p tsconfig.app.json --noEmit` — must pass with zero errors
+2. `yarn tauri dev` — app must build and render correctly
 3. Visual spot-check: verify the changed components look identical to before

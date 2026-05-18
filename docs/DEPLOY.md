@@ -16,7 +16,7 @@ If your Twingate or SSO layer strips or overrides those headers, browser gamepla
 
 ### Internal alpha checklist
 
-- Build and publish with `npm run build:web`
+- Build and publish with `yarn build:web`
 - Serve `dist/` as a static site
 - Ensure the final HTML, JS worker, and WASM responses preserve `COOP` and `COEP`
 - Verify the app is loaded from a single origin

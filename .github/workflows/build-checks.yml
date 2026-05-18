@@ -13,38 +13,50 @@ jobs:
   typescript:
     name: TypeScript
     runs-on: [self-hosted, Linux]
+    defaults:
+      run:
+        working-directory: typescript
     steps:
       - uses: actions/checkout@v4
         with:
+          path: typescript
           clean: true
 
       - run: yarn
 
       - name: Type-check
-        run: npx tsc -p tsconfig.app.json --noEmit
+        run: yarn tsc -p tsconfig.app.json --noEmit
 
   # ── WASM + card bundler ────────────────────────────────────────────
   wasm:
     name: WASM build
     runs-on: [self-hosted, Linux]
+    defaults:
+      run:
+        working-directory: wasm
     steps:
       - uses: actions/checkout@v4
         with:
+          path: wasm
           submodules: recursive
           clean: true
 
       - run: yarn
 
       - name: Build WASM + bundle cards
-        run: npm run build:wasm
+        run: yarn build:wasm
 
   # ── Rust workspace (engine, CLI, agent-interface) ──────────────────
   rust-engine:
     name: Rust engine
     runs-on: [self-hosted, Linux]
+    defaults:
+      run:
+        working-directory: rust-engine
     steps:
       - uses: actions/checkout@v4
         with:
+          path: rust-engine
           submodules: recursive
           clean: true
 
@@ -63,9 +75,13 @@ jobs:
   rust-server:
     name: Rust server
     runs-on: [self-hosted, Linux]
+    defaults:
+      run:
+        working-directory: rust-server
     steps:
       - uses: actions/checkout@v4
         with:
+          path: rust-server
           submodules: recursive
           clean: true
 
@@ -76,9 +92,13 @@ jobs:
   rust-parity:
     name: Rust parity dashboard
     runs-on: [self-hosted, Linux]
+    defaults:
+      run:
+        working-directory: rust-parity
     steps:
       - uses: actions/checkout@v4
         with:
+          path: rust-parity
           submodules: recursive
           clean: true
 
@@ -90,23 +110,32 @@ jobs:
     name: Web build (full)
     runs-on: [self-hosted, Linux]
     needs: [typescript, wasm]
+    defaults:
+      run:
+        working-directory: web-build
     steps:
       - uses: actions/checkout@v4
         with:
+          path: web-build
           submodules: recursive
           clean: true
 
       - run: yarn
 
       - name: Build web (wasm + tsc + vite)
-        run: npm run build:web
+        run: yarn build:web
 
   # ── JSON lint (preset decks) ───────────────────────────────────────
   json-lint:
     name: JSON lint
     runs-on: [self-hosted, Linux]
+    defaults:
+      run:
+        working-directory: json-lint
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: json-lint
 
       - name: Validate preset deck JSON files
         run: |
