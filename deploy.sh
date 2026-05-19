@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# deploy.sh — Smart rebuild: only rebuilds what changed since last deploy.
-# Triggered by .github/workflows/deploy.yml via SSH from GitHub Actions on push to main.
+# deploy.sh — Smart rebuild of the Wasm/web stack on the production host.
+# Scope: builds manabrew (Wasm + React via nginx), forge-server, and
+# optionally parity-dashboard. Native Tauri installers (.dmg / .exe) are
+# built separately by .github/workflows/release-artifacts.yml.
+# Triggered by .github/workflows/deploy.yml (the "Wasm deploy" workflow)
+# via SSH from GitHub Actions on push to main.
 # Docker BuildKit layer caching handles unchanged layers within each build.
 #
 # stdout = clean summary (captured by the workflow and posted to Discord).
@@ -8,8 +12,8 @@
 set -euo pipefail
 
 on_failure() {
-    echo "**Deploy FAILED** at $(date '+%H:%M:%S')"
-    echo "Check raw log: \`${RAW_LOG:-/tmp/deploy-raw.log}\`"
+    echo "💥 **Wasm deploy FAILED** at $(date '+%H:%M:%S')"
+    echo "📄 Check raw log: \`${RAW_LOG:-/tmp/deploy-raw.log}\`"
     tail -20 "${RAW_LOG:-/tmp/deploy-raw.log}" 2>/dev/null | sed 's/^/> /'
 }
 trap on_failure ERR
@@ -57,7 +61,7 @@ git pull origin main --ff-only >> "$RAW_LOG" 2>&1
 CURR=$(git rev-parse --short HEAD)
 
 if [ "$PREV" = "$CURR" ]; then
-    echo "No new commits. Nothing to deploy."
+    echo "😴 No new commits. Nothing to deploy."
     exit 0
 fi
 
@@ -149,7 +153,7 @@ elif $WEB_CHANGED || $RUST_CHANGED; then
 fi
 
 if [ -z "$SERVICES_TO_RESTART" ]; then
-    echo "No Java/Rust/infra changes — skipping build."
+    echo "🧹 No Java/Rust/infra changes — skipping build."
     exit 0
 fi
 
@@ -166,26 +170,26 @@ BUILD_DURATION=$(( BUILD_END - BUILD_START ))
 # ── Pretty summary for Discord ───────────────────────────────────────
 SERVICES_FMT=$(echo "$SERVICES_TO_RESTART" | xargs -n1 | sed 's/^/  - /' | tr '\n' '\n')
 
-# Build change flags string
+# Build change flags string (with per-stack emoji)
 CHANGES=""
-$JAVA_CHANGED && CHANGES="${CHANGES} Java"
-$RUST_CHANGED && CHANGES="${CHANGES} Rust"
-$WEB_CHANGED && CHANGES="${CHANGES} Web"
-$INFRA_CHANGED && CHANGES="${CHANGES} Infra"
+$JAVA_CHANGED  && CHANGES="${CHANGES} ☕ Java"
+$RUST_CHANGED  && CHANGES="${CHANGES} 🦀 Rust"
+$WEB_CHANGED   && CHANGES="${CHANGES} 🌐 Web"
+$INFRA_CHANGED && CHANGES="${CHANGES} 🐳 Infra"
 CHANGES=$(echo "$CHANGES" | xargs)
 
 cat <<EOF
-**Deploy complete** (\`${PREV}\` -> \`${CURR}\`)
+🎉 **Wasm deploy complete** (\`${PREV}\` → \`${CURR}\`)
 
 > ${COMMIT_MSG}
 > — ${AUTHOR} (${COMMIT_COUNT} commit(s))
 
-**Changed:** ${CHANGES}
-**Services rebuilt:**
+📦 **Changed:** ${CHANGES}
+🔁 **Services rebuilt:**
 ${SERVICES_FMT}
-**Build time:** ${BUILD_DURATION}s
-**Log:** \`${RAW_LOG}\`
+⏱️ **Build time:** ${BUILD_DURATION}s
+📄 **Log:** \`${RAW_LOG}\`
 
-**Changelog:**
+📝 **Changelog:**
 ${CHANGELOG}
 EOF
