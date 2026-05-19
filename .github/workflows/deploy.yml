@@ -15,6 +15,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: SSH and run deploy.sh
+        id: deploy
+        continue-on-error: true
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           HOST: ${{ secrets.DEPLOY_HOST }}
@@ -27,4 +29,63 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$USER@$HOST" \
-            "cd '$DEPLOY_PATH' && ./deploy.sh"
+            "cd '$DEPLOY_PATH' && ./deploy.sh 2>&1" 2>&1 | tee deploy.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Post Discord embed (as bot)
+        if: always()
+        env:
+          BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          CHANNEL_ID: ${{ secrets.DISCORD_DEPLOY_CHANNEL_ID }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+        shell: bash
+        run: |
+          if [ -z "${BOT_TOKEN:-}" ] || [ -z "${CHANNEL_ID:-}" ]; then
+            echo "DISCORD_BOT_TOKEN or DISCORD_DEPLOY_CHANNEL_ID not set; skipping notification."
+            exit 0
+          fi
+
+          if [ -f deploy.log ] && [ -s deploy.log ]; then
+            LOG=$(cat deploy.log)
+          else
+            LOG="(no log captured — SSH step failed before any output; see workflow run)"
+          fi
+
+          # Discord embed description hard cap is 4096 chars.
+          MAX=3900
+          if [ "${#LOG}" -gt "$MAX" ]; then
+            LOG="${LOG:0:$MAX}"$'\n'"… (truncated — see workflow run for full log)"
+          fi
+
+          if [ "$DEPLOY_OUTCOME" = "success" ]; then
+            COLOR=5763719   # 0x57F287 green
+            TITLE="Deploy complete"
+          else
+            COLOR=15548997  # 0xED4245 red
+            TITLE="Deploy failed"
+          fi
+
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+
+          PAYLOAD=$(jq -n \
+            --arg title "$TITLE" \
+            --arg url "$RUN_URL" \
+            --arg desc "$LOG" \
+            --arg footer "$SHORT_SHA · $ACTOR" \
+            --argjson color "$COLOR" \
+            '{embeds: [{title: $title, url: $url, description: $desc, color: $color, footer: {text: $footer}}]}')
+
+          curl -fsS -X POST \
+            -H "Authorization: Bot $BOT_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "https://discord.com/api/v10/channels/$CHANNEL_ID/messages"
+
+      - name: Fail job if deploy failed
+        if: steps.deploy.outcome != 'success'
+        run: |
+          echo "deploy step outcome: ${{ steps.deploy.outcome }}"
+          exit 1

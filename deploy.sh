@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 # deploy.sh — Smart rebuild: only rebuilds what changed since last deploy.
-# Triggered automatically via n8n webhook on push to main.
-# See DEPLOY.md for setup instructions.
+# Triggered by .github/workflows/deploy.yml via SSH from GitHub Actions on push to main.
 # Docker BuildKit layer caching handles unchanged layers within each build.
 #
-#
-#
-# stdout  = clean summary (suitable for Discord)
-# Raw build output goes to /tmp/deploy-raw.log
+# stdout = clean summary (captured by the workflow and posted to Discord).
+# Raw build output goes to /tmp/deploy-raw.log.
 set -euo pipefail
 
 on_failure() {
@@ -25,14 +22,15 @@ RAW_LOG="/tmp/deploy-raw.log"
 : > "$RAW_LOG"   # truncate
 
 # ── Load .env files ──────────────────────────────────────────────────
-# Root .env (for GITHUB_TOKEN and other global settings)
+# Root .env (production secrets via ops/production.secrets symlink, plus
+# optional GITHUB_TOKEN for git rate-limit avoidance on the pull below).
 if [ -f "$REPO_DIR/.env" ]; then
     set -a
     # shellcheck disable=SC1091
     source "$REPO_DIR/.env"
     set +a
 fi
-# Server .env (for COMPOSE_PROFILES and dashboard settings)
+# Server .env (COMPOSE_PROFILES + dashboard settings)
 SERVER_ENV="$REPO_DIR/forge-engine/crates/forge-server/.env"
 if [ -f "$SERVER_ENV" ]; then
     set -a
@@ -47,7 +45,7 @@ if echo "${COMPOSE_PROFILES:-}" | grep -q "parity"; then
     SKIP_DASHBOARD=false
 fi
 
-# ── Configure git to use PAT instead of SSH ─────────────────────────
+# ── Optional: use GITHUB_TOKEN for the pull (avoids public rate limits) ──
 if [ -n "${GITHUB_TOKEN:-}" ]; then
     DEPLOY_GITHUB_REPO="${GITHUB_REPO:-witchesofthehill/manabrew}"
     git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${DEPLOY_GITHUB_REPO}.git"

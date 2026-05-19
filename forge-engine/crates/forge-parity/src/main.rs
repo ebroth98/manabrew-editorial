@@ -407,11 +407,7 @@ fn resolve_issue_threshold(cli_val: i64) -> i64 {
 
 /// Resolve `--github-repo`: explicit CLI value > `GITHUB_REPO` env > unset.
 fn resolve_github_repo(cli_val: Option<String>) -> Option<String> {
-    cli_val.or_else(|| {
-        std::env::var("GITHUB_REPO")
-            .ok()
-            .filter(|s| !s.is_empty())
-    })
+    cli_val.or_else(|| std::env::var("GITHUB_REPO").ok().filter(|s| !s.is_empty()))
 }
 
 fn main() {
