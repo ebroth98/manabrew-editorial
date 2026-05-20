@@ -1,0 +1,41 @@
+# Per-PR preview stack, driven by .github/workflows/preview-deploy.yml.
+# Runs under /opt/manabrew-staging, joins the prod docker network. Own
+# forge-server so a backend-breaking PR is previewable without touching
+# the live relay.
+services:
+  manabrew-staging:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        VITE_RELAY_HOST: relay-staging.manabrew.app
+        VITE_RELAY_PORT: "443"
+        VITE_RELAY_PASSWORD: ${FORGE_SERVER_KEY:?FORGE_SERVER_KEY is required}
+        VITE_MANAGED_RELAY: "1"
+        VITE_SCRYFALL_SYMBOL_BASE: /scryfall-symbols/
+    restart: unless-stopped
+    expose:
+      - "80"
+    volumes:
+      - ./ops/staging.Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - forge-server-staging
+
+  forge-server-staging:
+    build:
+      context: .
+      dockerfile: forge-engine/crates/forge-server/Dockerfile
+    environment:
+      FORGE_HOST: "0.0.0.0"
+      FORGE_PORT: "9443"
+      FORGE_MAX_ROOMS: "100"
+      FORGE_SERVER_KEY: "${FORGE_SERVER_KEY:?FORGE_SERVER_KEY is required}"
+      RUST_LOG: "forge_server=info"
+    expose:
+      - "9443"
+    restart: unless-stopped
+
+networks:
+  default:
+    external: true
+    name: manabrew_default
