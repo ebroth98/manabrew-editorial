@@ -1,50 +1,9 @@
-//! Main WASM API for the game engine.
-//!
-//! This module provides the JavaScript-facing API for the forge-engine.
-
 use forge_agent_interface::deck_dto::Deck as WireDeck;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-use crate::card_loader::{get_card_db, DeckCard};
-use crate::game_runner::{GameConfig as RustGameConfig, WasmGame};
+use crate::card_loader::{get_card_db, get_token_db};
 
-/// Flatten every playable pile of a wire `Deck` (main + sideboard +
-/// commanders + supplementary decks) into the internal `DeckCard`
-/// shape the engine consumes.
-fn deck_cards_for_engine(deck: &WireDeck) -> Vec<DeckCard> {
-    let mut out: Vec<DeckCard> = Vec::with_capacity(deck.cards.len());
-    let push = |out: &mut Vec<DeckCard>, list: &[forge_agent_interface::deck_dto::DeckCard]| {
-        for c in list {
-            out.push(DeckCard {
-                name: c.identity.name.clone(),
-                count: 1,
-                set_code: c.identity.set_code.clone(),
-                card_number: c.identity.card_number.clone(),
-            });
-        }
-    };
-    push(&mut out, &deck.cards);
-    push(&mut out, &deck.sideboard);
-    if let Some(commanders) = &deck.commanders {
-        push(&mut out, commanders);
-    }
-    if let Some(attractions) = &deck.attractions {
-        push(&mut out, attractions);
-    }
-    if let Some(contraptions) = &deck.contraptions {
-        push(&mut out, contraptions);
-    }
-    if let Some(schemes) = &deck.schemes {
-        push(&mut out, schemes);
-    }
-    if let Some(planes) = &deck.planes {
-        push(&mut out, planes);
-    }
-    out
-}
-
-/// Game configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameConfig {
     #[serde(default = "default_starting_life")]
@@ -66,14 +25,12 @@ impl Default for GameConfig {
     }
 }
 
-/// Engine information for version checking.
 #[derive(Debug, Clone, Serialize)]
 pub struct EngineInfo {
     pub version: String,
     pub wasm_ready: bool,
 }
 
-/// Get engine information.
 #[wasm_bindgen]
 pub fn get_engine_info() -> JsValue {
     let info = EngineInfo {
@@ -83,15 +40,12 @@ pub fn get_engine_info() -> JsValue {
     serde_wasm_bindgen::to_value(&info).unwrap_or(JsValue::NULL)
 }
 
-/// Verify WASM is working by echoing back a message.
+/// Used to verify WASM is up and running
 #[wasm_bindgen]
 pub fn echo(msg: &str) -> String {
     format!("forge-wasm echo: {}", msg)
 }
 
-/// Parse a deck from JSON.
-///
-/// Returns a summary of the parsed deck for verification.
 #[wasm_bindgen]
 pub fn parse_deck(deck_json: JsValue) -> Result<JsValue, JsError> {
     let deck: WireDeck = serde_wasm_bindgen::from_value(deck_json)
@@ -173,24 +127,10 @@ pub fn test_foundation() -> JsValue {
     serde_wasm_bindgen::to_value(&test).unwrap_or(JsValue::NULL)
 }
 
-// ============================================================================
-// Full Game API
-// ============================================================================
-
-// ============================================================================
-// Interactive Game API (uses shared PromptAgent + Atomics.wait)
-// ============================================================================
-
-use crate::wasm_transport::{WasmAiTransport, WasmTransport};
+use crate::wasm_transport::WasmTransport;
 use forge_agent_interface::agent_impl::PromptAgent;
+use forge_bot::BotResponder;
 
-/// Run an interactive game with a human player (blocking on Atomics.wait).
-///
-/// This function blocks the worker thread until the game is complete.
-/// The human player's prompts are written to the SharedArrayBuffer,
-/// and the worker blocks until the main thread provides a response.
-///
-/// Call this from a Web Worker — it will block the thread.
 #[wasm_bindgen]
 pub fn run_interactive_game(
     human_deck_json: JsValue,
@@ -198,191 +138,249 @@ pub fn run_interactive_game(
     config_json: JsValue,
     shared_buffer: JsValue,
 ) -> Result<JsValue, JsError> {
-    use forge_engine_core::agent::PlayerAgent;
-    use forge_engine_core::ids::PlayerId;
+    use forge_game_runtime::deck::{
+        deck_to_identities, force_commander_by_name, prepare_registered_player,
+    };
+    use forge_game_runtime::host_runtime::{
+        register_tokens_from_db, run_hosted_multiplayer_game, DEFAULT_MAX_TURNS,
+    };
     use js_sys::SharedArrayBuffer;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
 
-    // Check card database
-    if get_card_db().is_none() {
-        return Err(JsError::new("Card database not loaded"));
-    }
+    let card_db = get_card_db().ok_or_else(|| JsError::new("Card database not loaded"))?;
 
-    // Parse decks
     let human_deck: WireDeck = serde_wasm_bindgen::from_value(human_deck_json)
         .map_err(|e| JsError::new(&format!("Failed to parse human deck: {}", e)))?;
     let ai_deck: WireDeck = serde_wasm_bindgen::from_value(ai_deck_json)
         .map_err(|e| JsError::new(&format!("Failed to parse AI deck: {}", e)))?;
 
-    // Parse config
-    let config: RustGameConfig = if config_json.is_undefined() || config_json.is_null() {
-        RustGameConfig::default()
+    let config: GameConfig = if config_json.is_undefined() || config_json.is_null() {
+        GameConfig::default()
     } else {
         serde_wasm_bindgen::from_value(config_json)
             .map_err(|e| JsError::new(&format!("Failed to parse config: {}", e)))?
     };
+    let starting_life = config.starting_life;
 
-    // Convert decks
-    let human_cards: Vec<DeckCard> = deck_cards_for_engine(&human_deck);
-    let ai_cards: Vec<DeckCard> = deck_cards_for_engine(&ai_deck);
-
-    web_sys::console::log_1(
-        &format!(
-            "[InteractiveGame] Starting game: {} human cards vs {} AI cards",
-            human_cards.len(),
-            ai_cards.len()
-        )
-        .into(),
-    );
-
-    // Create the game
-    let mut wasm_game = WasmGame::new(&human_cards, &ai_cards, &config)
-        .map_err(|e| JsError::new(&format!("Failed to create game: {}", e)))?;
-
-    // Create the SharedArrayBuffer-backed transport for human player
-    let sab: SharedArrayBuffer = shared_buffer
+    let local_sab: SharedArrayBuffer = shared_buffer
         .dyn_into()
         .map_err(|_| JsError::new("Expected SharedArrayBuffer"))?;
 
-    let human_transport = WasmTransport::new(&sab);
-    let ai_transport = WasmAiTransport;
+    // Two seats: the human (seat 0, local) and an AI opponent (seat 1). Routed
+    // through the shared host runtime so deck zoning, token setup, and the
+    // final game-over prompt match the multiplayer + Tauri paths exactly —
+    // single-player no longer dumps every card straight into the library.
+    let mut human = prepare_registered_player("You", card_db, &deck_to_identities(&human_deck));
+    human.registered.starting_life = starting_life;
+    if let Some(commander_name) = config.commander_name.as_deref() {
+        force_commander_by_name(&mut human, commander_name);
+    }
+    let mut ai = prepare_registered_player("AI Opponent", card_db, &deck_to_identities(&ai_deck));
+    ai.registered.starting_life = starting_life;
+    let prepared_players = vec![human, ai];
 
     let game_id = format!("wasm-interactive-{}", js_sys::Date::now() as u64);
+    let game_id_for_agents = game_id.clone();
+    let abort_signal = Arc::new(AtomicBool::new(false));
+    let mut rng = StdRng::from_entropy();
 
-    // Create agents using the shared crate's PromptAgent
-    let human_agent = PromptAgent::new(PlayerId(0), game_id.clone(), human_transport);
-    let ai_agent = PromptAgent::new(PlayerId(1), game_id.clone(), ai_transport);
-
-    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(human_agent), Box::new(ai_agent)];
-
-    web_sys::console::log_1(&"[InteractiveGame] Agents created, starting game loop".into());
-
-    // Run the game loop — this BLOCKS on Atomics.wait() when human input is needed
-    let winner = wasm_game.game_loop.run(
-        &mut wasm_game.game_state,
-        &mut agents,
-        &mut wasm_game.rng,
-        5000, // max turns
+    let outcome = run_hosted_multiplayer_game(
+        prepared_players,
+        abort_signal,
+        DEFAULT_MAX_TURNS,
+        &mut rng,
+        |game_loop| {
+            if let Some(token_db) = get_token_db() {
+                register_tokens_from_db(game_loop, token_db);
+            }
+        },
+        |pid| {
+            if pid.index() == 0 {
+                Box::new(PromptAgent::new(
+                    pid,
+                    game_id_for_agents.clone(),
+                    WasmTransport::new(&local_sab),
+                ))
+            } else {
+                Box::new(PromptAgent::new(
+                    pid,
+                    game_id_for_agents.clone(),
+                    BotResponder::default(),
+                ))
+            }
+        },
     );
 
-    web_sys::console::log_1(
-        &format!("[InteractiveGame] Game complete. Winner: {:?}", winner).into(),
-    );
-
-    // Return final result
     #[derive(Serialize)]
     struct InteractiveGameResult {
         winner_id: Option<u32>,
         game_over: bool,
     }
 
-    let result = InteractiveGameResult {
-        winner_id: winner.map(|p| p.0),
+    serde_wasm_bindgen::to_value(&InteractiveGameResult {
+        winner_id: outcome.winner.map(|p| p.0),
         game_over: true,
-    };
-
-    serde_wasm_bindgen::to_value(&result)
-        .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
+    })
+    .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
-/// Run a multiplayer game with two players using separate SharedArrayBuffers.
-///
-/// Player 0 (local) uses `local_buffer` — prompts shown in UI.
-/// Player 1 (remote) uses `remote_buffer` — prompts relayed via WebSocket.
-/// Both block on Atomics.wait() sequentially (never concurrently).
 #[wasm_bindgen]
 pub fn run_multiplayer_game(
-    player0_deck_json: JsValue,
-    player1_deck_json: JsValue,
+    decks_json: JsValue,
+    commander_names_json: JsValue,
+    player_names_json: JsValue,
     config_json: JsValue,
     local_buffer: JsValue,
-    remote_buffer: JsValue,
+    remote_buffers: JsValue,
     local_player_index: u32,
 ) -> Result<JsValue, JsError> {
-    use forge_engine_core::agent::PlayerAgent;
-    use forge_engine_core::ids::PlayerId;
-    use js_sys::SharedArrayBuffer;
+    use forge_game_runtime::deck::{
+        deck_to_identities, force_commander_by_name, prepare_registered_player,
+    };
+    use forge_game_runtime::host_runtime::{
+        register_tokens_from_db, run_hosted_multiplayer_game, DEFAULT_MAX_TURNS,
+    };
+    use js_sys::{Array, SharedArrayBuffer};
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
 
-    if get_card_db().is_none() {
-        return Err(JsError::new("Card database not loaded"));
+    let card_db = get_card_db().ok_or_else(|| JsError::new("Card database not loaded"))?;
+
+    let decks: Vec<WireDeck> = serde_wasm_bindgen::from_value(decks_json)
+        .map_err(|e| JsError::new(&format!("Failed to parse decks: {e}")))?;
+    let commander_names: Vec<Option<String>> = serde_wasm_bindgen::from_value(commander_names_json)
+        .map_err(|e| JsError::new(&format!("Failed to parse commander names: {e}")))?;
+    let player_names: Vec<String> = serde_wasm_bindgen::from_value(player_names_json)
+        .map_err(|e| JsError::new(&format!("Failed to parse player names: {e}")))?;
+
+    let num_players = decks.len();
+    if num_players < 2 {
+        return Err(JsError::new("multiplayer game needs at least 2 decks"));
+    }
+    if commander_names.len() != num_players {
+        return Err(JsError::new(
+            "commander_names length must match decks length",
+        ));
+    }
+    if player_names.len() != num_players {
+        return Err(JsError::new("player_names length must match decks length"));
+    }
+    if (local_player_index as usize) >= num_players {
+        return Err(JsError::new("local_player_index out of range"));
     }
 
-    let deck0: WireDeck = serde_wasm_bindgen::from_value(player0_deck_json)
-        .map_err(|e| JsError::new(&format!("Failed to parse player 0 deck: {}", e)))?;
-    let deck1: WireDeck = serde_wasm_bindgen::from_value(player1_deck_json)
-        .map_err(|e| JsError::new(&format!("Failed to parse player 1 deck: {}", e)))?;
-
-    let config: RustGameConfig = if config_json.is_undefined() || config_json.is_null() {
-        RustGameConfig::default()
+    let config: GameConfig = if config_json.is_undefined() || config_json.is_null() {
+        GameConfig::default()
     } else {
         serde_wasm_bindgen::from_value(config_json)
-            .map_err(|e| JsError::new(&format!("Failed to parse config: {}", e)))?
+            .map_err(|e| JsError::new(&format!("Failed to parse config: {e}")))?
     };
-
-    let cards0: Vec<DeckCard> = deck_cards_for_engine(&deck0);
-    let cards1: Vec<DeckCard> = deck_cards_for_engine(&deck1);
-
-    let mut wasm_game = WasmGame::new(&cards0, &cards1, &config)
-        .map_err(|e| JsError::new(&format!("Failed to create game: {}", e)))?;
+    let starting_life = config.starting_life;
 
     let local_sab: SharedArrayBuffer = local_buffer
         .dyn_into()
         .map_err(|_| JsError::new("Expected SharedArrayBuffer for local player"))?;
-    let remote_sab: SharedArrayBuffer = remote_buffer
+
+    let remote_sabs_array: Array = remote_buffers
         .dyn_into()
-        .map_err(|_| JsError::new("Expected SharedArrayBuffer for remote player"))?;
+        .map_err(|_| JsError::new("Expected Array of SharedArrayBuffers for remote players"))?;
+    if remote_sabs_array.length() as usize != num_players - 1 {
+        return Err(JsError::new(
+            "remote_buffers length must be num_players - 1",
+        ));
+    }
+    let mut remote_sabs: Vec<SharedArrayBuffer> = Vec::with_capacity(num_players - 1);
+    for i in 0..remote_sabs_array.length() {
+        let sab: SharedArrayBuffer = remote_sabs_array
+            .get(i)
+            .dyn_into()
+            .map_err(|_| JsError::new("remote_buffers entry is not a SharedArrayBuffer"))?;
+        remote_sabs.push(sab);
+    }
+
+    // Route through the shared deck_to_identities + prepare_registered_player
+    // so commander/sideboard/attractions zoning matches Tauri exactly.
+    let mut prepared_players = Vec::with_capacity(num_players);
+    for (i, deck) in decks.iter().enumerate() {
+        let identities = deck_to_identities(deck);
+        let mut prepared = prepare_registered_player(player_names[i].clone(), card_db, &identities);
+        prepared.registered.starting_life = starting_life;
+        // Commander comes from the lobby out-of-band, not the deck pile.
+        if let Some(commander_name) = commander_names[i].as_deref() {
+            force_commander_by_name(&mut prepared, commander_name);
+        }
+        prepared_players.push(prepared);
+    }
 
     let game_id = format!("wasm-mp-{}", js_sys::Date::now() as u64);
+    let engine_player_index = local_player_index as usize;
 
-    // Create agents — both use WasmTransport with separate SABs
-    let (agent0, agent1): (Box<dyn PlayerAgent>, Box<dyn PlayerAgent>) = if local_player_index == 0
-    {
-        (
-            Box::new(PromptAgent::new(
-                PlayerId(0),
-                game_id.clone(),
-                WasmTransport::new(&local_sab),
-            )),
-            Box::new(PromptAgent::new(
-                PlayerId(1),
-                game_id.clone(),
-                WasmTransport::new(&remote_sab),
-            )),
-        )
-    } else {
-        (
-            Box::new(PromptAgent::new(
-                PlayerId(0),
-                game_id.clone(),
-                WasmTransport::new(&remote_sab),
-            )),
-            Box::new(PromptAgent::new(
-                PlayerId(1),
-                game_id.clone(),
-                WasmTransport::new(&local_sab),
-            )),
-        )
-    };
+    // Index SABs by player id (local seat → local_sab, others → remote
+    // SABs in order). Both closures below need them, so clone per closure.
+    let mut sab_by_player: Vec<SharedArrayBuffer> = Vec::with_capacity(num_players);
+    let mut remote_iter = remote_sabs.iter();
+    for i in 0..num_players {
+        if i == engine_player_index {
+            sab_by_player.push(local_sab.clone());
+        } else {
+            sab_by_player.push(
+                remote_iter
+                    .next()
+                    .expect("remote_sabs length already validated against num_players - 1")
+                    .clone(),
+            );
+        }
+    }
+    let sab_for_agents = sab_by_player;
 
-    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![agent0, agent1];
-
+    let card_counts: Vec<usize> = decks.iter().map(|d| d.cards.len()).collect();
     web_sys::console::log_1(
         &format!(
-            "[MultiplayerGame] Starting: local=player-{}, {} vs {} cards",
-            local_player_index,
-            cards0.len(),
-            cards1.len()
+            "[MultiplayerGame] Starting: {num_players} players, \
+             local=player-{local_player_index}, cards per seat={card_counts:?}"
         )
         .into(),
     );
 
-    let winner = wasm_game.game_loop.run(
-        &mut wasm_game.game_state,
-        &mut agents,
-        &mut wasm_game.rng,
-        5000,
+    // No external abort on WASM — the worker is just terminated. Dummy
+    // signal keeps the shared runtime's abort-aware paths happy.
+    let abort_signal = Arc::new(AtomicBool::new(false));
+    let game_id_for_agents = game_id.clone();
+
+    // from_entropy needs getrandom's `js` feature (see Cargo.toml) or it
+    // panics at runtime on wasm32 — covered by tests/rng_smoke.rs.
+    let mut rng = StdRng::from_entropy();
+    let outcome = run_hosted_multiplayer_game(
+        prepared_players,
+        abort_signal,
+        DEFAULT_MAX_TURNS,
+        &mut rng,
+        |game_loop| {
+            if let Some(token_db) = get_token_db() {
+                register_tokens_from_db(game_loop, token_db);
+            }
+        },
+        |pid| {
+            // Remote seats get a recv timeout (new_relay) so a networked
+            // player who stops responding can't hang the host worker; the
+            // local seat blocks indefinitely like a human at the keyboard.
+            let sab = &sab_for_agents[pid.index()];
+            let transport = if pid.index() == engine_player_index {
+                WasmTransport::new(sab)
+            } else {
+                WasmTransport::new_relay(sab)
+            };
+            Box::new(PromptAgent::new(pid, game_id_for_agents.clone(), transport))
+        },
     );
 
-    web_sys::console::log_1(&format!("[MultiplayerGame] Complete. Winner: {:?}", winner).into());
+    let winner = outcome.winner;
+    web_sys::console::log_1(&format!("[MultiplayerGame] Complete. Winner: {winner:?}").into());
 
     #[derive(Serialize)]
     struct InteractiveGameResult {
@@ -394,5 +392,5 @@ pub fn run_multiplayer_game(
         winner_id: winner.map(|p| p.0),
         game_over: true,
     })
-    .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
+    .map_err(|e| JsError::new(&format!("Failed to serialize result: {e}")))
 }
