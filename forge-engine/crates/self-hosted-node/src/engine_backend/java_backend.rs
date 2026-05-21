@@ -258,9 +258,10 @@ fn run_hosted_engine_game_inner(
 
     let mut players = Vec::with_capacity(player_names.len());
     for (index, name) in player_names.iter().enumerate() {
+        let identities = deck_card_identities(&decks[index]);
         players.push(PlayerConfig::new(
             name.clone(),
-            &decks[index],
+            &identities,
             commander_names[index].clone(),
         ));
     }
@@ -282,6 +283,7 @@ fn run_hosted_engine_game_inner(
                                 "failed to serialize java action for player {player_index}: {err}"
                             )
                         })?;
+                        debug!(player_index, %action_json, "submitting remote response to java");
                         session.submit_action(&action_json)?;
                     }
                     Err(TryRecvError::Empty) => break,
@@ -302,6 +304,15 @@ fn run_hosted_engine_game_inner(
                     .and_then(Value::as_u64)
                     .map(|value| value as usize)
                 {
+                    let prompt_kind = prompt
+                        .get("kind")
+                        .and_then(Value::as_str)
+                        .unwrap_or("?")
+                        .to_string();
+                    debug!(
+                        player_index,
+                        prompt_kind, "forwarding java prompt to remote"
+                    );
                     if Some(player_index) == local_player_index {
                         session.submit_action(&auto_java_action(&prompt).to_string())?;
                     } else if remote_prompt_tx
@@ -362,15 +373,24 @@ fn auto_java_action(prompt: &Value) -> Value {
 }
 
 #[cfg(feature = "java-forge")]
+fn deck_card_identities(deck: &Deck) -> Vec<CardIdentity> {
+    deck.cards
+        .iter()
+        .chain(deck.commanders.iter().flatten())
+        .map(|card| card.identity.clone())
+        .collect()
+}
+
+#[cfg(feature = "java-forge")]
 fn smoke_deck(land_name: &str, spell_name: &str) -> Vec<CardIdentity> {
     (0..24)
         .map(|_| CardIdentity {
             name: land_name.to_string(),
-            set_code: String::new(),
+            ..Default::default()
         })
         .chain((0..36).map(|_| CardIdentity {
             name: spell_name.to_string(),
-            set_code: String::new(),
+            ..Default::default()
         }))
         .collect()
 }
@@ -380,7 +400,7 @@ fn scenario_deck(land_name: &str) -> Vec<CardIdentity> {
     (0..60)
         .map(|_| CardIdentity {
             name: land_name.to_string(),
-            set_code: String::new(),
+            ..Default::default()
         })
         .collect()
 }
@@ -588,7 +608,7 @@ fn play_first_card_action(prompt: &Value, card_name: &str) -> Result<Option<Play
         .and_then(Value::as_str)
         .ok_or_else(|| format!("playable option for '{card_name}' is missing mode"))?;
     Ok(Some(PlayerAction::PlayCard {
-        card_id: Some(card_id.to_string()),
+        card_id: card_id.to_string(),
         mode: Some(mode.to_string()),
     }))
 }

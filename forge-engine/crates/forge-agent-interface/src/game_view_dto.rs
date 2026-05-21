@@ -106,8 +106,8 @@ pub struct PlayerDto {
     pub speed: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct CardDto {
     pub id: String,
     pub name: String,
@@ -197,8 +197,8 @@ pub struct CardDto {
     pub foil: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct StackObjectDto {
     pub id: String,
     pub source_id: String,
