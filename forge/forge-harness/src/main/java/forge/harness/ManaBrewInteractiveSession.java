@@ -86,13 +86,18 @@ public final class ManaBrewInteractiveSession {
         return InteractiveSnapshotExtractor.snapshotJson(game);
     }
 
+    public boolean isGameOver() {
+        return game != null && game.isGameOver();
+    }
+
     public String submitAction(final String actionJson) {
         if (closed) {
             throw new IllegalStateException("session is closed");
         }
         JsonObject action = JsonParser.parseString(actionJson).getAsJsonObject();
         actions.offer(action);
-        return getSnapshotJson();
+        // No snapshot here — it would race the game thread this unblocks.
+        return "";
     }
 
     SpellAbility awaitPriorityAction(final int playerId, final List<SpellAbility> actionsForPrompt) {

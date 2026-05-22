@@ -59,6 +59,10 @@ public final class ManaBrewEngineAdapter {
         Objects.requireNonNull(request, "request");
         requireInitialized();
 
+        // Seed Forge's global RNG before any shuffle so a (seed, decks) pair
+        // replays identically — same mechanism parity's Main uses.
+        forge.util.MyRandom.setRandom(new CountingRandom(request.getSeed(), "hosted"));
+
         final int playerCount = request.getPlayers().size();
         final boolean commanderGame = playerCount > 2
                 || request.getStartingLife() == 40
@@ -115,6 +119,10 @@ public final class ManaBrewEngineAdapter {
 
     public String getSnapshot(final String sessionId) {
         return getSession(sessionId).getSnapshotJson();
+    }
+
+    public String getGameOver(final String sessionId) {
+        return String.valueOf(getSession(sessionId).isGameOver());
     }
 
     public String endGameJson(final String sessionId) {
@@ -183,6 +191,7 @@ public final class ManaBrewEngineAdapter {
         JsonObject root = JsonParser.parseString(requestJson).getAsJsonObject();
         String gameId = requiredString(root, "gameId");
         int startingLife = root.has("startingLife") ? root.get("startingLife").getAsInt() : 20;
+        long seed = root.has("seed") ? root.get("seed").getAsLong() : 42L;
         JsonArray playerValues = root.getAsJsonArray("players");
         if (playerValues == null) {
             throw new IllegalArgumentException("players is required");
@@ -205,7 +214,7 @@ public final class ManaBrewEngineAdapter {
             }
             players.add(new PlayerConfig(name, deck, commanderName));
         }
-        return new StartGameRequest(gameId, startingLife, players);
+        return new StartGameRequest(gameId, startingLife, seed, players);
     }
 
     private static String requiredString(final JsonObject object, final String key) {
@@ -226,11 +235,13 @@ public final class ManaBrewEngineAdapter {
     public static final class StartGameRequest {
         private final String gameId;
         private final int startingLife;
+        private final long seed;
         private final List<PlayerConfig> players;
 
         public StartGameRequest(
                 final String gameId,
                 final int startingLife,
+                final long seed,
                 final List<PlayerConfig> players
         ) {
             if (gameId == null || gameId.isBlank()) {
@@ -241,6 +252,7 @@ public final class ManaBrewEngineAdapter {
             }
             this.gameId = gameId;
             this.startingLife = startingLife;
+            this.seed = seed;
             this.players = List.copyOf(players);
         }
 
@@ -250,6 +262,10 @@ public final class ManaBrewEngineAdapter {
 
         public int getStartingLife() {
             return startingLife;
+        }
+
+        public long getSeed() {
+            return seed;
         }
 
         public List<PlayerConfig> getPlayers() {

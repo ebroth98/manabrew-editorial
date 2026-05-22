@@ -38,7 +38,9 @@
     "build:wasm": "node scripts/build-wasm.mjs",
     "dev:web": "yarn build:wasm && vite",
     "build:web": "yarn build:wasm && tsc -b && vite build",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
@@ -117,6 +119,7 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
     "unplugin-icons": "^23.0.1",
-    "vite": "^7.3.2"
+    "vite": "^7.3.2",
+    "vitest": "^3.2.0"
   }
 }
