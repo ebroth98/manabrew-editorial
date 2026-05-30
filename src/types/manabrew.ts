@@ -73,6 +73,7 @@ export interface GameCard extends CardIdentity, CardRulesSummary {
   attachmentIds?: string[];
   phasedOut?: boolean;
   exerted?: boolean;
+  isRingBearer?: boolean;
   flashbackCost?: string;
   kickerCost?: string;
   effectiveManaCost?: string;

@@ -2,25 +2,24 @@
 //
 // Skip `yarn build:wasm` when the inputs that feed it are unchanged.
 //
-// Hashes every source that influences `src/wasm/*` and `public/wasm/cardset.v4.rkyv`,
+// Hashes every source that influences `src/wasm/*` and `public/wasm/cardset.*.rkyv`,
 // stamps it under `src/wasm/.build-stamp.json`, and on next invocation re-hashes
-// and compares. Match + outputs present → no-op. Else spawns `yarn build:wasm`
-// and writes a fresh stamp on success.
+// and compares. Match plus outputs present means no-op. Otherwise, spawn
+// `yarn build:wasm` and write a fresh stamp on success.
 //
 // Inputs hashed by content:
-//   - Cargo.toml + Cargo.lock at repo root
+//   - Cargo.toml and Cargo.lock at repo root
 //   - every forge-engine .rs and Cargo.toml
-//   - scripts/build-wasm.mjs (this script's behavior is part of the contract)
+//   - scripts/build-wasm.mjs
 //
-// Card-data dirs (forge-gui/res/{cardsfolder,tokenscripts,editions,blockdata})
-// hold ~50k files, so we hash a manifest of path+size+mtime instead of contents —
-// any add/remove/edit shows up as an mtime/size change.
+// Card-data dirs hold about 50k files, so hash a manifest of path, size, and mtime
+// instead of contents. Any add, remove, or edit shows up as an mtime/size change.
 
 import { spawnSync } from "child_process";
 import { createHash } from "crypto";
-import { readFileSync, readdirSync, statSync, writeFileSync, existsSync } from "fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
+import { dirname, join, relative } from "path";
 import { fileURLToPath } from "url";
-import { join, dirname, relative } from "path";
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(scriptsDir, "..");
@@ -54,16 +53,19 @@ function walk(root, predicate, out = []) {
   } catch {
     return out;
   }
+
   for (const ent of entries) {
     const full = join(root, ent.name);
     if (ent.isDirectory()) {
-      if (ent.name === "target" || ent.name === "node_modules" || ent.name.startsWith("."))
+      if (ent.name === "target" || ent.name === "node_modules" || ent.name.startsWith(".")) {
         continue;
+      }
       walk(full, predicate, out);
     } else if (ent.isFile() && predicate(full)) {
       out.push(full);
     }
   }
+
   return out;
 }
 
@@ -99,20 +101,26 @@ function computeInputHash() {
   for (const { root, match } of CONTENT_HASH_DIRS) {
     const files = walk(join(projectRoot, root), match);
     files.sort();
-    for (const f of files) hashContent(hash, f);
+    for (const f of files) {
+      hashContent(hash, f);
+    }
   }
 
   for (const rel of MANIFEST_HASH_DIRS) {
     const files = walk(join(projectRoot, rel), () => true);
     files.sort();
-    for (const f of files) hashManifest(hash, f);
+    for (const f of files) {
+      hashManifest(hash, f);
+    }
   }
 
   return hash.digest("hex");
 }
 
 function readStamp() {
-  if (!existsSync(STAMP_FILE)) return null;
+  if (!existsSync(STAMP_FILE)) {
+    return null;
+  }
   try {
     return JSON.parse(readFileSync(STAMP_FILE, "utf8"));
   } catch {
@@ -128,9 +136,10 @@ function writeStamp(inputHash) {
 }
 
 function outputsPresent() {
-  if (!OUTPUTS.every((rel) => existsSync(join(projectRoot, rel)))) return false;
-  // Manifest lists the content-addressed archive name; confirm that file is
-  // also on disk so a half-pruned `public/wasm/` triggers a rebuild.
+  if (!OUTPUTS.every((rel) => existsSync(join(projectRoot, rel)))) {
+    return false;
+  }
+
   try {
     const manifest = JSON.parse(
       readFileSync(join(projectRoot, "public/wasm/cardset.manifest.json"), "utf8"),
@@ -146,16 +155,16 @@ const stamp = readStamp();
 const fresh = stamp?.inputHash === inputHash && outputsPresent();
 
 if (fresh) {
-  console.log("[ensure-wasm] up to date — skipping build:wasm");
+  console.log("[ensure-wasm] up to date; skipping build:wasm");
   process.exit(0);
 }
 
 if (!stamp) {
-  console.log("[ensure-wasm] no stamp — running build:wasm");
+  console.log("[ensure-wasm] no stamp; running build:wasm");
 } else if (stamp.inputHash !== inputHash) {
-  console.log("[ensure-wasm] inputs changed — running build:wasm");
+  console.log("[ensure-wasm] inputs changed; running build:wasm");
 } else {
-  console.log("[ensure-wasm] output missing — running build:wasm");
+  console.log("[ensure-wasm] output missing; running build:wasm");
 }
 
 const result = spawnSync("yarn", ["build:wasm"], {
@@ -169,4 +178,4 @@ if (result.status !== 0) {
 }
 
 writeStamp(inputHash);
-console.log("[ensure-wasm] build complete — stamp updated");
+console.log("[ensure-wasm] build complete; stamp updated");
