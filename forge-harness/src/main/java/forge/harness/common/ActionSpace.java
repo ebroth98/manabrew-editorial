@@ -498,8 +498,27 @@ public final class ActionSpace {
                     return false;
                 }
                 final int minTargets = current.getMinTargets();
-                if (minTargets > 0 && tr.getNumCandidates(current, true) < minTargets) {
-                    return false;
+                if (minTargets > 0) {
+                    final List<GameEntity> candidates = tr.getAllCandidates(current, true);
+                    final List<Pair<GameEntity, GameObject>> stackCandidates = getStackTargetCandidates(current);
+                    boolean hasEnoughCandidates = candidates.size() + stackCandidates.size() >= minTargets;
+                    if (tr.isDifferentControllers() || tr.isForEachPlayer()) {
+                        final Set<Player> controllers = new HashSet<>();
+                        for (final GameEntity candidate : candidates) {
+                            if (candidate instanceof Card) {
+                                controllers.add(((Card) candidate).getController());
+                            }
+                        }
+                        for (final Pair<GameEntity, GameObject> candidate : stackCandidates) {
+                            if (candidate.getLeft() instanceof Card) {
+                                controllers.add(((Card) candidate.getLeft()).getController());
+                            }
+                        }
+                        hasEnoughCandidates &= controllers.size() >= minTargets;
+                    }
+                    if (!hasEnoughCandidates) {
+                        return false;
+                    }
                 }
             }
             current = current.getSubAbility();
