@@ -1,18 +1,5 @@
 import { useState } from "react";
-import {
-  ChevronRight,
-  Minus,
-  Moon,
-  Plus,
-  Redo2,
-  RotateCcw,
-  Shuffle,
-  Sun,
-  SunMoon,
-  Undo2,
-  XOctagon,
-} from "lucide-react";
-import { GameIcon } from "./GameIcon";
+import { ChevronRight, EyeOff, Moon, Redo2, Sun, SunMoon, Undo2 } from "lucide-react";
 import { LayoutIcon } from "./LayoutIcon";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,120 +16,60 @@ import {
   COMPANION_ACCENT_COLORS,
   COMPANION_LAYOUT_LABELS,
   COMPANION_LAYOUT_OPTIONS,
-  COMPANION_MAX_PLAYERS,
-  COMPANION_MIN_PLAYERS,
-  COMPANION_STARTING_LIFE_PRESETS,
 } from "@/stores/useCompanionStore.constants";
 import type { CompanionSession } from "@/stores/useCompanionStore.types";
-import { DiceRoller } from "./DiceRoller";
-import { DiceTray } from "./DiceTray";
+import { DiceMenu } from "./DiceMenu";
+import { FocusModeButton } from "./FocusModeButton";
 import { GameLog } from "./GameLog";
+import { SetupMenu } from "./SetupMenu";
 import { TurnTimer } from "./TurnTimer";
 
 interface CompanionBarProps {
   session: CompanionSession;
   onOpenNewSession: () => void;
+  focus: boolean;
+  onToggleFocus: (next: boolean) => void;
+  /** When set, the bar is being rendered as the focus-mode peek overlay
+   *  — show a hide-peek control alongside Focus so the user can collapse
+   *  the chrome back down without exiting focus mode. */
+  onHidePeek?: () => void;
 }
 
-export function CompanionBar({ session, onOpenNewSession }: CompanionBarProps) {
+export function CompanionBar({
+  session,
+  onOpenNewSession,
+  focus,
+  onToggleFocus,
+  onHidePeek,
+}: CompanionBarProps) {
   const setLayout = useCompanionStore((s) => s.setLayout);
-  const setPlayerCount = useCompanionStore((s) => s.setPlayerCount);
-  const setStartingLife = useCompanionStore((s) => s.setStartingLife);
-  const setCommanderRules = useCompanionStore((s) => s.setCommanderRules);
   const undo = useCompanionStore((s) => s.undo);
   const redo = useCompanionStore((s) => s.redo);
   const canRedo = useCompanionStore((s) => (s.session?.redoStack.length ?? 0) > 0);
   const advanceTurn = useCompanionStore((s) => s.advanceTurn);
   const cycleDayNight = useCompanionStore((s) => s.cycleDayNight);
+
   const activePlayer = session.players.find((p) => p.id === session.activePlayerId) ?? null;
+  const [logOpen, setLogOpen] = useState(false);
   const DayNightIcon =
     session.dayNight === "night" ? Moon : session.dayNight === "day" ? Sun : SunMoon;
-  const resetCounters = useCompanionStore((s) => s.resetCounters);
-  const resetGame = useCompanionStore((s) => s.resetGame);
-  const endSession = useCompanionStore((s) => s.endSession);
-  const pickRandom = useCompanionStore((s) => s.pickRandomFirstPlayer);
-
-  const [diceOpen, setDiceOpen] = useState(false);
-  const setSessionTag = useCompanionStore((s) => s.setSessionTag);
-  const [editingTag, setEditingTag] = useState(false);
 
   const layoutChoices = COMPANION_LAYOUT_OPTIONS[session.players.length] ?? ["free"];
 
   return (
-    <div className="flex flex-wrap items-center gap-1 border-b border-border bg-card/70 px-2 py-1.5 backdrop-blur sm:gap-2 sm:px-3 sm:py-2">
+    <div className="flex flex-wrap items-center gap-0.5 border-b border-border bg-card/70 px-1.5 py-1 backdrop-blur sm:gap-2 sm:px-3 sm:py-2">
       <Button
         size="sm"
         onClick={onOpenNewSession}
         className="h-8 px-2 text-xs sm:h-9 sm:px-4 sm:text-sm"
+        aria-label="New game"
+        title="New game"
       >
-        <span className="sm:hidden">New</span>
         <span className="hidden sm:inline">New game</span>
+        <span className="sm:hidden">+</span>
       </Button>
 
-      <div className="flex items-center gap-0.5 rounded-md bg-muted/60 px-1 py-0.5 sm:gap-1 sm:px-1.5 sm:py-1">
-        <span className="hidden text-xs text-muted-foreground sm:inline">Players</span>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-6"
-          onClick={() => setPlayerCount(session.players.length - 1)}
-          disabled={session.players.length <= COMPANION_MIN_PLAYERS}
-          aria-label="Fewer players"
-        >
-          <Minus className="size-3.5" />
-        </Button>
-        <span className="min-w-4 text-center tabular-nums text-sm font-semibold">
-          {session.players.length}
-        </span>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-6"
-          onClick={() => setPlayerCount(session.players.length + 1)}
-          disabled={session.players.length >= COMPANION_MAX_PLAYERS}
-          aria-label="More players"
-        >
-          <Plus className="size-3.5" />
-        </Button>
-      </div>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 gap-1 px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
-          >
-            <span className="hidden sm:inline">Life:</span>
-            <span className="tabular-nums font-semibold">{session.startingLife}</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuLabel>Starting life</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {COMPANION_STARTING_LIFE_PRESETS.map((value) => (
-            <DropdownMenuItem
-              key={value}
-              onSelect={() => setStartingLife(value)}
-              className={cn(value === session.startingLife && "bg-accent")}
-            >
-              {value}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <Button
-        size="sm"
-        variant={session.commanderRules ? "default" : "outline"}
-        onClick={() => setCommanderRules(!session.commanderRules)}
-        className="h-8 gap-1 px-2 sm:h-9 sm:px-3"
-        aria-label="Toggle commander rules"
-        title="Commander rules"
-      >
-        <GameIcon icon="crown" className="size-3.5" />
-        <span className="hidden sm:inline">Commander</span>
-      </Button>
+      <SetupMenu session={session} onOpenLog={() => setLogOpen(true)} />
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -173,52 +100,27 @@ export function CompanionBar({ session, onOpenNewSession }: CompanionBarProps) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {editingTag ? (
-        <input
-          autoFocus
-          defaultValue={session.tag ?? ""}
-          placeholder="Game title…"
-          className="h-8 w-40 rounded-md border border-input bg-background px-2 text-xs"
-          onBlur={(e) => {
-            setSessionTag(e.target.value.trim());
-            setEditingTag(false);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-            if (e.key === "Escape") setEditingTag(false);
-          }}
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={() => setEditingTag(true)}
-          className="hidden truncate text-xs text-muted-foreground hover:text-foreground sm:inline"
-          title="Edit game title"
-        >
-          {session.tag || "Untitled game"}
-        </button>
-      )}
-
-      <div className="ml-auto flex flex-wrap items-center gap-1 sm:gap-2">
+      <div className="ml-auto flex flex-wrap items-center gap-0.5 sm:gap-2">
         <Button
           size="sm"
           variant={activePlayer ? "default" : "outline"}
           onClick={advanceTurn}
-          className="h-8 gap-1 px-2 text-xs text-white shadow-sm sm:h-9 sm:px-3 sm:text-sm"
+          className="h-8 gap-1 px-1.5 text-xs text-white shadow-sm sm:h-9 sm:px-3 sm:text-sm"
           style={
             activePlayer
               ? { backgroundColor: COMPANION_ACCENT_COLORS[activePlayer.accentKey] }
               : undefined
           }
-          aria-label="Next turn"
+          aria-label={activePlayer ? `Turn ${session.turn} · ${activePlayer.name}` : "Start turn"}
           title={activePlayer ? `Turn ${session.turn} · ${activePlayer.name}` : "Start turn"}
         >
           <ChevronRight className="size-3.5" />
           <span className="hidden tabular-nums sm:inline">
             {activePlayer ? `T${session.turn} · ${activePlayer.name}` : "Start"}
           </span>
-          <span className="tabular-nums sm:hidden">T{session.turn}</span>
+          <span className="tabular-nums sm:hidden">T{session.turn || 1}</span>
         </Button>
+
         <Button
           size="icon"
           variant={session.dayNight ? "default" : "ghost"}
@@ -235,19 +137,11 @@ export function CompanionBar({ session, onOpenNewSession }: CompanionBarProps) {
         >
           <DayNightIcon className="size-4" />
         </Button>
+
         <TurnTimer />
-        <GameLog session={session} />
-        <DiceTray />
-        <Button
-          size="icon"
-          variant="outline"
-          onClick={() => setDiceOpen(true)}
-          className="size-8 sm:size-9"
-          aria-label="Random first player"
-          title="Random first player"
-        >
-          <Shuffle className="size-4 sm:size-5" />
-        </Button>
+
+        <DiceMenu players={session.players} />
+
         <Button
           size="icon"
           variant="ghost"
@@ -269,47 +163,23 @@ export function CompanionBar({ session, onOpenNewSession }: CompanionBarProps) {
         >
           <Redo2 className="size-4" />
         </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="ghost" className="size-8" aria-label="More actions">
-              <RotateCcw className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Reset</DropdownMenuLabel>
-            <DropdownMenuItem onSelect={() => resetCounters("life")}>
-              <Redo2 className="mr-2 size-4" /> Life only
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => resetCounters("counters")}>
-              <Redo2 className="mr-2 size-4" /> Counters only
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => resetCounters("commander-damage")}>
-              <Redo2 className="mr-2 size-4" /> Commander damage
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => resetGame()}>
-              Reset everything (turn, timer, history)
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-8 text-destructive hover:text-destructive"
-          onClick={() => endSession()}
-          aria-label="End game"
-          title="End game"
-        >
-          <XOctagon className="size-4" />
-        </Button>
+
+        {onHidePeek && (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-8"
+            onClick={onHidePeek}
+            aria-label="Hide controls"
+            title="Hide bar and phase strip"
+          >
+            <EyeOff className="size-4" />
+          </Button>
+        )}
+        <FocusModeButton focus={focus} onToggle={onToggleFocus} />
       </div>
 
-      <DiceRoller
-        open={diceOpen}
-        onOpenChange={setDiceOpen}
-        players={session.players}
-        pickWinner={pickRandom}
-      />
+      <GameLog session={session} open={logOpen} onOpenChange={setLogOpen} />
     </div>
   );
 }
