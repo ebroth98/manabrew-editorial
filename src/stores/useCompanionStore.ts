@@ -21,8 +21,10 @@ import type {
   CompanionCounterKind,
   CompanionEvent,
   CompanionLayout,
+  CompanionPhase,
   CompanionPlayer,
   CompanionSession,
+  ManaColor,
 } from "./useCompanionStore.types";
 
 interface PendingDelta {
@@ -36,6 +38,10 @@ interface PendingDelta {
 interface CompanionState {
   session: CompanionSession | null;
   archive: CompanionSession[];
+  /** Last archived session shown to the user as a post-game summary modal.
+   *  Cleared when the user dismisses the summary. */
+  summarySession: { session: CompanionSession; winnerId: string | null } | null;
+  dismissSummary: () => void;
   /** Transient per-player pending life deltas (not persisted). */
   pendingDeltas: Record<string, { amount: number; expiresAt: number }>;
 
@@ -45,12 +51,18 @@ interface CompanionState {
     commanderRules: boolean;
     layout?: CompanionLayout;
     carryRoster?: boolean;
+    oathbreaker?: boolean;
   }) => void;
   endSession: (winnerId?: string | null) => void;
   resetCounters: (
     scope: "life" | "counters" | "commander-damage" | "all",
     playerId?: string,
   ) => void;
+  /** Wipe every gameplay-state field on the current session — life,
+   *  counters, mana, status chips, commander damage, turn / phase /
+   *  active player, timer, history, redo. Keeps the configuration
+   *  (player roster, layout, format, accents, commander picks). */
+  resetGame: () => void;
 
   setLayout: (layout: CompanionLayout) => void;
   setStartingLife: (life: number) => void;
@@ -58,6 +70,9 @@ interface CompanionState {
   setPlayerCount: (count: number) => void;
 
   renamePlayer: (playerId: string, name: string) => void;
+  setPlayerNotes: (playerId: string, notes: string) => void;
+  setSessionTag: (tag: string) => void;
+  restoreFromArchive: (sessionId: string) => void;
   setPlayerAccent: (playerId: string, accent: CompanionAccentKey) => void;
   setCommander: (
     playerId: string,
@@ -89,17 +104,27 @@ interface CompanionState {
   toggleMonarch: (playerId: string) => void;
   toggleInitiative: (playerId: string) => void;
   toggleCityBlessing: (playerId: string) => void;
+  cycleRing: (playerId: string) => void;
+  cycleSpeed: (playerId: string) => void;
+  cycleDayNight: () => void;
+  adjustMana: (playerId: string, color: ManaColor, delta: number) => void;
+  clearMana: (playerId: string) => void;
 
   markDead: (playerId: string, dead: boolean) => void;
 
   undo: () => void;
+  redo: () => void;
 
   startTimer: () => void;
   pauseTimer: () => void;
   resetTimer: () => void;
+  setTimerMode: (mode: "shared" | "chess") => void;
+  setPhase: (phase: CompanionPhase) => void;
+  advancePhase: () => void;
   setActivePlayer: (playerId: string | null) => void;
   advanceTurn: () => void;
   pickRandomFirstPlayer: () => string | null;
+  setFirstPlayer: (playerId: string) => void;
 }
 
 function uid(): string {
@@ -146,7 +171,12 @@ function makeSession(input: {
     layout: input.layout ?? COMPANION_DEFAULT_LAYOUT_BY_COUNT[count] ?? "free",
     players,
     history: [],
+    redoStack: [],
+    dayNight: null,
     timer: { startedAt: null, pausedAt: null, accumulatedMs: 0 },
+    timerMode: "shared",
+    chessClockStartedAt: null,
+    phase: "main1",
     activePlayerId: null,
     turn: 0,
     lastFirstPlayerId: null,
@@ -161,12 +191,112 @@ function withSession(
   return { session: mutate(state.session) };
 }
 
+function sameCommander(a: CompanionCommanderRef | null, b: CompanionCommanderRef | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.scryfallId && b.scryfallId) return a.scryfallId === b.scryfallId;
+  return a.name === b.name;
+}
+
 function pushEvent(session: CompanionSession, event: CompanionEvent): CompanionSession {
   const history = [...session.history, event];
   if (history.length > COMPANION_HISTORY_LIMIT) {
     history.splice(0, history.length - COMPANION_HISTORY_LIMIT);
   }
-  return { ...session, history };
+  return { ...session, history, redoStack: [] };
+}
+
+function revertEvent(session: CompanionSession, event: CompanionEvent): CompanionSession {
+  switch (event.type) {
+    case "life":
+      return replacePlayer(session, event.playerId, (p) => ({ ...p, life: event.prev }));
+    case "counter":
+      return replacePlayer(session, event.playerId, (p) => ({
+        ...p,
+        counters: p.counters.map((c) =>
+          c.id === event.counterId ? { ...c, value: event.prev } : c,
+        ),
+      }));
+    case "counterAdd":
+      return replacePlayer(session, event.playerId, (p) => ({
+        ...p,
+        counters: p.counters.filter((c) => c.id !== event.counter.id),
+      }));
+    case "counterRemove":
+      return replacePlayer(session, event.playerId, (p) => {
+        const next = [...p.counters];
+        const index = Math.min(Math.max(0, event.index), next.length);
+        next.splice(index, 0, event.counter);
+        return { ...p, counters: next };
+      });
+    case "commander":
+      return replacePlayer(session, event.playerId, (p) => {
+        const commanders = [...p.commanders] as CompanionPlayer["commanders"];
+        commanders[event.slot] = event.prev;
+        return { ...p, commanders };
+      });
+    case "dead":
+      return replacePlayer(session, event.playerId, (p) => ({ ...p, isDead: event.prev }));
+    case "cmdDmg": {
+      const target = session.players.find((p) => p.id === event.targetId);
+      const revertedPair: [number, number] = [
+        ...(target?.commanderDamage[event.sourceId] ?? [0, 0]),
+      ] as [number, number];
+      revertedPair[event.slot] = event.prev;
+      return replacePlayer(session, event.targetId, (p) => ({
+        ...p,
+        commanderDamage: { ...p.commanderDamage, [event.sourceId]: revertedPair },
+        life: event.prevLife,
+        isDead: event.prevDead,
+      }));
+    }
+  }
+}
+
+function replayEvent(session: CompanionSession, event: CompanionEvent): CompanionSession {
+  switch (event.type) {
+    case "life":
+      return replacePlayer(session, event.playerId, (p) => ({ ...p, life: event.next }));
+    case "counter":
+      return replacePlayer(session, event.playerId, (p) => ({
+        ...p,
+        counters: p.counters.map((c) =>
+          c.id === event.counterId ? { ...c, value: event.next } : c,
+        ),
+      }));
+    case "counterAdd":
+      return replacePlayer(session, event.playerId, (p) =>
+        p.counters.some((c) => c.id === event.counter.id)
+          ? p
+          : { ...p, counters: [...p.counters, event.counter] },
+      );
+    case "counterRemove":
+      return replacePlayer(session, event.playerId, (p) => ({
+        ...p,
+        counters: p.counters.filter((c) => c.id !== event.counter.id),
+      }));
+    case "commander":
+      return replacePlayer(session, event.playerId, (p) => {
+        const commanders = [...p.commanders] as CompanionPlayer["commanders"];
+        commanders[event.slot] = event.next;
+        return { ...p, commanders };
+      });
+    case "dead":
+      return replacePlayer(session, event.playerId, (p) => ({ ...p, isDead: event.next }));
+    case "cmdDmg": {
+      const target = session.players.find((p) => p.id === event.targetId);
+      const replayedPair: [number, number] = [
+        ...(target?.commanderDamage[event.sourceId] ?? [0, 0]),
+      ] as [number, number];
+      replayedPair[event.slot] = event.next;
+      return replacePlayer(session, event.targetId, (p) => ({
+        ...p,
+        commanderDamage: { ...p.commanderDamage, [event.sourceId]: replayedPair },
+        life: event.nextLife,
+        isDead: event.nextDead,
+      }));
+    }
+  }
 }
 
 function replacePlayer(
@@ -217,12 +347,22 @@ export const useCompanionStore = create<CompanionState>()(
       (set, get) => ({
         session: null,
         archive: [],
+        summarySession: null,
         pendingDeltas: {},
+        dismissSummary: () => set({ summarySession: null }),
 
-        newSession: ({ playerCount, startingLife, commanderRules, layout, carryRoster }) => {
+        newSession: ({
+          playerCount,
+          startingLife,
+          commanderRules,
+          layout,
+          carryRoster,
+          oathbreaker,
+        }) => {
           clearAllPendingTimers();
           const current = get().session;
           const next = makeSession({ playerCount, startingLife, commanderRules, layout });
+          if (oathbreaker) next.oathbreaker = true;
           if (carryRoster && current) {
             next.players = next.players.map((player, index) => {
               const carry = current.players[index];
@@ -242,12 +382,55 @@ export const useCompanionStore = create<CompanionState>()(
           clearAllPendingTimers();
           const session = get().session;
           if (!session) return;
-          void winnerId;
           set((state) => ({
             session: null,
             pendingDeltas: {},
             archive: [session, ...state.archive].slice(0, 10),
+            summarySession: { session, winnerId: winnerId ?? null },
           }));
+        },
+
+        resetGame: () => {
+          clearAllPendingTimers();
+          // Single setState so there's no intermediate frame where the
+          // session is reset but pendingDeltas still references the old
+          // life batches.
+          set((state) => {
+            if (!state.session) return state;
+            const session = state.session;
+            return {
+              session: {
+                ...session,
+                players: session.players.map((p) => ({
+                  ...p,
+                  life: session.startingLife,
+                  counters: p.counters.map((c) => ({ ...c, value: 0 })),
+                  commanderDamage: {},
+                  isDead: false,
+                  isMonarch: false,
+                  hasInitiative: false,
+                  hasCityBlessing: false,
+                  ringLevel: 0,
+                  speed: 0,
+                  manaPool: {},
+                  timeMs: 0,
+                })),
+                history: [],
+                redoStack: [],
+                turn: 0,
+                activePlayerId: null,
+                lastFirstPlayerId: null,
+                phase: "main1",
+                dayNight: null,
+                timer: { startedAt: null, pausedAt: null, accumulatedMs: 0 },
+                // Don't pre-arm the chess clock — there's no active player
+                // yet. setFirstPlayer / advanceTurn will start it when one
+                // actually takes their turn.
+                chessClockStartedAt: null,
+              },
+              pendingDeltas: {},
+            };
+          });
         },
 
         resetCounters: (scope, playerId) => {
@@ -338,6 +521,29 @@ export const useCompanionStore = create<CompanionState>()(
             ),
           ),
 
+        setPlayerNotes: (playerId, notes) =>
+          set((state) =>
+            withSession(state, (session) =>
+              replacePlayer(session, playerId, (p) => ({ ...p, notes })),
+            ),
+          ),
+
+        setSessionTag: (tag) =>
+          set((state) => withSession(state, (session) => ({ ...session, tag }))),
+
+        restoreFromArchive: (sessionId) => {
+          const state = get();
+          const target = state.archive.find((s) => s.id === sessionId);
+          if (!target) return;
+          clearAllPendingTimers();
+          set({
+            session: target,
+            archive: state.archive.filter((s) => s.id !== sessionId),
+            summarySession: null,
+            pendingDeltas: {},
+          });
+        },
+
         setPlayerAccent: (playerId, accent) =>
           set((state) =>
             withSession(state, (session) =>
@@ -351,7 +557,7 @@ export const useCompanionStore = create<CompanionState>()(
               const player = session.players.find((p) => p.id === playerId);
               if (!player) return session;
               const prev = player.commanders[slot] ?? null;
-              if (prev === ref) return session;
+              if (sameCommander(prev, ref)) return session;
               const updated = replacePlayer(session, playerId, (p) => {
                 const next = [...p.commanders] as CompanionPlayer["commanders"];
                 next[slot] = ref;
@@ -513,13 +719,15 @@ export const useCompanionStore = create<CompanionState>()(
               const prevLife = target.life;
               const lifeDelta = -(next - prev);
               const nextLife = prevLife + lifeDelta;
+              const prevDead = target.isDead;
               const becomesDead =
                 next >= COMPANION_LETHAL_COMMANDER_DAMAGE && session.commanderRules;
+              const nextDead = prevDead || becomesDead;
               const updated = replacePlayer(session, targetId, (p) => ({
                 ...p,
                 commanderDamage: { ...p.commanderDamage, [sourceId]: nextPair },
                 life: nextLife,
-                isDead: p.isDead || becomesDead,
+                isDead: nextDead,
               }));
               return pushEvent(updated, {
                 type: "cmdDmg",
@@ -530,6 +738,8 @@ export const useCompanionStore = create<CompanionState>()(
                 next,
                 prevLife,
                 nextLife,
+                prevDead,
+                nextDead,
                 at: Date.now(),
               });
             }),
@@ -578,6 +788,53 @@ export const useCompanionStore = create<CompanionState>()(
             ),
           ),
 
+        cycleRing: (playerId) =>
+          set((state) =>
+            withSession(state, (session) =>
+              replacePlayer(session, playerId, (p) => ({
+                ...p,
+                ringLevel: ((p.ringLevel ?? 0) + 1) % 5,
+              })),
+            ),
+          ),
+
+        cycleSpeed: (playerId) =>
+          set((state) =>
+            withSession(state, (session) =>
+              replacePlayer(session, playerId, (p) => ({
+                ...p,
+                speed: ((p.speed ?? 0) + 1) % 5,
+              })),
+            ),
+          ),
+
+        cycleDayNight: () =>
+          set((state) =>
+            withSession(state, (session) => {
+              const next =
+                session.dayNight === null ? "day" : session.dayNight === "day" ? "night" : null;
+              return { ...session, dayNight: next };
+            }),
+          ),
+
+        adjustMana: (playerId, color, delta) =>
+          set((state) =>
+            withSession(state, (session) =>
+              replacePlayer(session, playerId, (p) => {
+                const current = p.manaPool?.[color] ?? 0;
+                const value = Math.max(0, current + delta);
+                return { ...p, manaPool: { ...p.manaPool, [color]: value } };
+              }),
+            ),
+          ),
+
+        clearMana: (playerId) =>
+          set((state) =>
+            withSession(state, (session) =>
+              replacePlayer(session, playerId, (p) => ({ ...p, manaPool: {} })),
+            ),
+          ),
+
         markDead: (playerId, dead) =>
           set((state) =>
             withSession(state, (session) => {
@@ -605,11 +862,6 @@ export const useCompanionStore = create<CompanionState>()(
          * setup, not gameplay.
          */
         undo: () => {
-          /** Snapshot the in-flight life batches so we can revert player.life
-           *  to the value before the current batch started. `adjustLife`
-           *  mutates `life` immediately but only writes the history entry
-           *  when the batch flushes, so without this an undo right after a
-           *  tap would discard the timer but leave the visible damage. */
           const pendingPrev = Object.fromEntries(
             Object.entries(pendingDeltaTimers).map(([id, t]) => [id, t.prev]),
           );
@@ -625,75 +877,30 @@ export const useCompanionStore = create<CompanionState>()(
               }
               if (session.history.length === 0) return session;
               const last = session.history[session.history.length - 1]!;
-              const history = session.history.slice(0, -1);
-              if (last.type === "life") {
-                return {
-                  ...replacePlayer(session, last.playerId, (p) => ({ ...p, life: last.prev })),
-                  history,
-                };
-              }
-              if (last.type === "counter") {
-                return {
-                  ...replacePlayer(session, last.playerId, (p) => ({
-                    ...p,
-                    counters: p.counters.map((c) =>
-                      c.id === last.counterId ? { ...c, value: last.prev } : c,
-                    ),
-                  })),
-                  history,
-                };
-              }
-              if (last.type === "counterAdd") {
-                return {
-                  ...replacePlayer(session, last.playerId, (p) => ({
-                    ...p,
-                    counters: p.counters.filter((c) => c.id !== last.counter.id),
-                  })),
-                  history,
-                };
-              }
-              if (last.type === "counterRemove") {
-                return {
-                  ...replacePlayer(session, last.playerId, (p) => {
-                    const next = [...p.counters];
-                    const index = Math.min(Math.max(0, last.index), next.length);
-                    next.splice(index, 0, last.counter);
-                    return { ...p, counters: next };
-                  }),
-                  history,
-                };
-              }
-              if (last.type === "commander") {
-                return {
-                  ...replacePlayer(session, last.playerId, (p) => {
-                    const commanders = [...p.commanders] as CompanionPlayer["commanders"];
-                    commanders[last.slot] = last.prev;
-                    return { ...p, commanders };
-                  }),
-                  history,
-                };
-              }
-              if (last.type === "dead") {
-                return {
-                  ...replacePlayer(session, last.playerId, (p) => ({ ...p, isDead: last.prev })),
-                  history,
-                };
-              }
-              const revertedPair: [number, number] = [
-                ...(session.players.find((p) => p.id === last.targetId)?.commanderDamage[
-                  last.sourceId
-                ] ?? [0, 0]),
-              ] as [number, number];
-              revertedPair[last.slot] = last.prev;
-              const target = replacePlayer(session, last.targetId, (p) => ({
-                ...p,
-                commanderDamage: { ...p.commanderDamage, [last.sourceId]: revertedPair },
-                life: last.prevLife,
-              }));
-              return { ...target, history };
+              const reverted = revertEvent(session, last);
+              return {
+                ...reverted,
+                history: session.history.slice(0, -1),
+                redoStack: [...session.redoStack, last],
+              };
             }),
           );
           set({ pendingDeltas: {} });
+        },
+
+        redo: () => {
+          set((state) =>
+            withSession(state, (session) => {
+              if (session.redoStack.length === 0) return session;
+              const next = session.redoStack[session.redoStack.length - 1]!;
+              const replayed = replayEvent(session, next);
+              return {
+                ...replayed,
+                history: [...session.history, next],
+                redoStack: session.redoStack.slice(0, -1),
+              };
+            }),
+          );
         },
 
         startTimer: () =>
@@ -728,7 +935,39 @@ export const useCompanionStore = create<CompanionState>()(
             withSession(state, (session) => ({
               ...session,
               timer: { startedAt: null, pausedAt: null, accumulatedMs: 0 },
+              chessClockStartedAt: session.timerMode === "chess" ? Date.now() : null,
+              players: session.players.map((p) => ({ ...p, timeMs: 0 })),
             })),
+          ),
+
+        setTimerMode: (mode) =>
+          set((state) =>
+            withSession(state, (session) => ({
+              ...session,
+              timerMode: mode,
+              chessClockStartedAt: mode === "chess" ? Date.now() : null,
+            })),
+          ),
+
+        setPhase: (phase) =>
+          set((state) => withSession(state, (session) => ({ ...session, phase }))),
+
+        advancePhase: () =>
+          set((state) =>
+            withSession(state, (session) => {
+              const order: CompanionPhase[] = [
+                "untap",
+                "upkeep",
+                "draw",
+                "main1",
+                "combat",
+                "main2",
+                "end",
+              ];
+              const i = order.indexOf(session.phase);
+              const next = order[(i + 1) % order.length]!;
+              return { ...session, phase: next };
+            }),
           ),
 
         setActivePlayer: (playerId) =>
@@ -749,7 +988,32 @@ export const useCompanionStore = create<CompanionState>()(
               const nextPlayer = living[nextIndex]!;
               const nextTurn =
                 currentIndex < 0 ? 1 : nextIndex === 0 ? session.turn + 1 : session.turn;
-              return { ...session, activePlayerId: nextPlayer.id, turn: nextTurn };
+              // Storm count resets at the end of the turn (oracle rule 702.40).
+              let players = session.players.map((p) => ({
+                ...p,
+                counters: p.counters.map((c) =>
+                  c.kind === "storm" && c.value !== 0 ? { ...c, value: 0 } : c,
+                ),
+              }));
+              let chessClockStartedAt = session.chessClockStartedAt;
+              if (session.timerMode === "chess") {
+                const now = Date.now();
+                if (chessClockStartedAt != null && session.activePlayerId) {
+                  const elapsed = now - chessClockStartedAt;
+                  const prevId = session.activePlayerId;
+                  players = players.map((p) =>
+                    p.id === prevId ? { ...p, timeMs: (p.timeMs ?? 0) + elapsed } : p,
+                  );
+                }
+                chessClockStartedAt = now;
+              }
+              return {
+                ...session,
+                players,
+                activePlayerId: nextPlayer.id,
+                turn: nextTurn,
+                chessClockStartedAt,
+              };
             }),
           ),
 
@@ -768,10 +1032,32 @@ export const useCompanionStore = create<CompanionState>()(
           );
           return winner.id;
         },
+
+        setFirstPlayer: (playerId) =>
+          set((state) =>
+            withSession(state, (session) => {
+              if (!session.players.some((p) => p.id === playerId)) return session;
+              return {
+                ...session,
+                activePlayerId: playerId,
+                turn: 1,
+                lastFirstPlayerId: playerId,
+                chessClockStartedAt: session.timerMode === "chess" ? Date.now() : null,
+              };
+            }),
+          ),
       }),
       {
         name: STORAGE_KEYS.COMPANION,
         partialize: (state) => ({ session: state.session, archive: state.archive }),
+        merge: (persistedState, currentState) => {
+          if (!persistedState || typeof persistedState !== "object") return currentState;
+          const incoming = persistedState as Partial<CompanionState>;
+          const session = incoming.session
+            ? { ...incoming.session, redoStack: incoming.session.redoStack ?? [] }
+            : null;
+          return { ...currentState, ...incoming, session };
+        },
       },
     ),
     { name: "companion", enabled: import.meta.env.DEV },

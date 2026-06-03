@@ -1,3 +1,6 @@
+export type ManaColor = "W" | "U" | "B" | "R" | "G" | "C";
+export const MANA_COLORS: readonly ManaColor[] = ["W", "U", "B", "R", "G", "C"];
+
 export type CompanionCounterKind =
   | "poison"
   | "energy"
@@ -36,6 +39,13 @@ export interface CompanionPlayer {
   isMonarch?: boolean;
   hasInitiative?: boolean;
   hasCityBlessing?: boolean;
+  ringLevel?: number;
+  speed?: number;
+  manaPool?: Partial<Record<ManaColor, number>>;
+  /** Total chess-clock time accumulated while this player was active. */
+  timeMs?: number;
+  /** Free-form note shown in the player menu. */
+  notes?: string;
   /** Free-layout position, rotation and scale (only consulted when layout === "free"). */
   freeLayout?: { x: number; y: number; rotation: number; scale?: number };
 }
@@ -49,6 +59,8 @@ export type CompanionAccentKey =
   | "rose"
   | "teal"
   | "slate";
+
+export type CompanionPhase = "untap" | "upkeep" | "draw" | "main1" | "combat" | "main2" | "end";
 
 export type CompanionLayout =
   | "1v1"
@@ -83,6 +95,8 @@ export type CompanionEvent =
       next: number;
       prevLife: number;
       nextLife: number;
+      prevDead: boolean;
+      nextDead: boolean;
       at: number;
     }
   | { type: "counterAdd"; playerId: string; counter: CompanionCounter; at: number }
@@ -111,7 +125,17 @@ export interface CompanionSession {
   layout: CompanionLayout;
   players: CompanionPlayer[];
   history: CompanionEvent[];
+  redoStack: CompanionEvent[];
+  dayNight: "day" | "night" | null;
   timer: { startedAt: number | null; pausedAt: number | null; accumulatedMs: number };
+  timerMode: "shared" | "chess";
+  chessClockStartedAt: number | null;
+  phase: CompanionPhase;
+  /** When true, the partner commander slot represents an Oathbreaker
+   *  "signature spell" rather than a second commander. UI-only flag. */
+  oathbreaker?: boolean;
+  /** Optional user-supplied label for the game (e.g. "Friday EDH at Marco's"). */
+  tag?: string;
   activePlayerId: string | null;
   turn: number;
   lastFirstPlayerId: string | null;

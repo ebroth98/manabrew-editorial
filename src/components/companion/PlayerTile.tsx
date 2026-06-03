@@ -9,6 +9,7 @@ import { CommanderArt } from "./CommanderArt";
 import { CommanderDamageStrip } from "./CommanderDamageStrip";
 import { CommanderPickerDialog } from "./CommanderPickerDialog";
 import { CountersRail } from "./CountersRail";
+import { ManaPoolRail } from "./ManaPoolRail";
 import { GameIcon } from "./GameIcon";
 import { PlayerMenu } from "./PlayerMenu";
 import { StatusChips } from "./StatusChips";
@@ -78,6 +79,18 @@ export function PlayerTile({
   const isPerpendicular = Math.abs(rotation) === 90;
   const flashDec = externalLifeInput ? externalDecTick : decTick;
   const flashInc = externalLifeInput ? externalIncTick : incTick;
+  const hasCommanderImage = Boolean(
+    player.commanders[0]?.imageUrl || player.commanders[1]?.imageUrl,
+  );
+  // When commander art covers the tile, the accent-coloured background is
+  // hidden — colour the active-turn ring with the accent instead of white
+  // so it still identifies whose turn it is.
+  // Active-turn outline + the baseline 1px hairline that the tile
+  // normally gets via Tailwind's ring-1 ring-white/5. Inline box-shadow
+  // overrides Tailwind's ring shadow, so we have to compose both here.
+  const activeRing = isActive
+    ? `0 0 0 ${hasCommanderImage ? 3 : 2}px ${hasCommanderImage ? accent : "white"}, 0 0 0 1px rgba(255,255,255,0.05)`
+    : undefined;
 
   return (
     <div className={cn("relative size-full", className)} style={{ containerType: "size" }}>
@@ -85,7 +98,6 @@ export function PlayerTile({
         className={cn(
           "@container absolute overflow-hidden rounded-lg shadow-xl ring-1 ring-white/5 transition @md:rounded-2xl",
           player.isDead && "opacity-60 grayscale",
-          isActive && "ring-2 ring-white",
         )}
         style={{
           backgroundColor: accent,
@@ -94,6 +106,7 @@ export function PlayerTile({
           width: isPerpendicular ? "100cqh" : "100cqw",
           height: isPerpendicular ? "100cqw" : "100cqh",
           transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+          boxShadow: activeRing,
         }}
       >
         <CommanderArt refs={player.commanders} />
@@ -206,8 +219,9 @@ export function PlayerTile({
             )}
           </div>
 
-          <div className="pointer-events-auto flex items-end justify-between gap-2">
+          <div className="pointer-events-auto flex flex-wrap items-end justify-between gap-1.5">
             <CountersRail playerId={player.id} counters={player.counters} />
+            <ManaPoolRail playerId={player.id} pool={player.manaPool} />
           </div>
         </div>
 

@@ -1,5 +1,17 @@
 import { useState } from "react";
-import { Minus, Plus, Redo2, RotateCcw, Undo2, XOctagon } from "lucide-react";
+import {
+  ChevronRight,
+  Minus,
+  Moon,
+  Plus,
+  Redo2,
+  RotateCcw,
+  Shuffle,
+  Sun,
+  SunMoon,
+  Undo2,
+  XOctagon,
+} from "lucide-react";
 import { GameIcon } from "./GameIcon";
 import { LayoutIcon } from "./LayoutIcon";
 import { Button } from "@/components/ui/button";
@@ -14,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useCompanionStore } from "@/stores/useCompanionStore";
 import {
+  COMPANION_ACCENT_COLORS,
   COMPANION_LAYOUT_LABELS,
   COMPANION_LAYOUT_OPTIONS,
   COMPANION_MAX_PLAYERS,
@@ -22,6 +35,8 @@ import {
 } from "@/stores/useCompanionStore.constants";
 import type { CompanionSession } from "@/stores/useCompanionStore.types";
 import { DiceRoller } from "./DiceRoller";
+import { DiceTray } from "./DiceTray";
+import { GameLog } from "./GameLog";
 import { TurnTimer } from "./TurnTimer";
 
 interface CompanionBarProps {
@@ -35,11 +50,21 @@ export function CompanionBar({ session, onOpenNewSession }: CompanionBarProps) {
   const setStartingLife = useCompanionStore((s) => s.setStartingLife);
   const setCommanderRules = useCompanionStore((s) => s.setCommanderRules);
   const undo = useCompanionStore((s) => s.undo);
+  const redo = useCompanionStore((s) => s.redo);
+  const canRedo = useCompanionStore((s) => (s.session?.redoStack.length ?? 0) > 0);
+  const advanceTurn = useCompanionStore((s) => s.advanceTurn);
+  const cycleDayNight = useCompanionStore((s) => s.cycleDayNight);
+  const activePlayer = session.players.find((p) => p.id === session.activePlayerId) ?? null;
+  const DayNightIcon =
+    session.dayNight === "night" ? Moon : session.dayNight === "day" ? Sun : SunMoon;
   const resetCounters = useCompanionStore((s) => s.resetCounters);
+  const resetGame = useCompanionStore((s) => s.resetGame);
   const endSession = useCompanionStore((s) => s.endSession);
   const pickRandom = useCompanionStore((s) => s.pickRandomFirstPlayer);
 
   const [diceOpen, setDiceOpen] = useState(false);
+  const setSessionTag = useCompanionStore((s) => s.setSessionTag);
+  const [editingTag, setEditingTag] = useState(false);
 
   const layoutChoices = COMPANION_LAYOUT_OPTIONS[session.players.length] ?? ["free"];
 
@@ -148,8 +173,71 @@ export function CompanionBar({ session, onOpenNewSession }: CompanionBarProps) {
         </DropdownMenuContent>
       </DropdownMenu>
 
+      {editingTag ? (
+        <input
+          autoFocus
+          defaultValue={session.tag ?? ""}
+          placeholder="Game title…"
+          className="h-8 w-40 rounded-md border border-input bg-background px-2 text-xs"
+          onBlur={(e) => {
+            setSessionTag(e.target.value.trim());
+            setEditingTag(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            if (e.key === "Escape") setEditingTag(false);
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditingTag(true)}
+          className="hidden truncate text-xs text-muted-foreground hover:text-foreground sm:inline"
+          title="Edit game title"
+        >
+          {session.tag || "Untitled game"}
+        </button>
+      )}
+
       <div className="ml-auto flex flex-wrap items-center gap-1 sm:gap-2">
+        <Button
+          size="sm"
+          variant={activePlayer ? "default" : "outline"}
+          onClick={advanceTurn}
+          className="h-8 gap-1 px-2 text-xs text-white shadow-sm sm:h-9 sm:px-3 sm:text-sm"
+          style={
+            activePlayer
+              ? { backgroundColor: COMPANION_ACCENT_COLORS[activePlayer.accentKey] }
+              : undefined
+          }
+          aria-label="Next turn"
+          title={activePlayer ? `Turn ${session.turn} · ${activePlayer.name}` : "Start turn"}
+        >
+          <ChevronRight className="size-3.5" />
+          <span className="hidden tabular-nums sm:inline">
+            {activePlayer ? `T${session.turn} · ${activePlayer.name}` : "Start"}
+          </span>
+          <span className="tabular-nums sm:hidden">T{session.turn}</span>
+        </Button>
+        <Button
+          size="icon"
+          variant={session.dayNight ? "default" : "ghost"}
+          className="size-8"
+          onClick={cycleDayNight}
+          aria-label="Cycle day / night"
+          title={
+            session.dayNight === null
+              ? "Day/Night: off"
+              : session.dayNight === "day"
+                ? "It is day"
+                : "It is night"
+          }
+        >
+          <DayNightIcon className="size-4" />
+        </Button>
         <TurnTimer />
+        <GameLog session={session} />
+        <DiceTray />
         <Button
           size="icon"
           variant="outline"
@@ -158,7 +246,7 @@ export function CompanionBar({ session, onOpenNewSession }: CompanionBarProps) {
           aria-label="Random first player"
           title="Random first player"
         >
-          <GameIcon icon="d20" className="size-4 sm:size-5" />
+          <Shuffle className="size-4 sm:size-5" />
         </Button>
         <Button
           size="icon"
@@ -169,6 +257,17 @@ export function CompanionBar({ session, onOpenNewSession }: CompanionBarProps) {
           title="Undo last action"
         >
           <Undo2 className="size-4" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-8"
+          onClick={redo}
+          disabled={!canRedo}
+          aria-label="Redo"
+          title="Redo"
+        >
+          <Redo2 className="size-4" />
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -188,8 +287,8 @@ export function CompanionBar({ session, onOpenNewSession }: CompanionBarProps) {
               <Redo2 className="mr-2 size-4" /> Commander damage
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => resetCounters("all")}>
-              Reset everything
+            <DropdownMenuItem onSelect={() => resetGame()}>
+              Reset everything (turn, timer, history)
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
