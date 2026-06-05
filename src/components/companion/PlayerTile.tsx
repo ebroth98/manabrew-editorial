@@ -8,6 +8,7 @@ import { AddCounterMenu } from "./AddCounterMenu";
 import { CommanderArt } from "./CommanderArt";
 import { CommanderDamageStrip } from "./CommanderDamageStrip";
 import { CommanderPickerDialog } from "./CommanderPickerDialog";
+import { CommanderTaxRail } from "./CommanderTaxRail";
 import { CountersRail } from "./CountersRail";
 import { ManaPoolRail } from "./ManaPoolRail";
 import { GameIcon } from "./GameIcon";
@@ -82,15 +83,19 @@ export function PlayerTile({
   const hasCommanderImage = Boolean(
     player.commanders[0]?.imageUrl || player.commanders[1]?.imageUrl,
   );
-  // When commander art covers the tile, the accent-coloured background is
-  // hidden — colour the active-turn ring with the accent instead of white
-  // so it still identifies whose turn it is.
-  // Active-turn outline + the baseline 1px hairline that the tile
-  // normally gets via Tailwind's ring-1 ring-white/5. Inline box-shadow
-  // overrides Tailwind's ring shadow, so we have to compose both here.
-  const activeRing = isActive
-    ? `0 0 0 ${hasCommanderImage ? 3 : 2}px ${hasCommanderImage ? accent : "white"}, 0 0 0 1px rgba(255,255,255,0.05)`
-    : undefined;
+  // Commander art hides the accent background, so the tile loses its owner
+  // colour. Always draw an accent ring on art tiles to keep players
+  // identifiable; the active tile additionally gets a white halo outside the
+  // accent so whose-turn-it-is still reads. No-art tiles keep their accent
+  // background (already identifiable) and only ring white when active.
+  // Inline box-shadow overrides Tailwind's ring-1 ring-white/5, so compose both.
+  const activeRing = hasCommanderImage
+    ? isActive
+      ? `0 0 0 3px ${accent}, 0 0 0 6px white`
+      : `0 0 0 3px ${accent}, 0 0 0 4px rgba(0,0,0,0.45)`
+    : isActive
+      ? `0 0 0 2px white, 0 0 0 1px rgba(255,255,255,0.05)`
+      : undefined;
 
   return (
     <div className={cn("relative size-full", className)} style={{ containerType: "size" }}>
@@ -116,13 +121,13 @@ export function PlayerTile({
             <button
               type="button"
               aria-label="Decrease life"
-              className="absolute inset-y-0 left-0 z-10 w-1/2"
+              className="absolute inset-y-0 left-0 z-10 w-1/2 touch-none select-none"
               {...decBindings}
             />
             <button
               type="button"
               aria-label="Increase life"
-              className="absolute inset-y-0 right-0 z-10 w-1/2"
+              className="absolute inset-y-0 right-0 z-10 w-1/2 touch-none select-none"
               {...incBindings}
             />
           </>
@@ -133,14 +138,14 @@ export function PlayerTile({
           <div className="pointer-events-auto flex items-start gap-1.5 @md:gap-2">
             <button
               type="button"
-              className="grid size-7 place-items-center overflow-hidden rounded-full bg-black/40 ring-1 ring-white/20 @xs:size-8 @md:size-10"
+              className="grid size-8 place-items-center overflow-hidden rounded-full bg-black/40 ring-1 ring-white/20 @xs:size-9 @md:size-11"
               onClick={() => setPickerOpen(true)}
               aria-label="Choose commander"
             >
               {player.commanders[0]?.imageUrl ? (
                 <CommanderArt refs={player.commanders} variant="avatar" className="size-full" />
               ) : (
-                <GameIcon icon="crossed-swords" className="size-3.5 text-white/70 @md:size-4" />
+                <GameIcon icon="crossed-swords" className="size-4 text-white/70 @md:size-5" />
               )}
             </button>
             <div className="flex min-w-0 flex-1 flex-col">
@@ -170,6 +175,7 @@ export function PlayerTile({
                 </button>
               )}
               <div className="mt-1 flex flex-wrap items-center gap-1 @md:gap-1.5">
+                <CommanderTaxRail player={player} commanderRules={commanderRules} />
                 <StatusChips player={player} />
               </div>
             </div>
@@ -219,8 +225,12 @@ export function PlayerTile({
             )}
           </div>
 
-          <div className="pointer-events-auto flex flex-wrap items-end justify-between gap-1.5">
-            <CountersRail playerId={player.id} counters={player.counters} />
+          <div className="pointer-events-auto flex items-end gap-1.5">
+            <CountersRail
+              playerId={player.id}
+              counters={player.counters}
+              className="min-w-0 flex-1"
+            />
             <ManaPoolRail playerId={player.id} pool={player.manaPool} />
           </div>
         </div>
