@@ -64,6 +64,7 @@ export interface RoomPlayerInfo {
   username: string;
   ready: boolean;
   connected: boolean;
+  is_bot?: boolean;
   selected_deck_name?: string;
 }
 
