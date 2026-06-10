@@ -98,6 +98,12 @@ INFRA_CHANGED=false
 # would otherwise be classified JAVA_CHANGED and skip the web rebuild — leaving
 # the deployed archive stale (missing newly-added sets).
 CARDDATA_CHANGED=false
+# forge-server (the relay) is rebuilt/restarted only when its own dep closure
+# changes — restarting it bounces the relay and interrupts live games. Since the
+# forge-protocol split, that closure is just forge-server + forge-protocol (it no
+# longer compiles the engine), so a change anywhere else under forge-engine/ must
+# NOT redeploy it.
+FORGE_SERVER_CHANGED=false
 
 while IFS= read -r file; do
     case "$file" in
@@ -105,6 +111,11 @@ while IFS= read -r file; do
             JAVA_CHANGED=true ;;
         forge-engine/*|Cargo.toml|Cargo.lock)
             RUST_CHANGED=true ;;
+    esac
+    case "$file" in
+        # forge-server's whole closure (see `cargo tree -p forge-server`).
+        forge-engine/crates/forge-server/*|forge-engine/crates/forge-protocol/*|Cargo.toml|Cargo.lock)
+            FORGE_SERVER_CHANGED=true ;;
     esac
     case "$file" in
         forge|forge/*)
@@ -151,12 +162,12 @@ else
     echo "Parity dashboard skipped (COMPOSE_PROFILES does not include 'parity')" >> "$RAW_LOG"
 fi
 
-# -- forge-server (Rust only) --
+# -- forge-server (relay; rebuilt only when its own dep closure changes) --
 if $INFRA_CHANGED; then
     echo "Building forge-server (full)..." >> "$RAW_LOG"
     docker compose -f "$COMPOSE_FILE" build --progress=plain --no-cache forge-server >> "$RAW_LOG" 2>&1
     SERVICES_TO_RESTART="$SERVICES_TO_RESTART forge-server"
-elif $RUST_CHANGED; then
+elif $FORGE_SERVER_CHANGED; then
     echo "Building forge-server (cached)..." >> "$RAW_LOG"
     docker compose -f "$COMPOSE_FILE" build --progress=plain forge-server >> "$RAW_LOG" 2>&1
     SERVICES_TO_RESTART="$SERVICES_TO_RESTART forge-server"
