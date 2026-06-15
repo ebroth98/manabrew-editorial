@@ -86,6 +86,7 @@ interface GameBoardProps {
   isOverBattlefield: boolean;
   battlefieldContainerRef: React.RefObject<HTMLDivElement | null>;
   draggingCardId?: string;
+  draggingIsPermanent?: boolean;
   castingCardId?: string | null;
 
   // Callbacks
@@ -173,6 +174,7 @@ export function GameBoard({
   isOverBattlefield,
   battlefieldContainerRef,
   draggingCardId,
+  draggingIsPermanent,
   castingCardId,
   onHandCardDragStart,
   onHandCardClick,
@@ -356,11 +358,19 @@ export function GameBoard({
     (): import("@/pixi/types").HandState => ({
       cards: myHand,
       draggingCardId,
+      draggingIsPermanent,
       castingCardId,
       selectionMode: handSelectionMode,
       selectedIds: handSelectedIds,
     }),
-    [myHand, draggingCardId, castingCardId, handSelectionMode, handSelectedIds],
+    [
+      myHand,
+      draggingCardId,
+      draggingIsPermanent,
+      castingCardId,
+      handSelectionMode,
+      handSelectedIds,
+    ],
   );
 
   const pixiCallbacks = useMemo(

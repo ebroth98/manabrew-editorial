@@ -7,6 +7,10 @@ import type {
 import type { AvailableAction } from "@/protocol/prompts/chooseAction";
 import { PROMPT_LABELS } from "./game.constants";
 
+export function isPermanentSpellCard(card: Pick<GameCard, "types">): boolean {
+  return !card.types.includes("Instant") && !card.types.includes("Sorcery");
+}
+
 export function manaAbilityInfos(actions: AvailableAction[]): ActivatableAbilityInfo[] {
   return actions.flatMap((a) =>
     a.type === "activateAbility" && a.isManaAbility
