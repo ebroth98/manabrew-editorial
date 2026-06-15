@@ -36,6 +36,7 @@ repository = "https://github.com/witchesofthehill/manabrew"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 deunicode = "1"
+ts-rs = "10"
 
 [profile.release]
 opt-level = "z"
