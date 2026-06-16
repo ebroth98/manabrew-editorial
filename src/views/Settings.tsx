@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferencesStore";
+import { isFeatureEnabled } from "@/featureFlags";
 import { THEME_PRESETS, type ThemeColors } from "@/themes";
 import { useServerStore } from "@/stores/useServerStore";
 import { useGameStore } from "@/stores/useGameStore";
@@ -624,6 +625,30 @@ export default function Settings() {
             </div>
 
             <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+              <Label>Battlefield Layout</Label>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={!prefs.battlefieldAutoSort ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => prefs.setBattlefieldAutoSort(false)}
+                >
+                  Free placement
+                </Button>
+                <Button
+                  variant={prefs.battlefieldAutoSort ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => prefs.setBattlefieldAutoSort(true)}
+                >
+                  Auto-arrange
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                "Free placement" lets you drag cards anywhere. "Auto-arrange" keeps the battlefield
+                tidy in rows (creatures, then others, then lands) and ignores manual placement.
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
               <Label>Card Preview Trigger</Label>
               <div className="flex items-center gap-2">
                 <Button
@@ -660,6 +685,33 @@ export default function Settings() {
                 over, others require holding a modifier key.
               </p>
             </div>
+
+            {isFeatureEnabled("wraparoundBoardLayout") && (
+              <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+                <Label>Board Arrangement</Label>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant={prefs.boardArrangement === "row" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => prefs.setBoardArrangement("row")}
+                  >
+                    Opponents in a row
+                  </Button>
+                  <Button
+                    variant={prefs.boardArrangement === "perimeter" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => prefs.setBoardArrangement("perimeter")}
+                  >
+                    Wrapped around
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  How opponents are placed in multiplayer games. "Row" lines them up across the top;
+                  "Wrapped around" seats them to your left, across, and right. Only affects 4-player
+                  games.
+                </p>
+              </div>
+            )}
 
             <div className="rounded-lg border bg-card/40 p-4 space-y-2">
               <div className="flex items-center justify-between">

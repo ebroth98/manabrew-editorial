@@ -5,6 +5,7 @@ import { isHorizontalCard } from "@/lib/cardLayout";
 import type { Theme } from "@/hooks/useTheme";
 import { getTheme } from "@/hooks/useTheme";
 import { hexToNum } from "./colorUtils";
+import { DOOMED_FILL_ALPHA } from "./constants";
 import { useScryfallStore } from "@/stores/useScryfallStore";
 import { useGameStore } from "@/stores/useGameStore";
 import { asDeckCard } from "@/lib/decks";
@@ -13,7 +14,7 @@ import { applyIcon } from "./panelIcons";
 
 /**
  * Shared, mutable theme reference used by every `CardSprite` instance.
- * `PixiGameScene.setTheme` calls `setCardSpriteTheme` so every sprite
+ * `BoardScene.setTheme` calls `setCardSpriteTheme` so every sprite
  * repaints against the active preset without needing to thread the
  * theme through the Container constructor.
  */
@@ -239,6 +240,7 @@ export class CardSprite extends Container {
 
   private imageSpr: Sprite;
   private imageMask: Graphics;
+  private doomedGfx: Graphics;
   private ringGfx: Graphics;
   private ptContainer: Container;
   private ptBg: Graphics;
@@ -260,6 +262,9 @@ export class CardSprite extends Container {
   private stackCountContainer: Container;
   private stackCountBg: Graphics;
   private stackCountText: Text;
+  private orderBadgeContainer: Container;
+  private orderBadgeBg: Graphics;
+  private orderBadgeText: Text;
   private etbGlow: Graphics;
   private _imageLoaded = false;
 
@@ -301,6 +306,11 @@ export class CardSprite extends Container {
     this.imageSpr.mask = this.imageMask;
     this.addChild(this.imageSpr);
     this.fitImageToSlot();
+
+    // Red death wash; sits above the art (so it reads) but below P/T and badges.
+    this.doomedGfx = new Graphics();
+    this.doomedGfx.visible = false;
+    this.addChild(this.doomedGfx);
 
     this.badgeContainer = new Container();
     this.badgeBg = new Graphics();
@@ -365,6 +375,15 @@ export class CardSprite extends Container {
     this.stackCountContainer.visible = false;
     this.addChild(this.stackCountContainer);
 
+    this.orderBadgeContainer = new Container();
+    this.orderBadgeBg = new Graphics();
+    this.orderBadgeText = new Text({ text: "", style: COUNTER_STYLE });
+    this.orderBadgeText.resolution = TEXT_RASTER_RESOLUTION;
+    this.orderBadgeContainer.addChild(this.orderBadgeBg);
+    this.orderBadgeContainer.addChild(this.orderBadgeText);
+    this.orderBadgeContainer.visible = false;
+    this.addChild(this.orderBadgeContainer);
+
     this.etbGlow = new Graphics();
     this.etbGlow.visible = false;
     this.addChild(this.etbGlow);
@@ -426,21 +445,11 @@ export class CardSprite extends Container {
   }
 
   /**
-   * Full update including tapped rotation + phased-out alpha. Use this on the
-   * battlefield, where `tapped` is what drives the 90° rotation.
-   */
-  updateCard(card: GameCard): void {
-    this.updateCardContent(card);
-    this.alpha = card.phasedOut ? 0.3 : 1;
-  }
-
-  /**
    * Updates the card's visible content (art, P/T, badges, counters, keywords)
-   * but does NOT touch `rotation` or `alpha`. Use this when an external
-   * animation owns those properties — e.g. the hand layout lerps rotation
-   * to the arc-fan angle and sets alpha based on dragging/casting state.
-   * Calling the full `updateCard` there would reset the rotation to 0 on
-   * every state update, causing a bumpy re-lerp back to the fan angle.
+   * but does NOT touch `rotation` or `alpha` — the board/hand animation ticks
+   * own those (the hand lerps rotation to the fan angle; the battlefield owns
+   * alpha for combat dim / phased-out / exit fade). Writing them here would snap
+   * them back to defaults on every state update, causing a re-lerp flicker.
    */
   updateCardContent(card: GameCard): void {
     const nameChanged =
@@ -575,6 +584,32 @@ export class CardSprite extends Container {
     this.stackCountText.y = 1;
     this.stackCountContainer.x = 3;
     this.stackCountContainer.y = 2;
+  }
+
+  /** Damage-assignment order badge (1-based). null hides it. */
+  setOrderBadge(n: number | null): void {
+    if (n == null) {
+      this.orderBadgeContainer.visible = false;
+      return;
+    }
+    this.orderBadgeContainer.visible = true;
+    this.orderBadgeText.text = String(n);
+    const d = Math.max(this.orderBadgeText.width, this.orderBadgeText.height) + 10;
+    this.orderBadgeBg.clear();
+    this.orderBadgeBg.circle(d / 2, d / 2, d / 2);
+    this.orderBadgeBg.fill({
+      color: hexToNum(activeTheme.gameTheme.promptAction.attackAction),
+      alpha: 0.95,
+    });
+    this.orderBadgeBg.stroke({
+      color: hexToNum(activeTheme.gameTheme.canvas.shadow),
+      width: 1.5,
+      alpha: 0.9,
+    });
+    this.orderBadgeText.x = (d - this.orderBadgeText.width) / 2;
+    this.orderBadgeText.y = (d - this.orderBadgeText.height) / 2;
+    this.orderBadgeContainer.x = (CARD_W - d) / 2;
+    this.orderBadgeContainer.y = 4;
   }
 
   private updateFoil(): void {
@@ -760,6 +795,18 @@ export class CardSprite extends Container {
     this.ringGfx.clear();
     if (color == null) return;
     this.drawRingStroke(color, alpha);
+  }
+
+  setDoomed(active: boolean): void {
+    if (this.doomedGfx.visible === active) return;
+    this.doomedGfx.visible = active;
+    this.doomedGfx.clear();
+    if (!active) return;
+    this.doomedGfx.roundRect(0, 0, CARD_W, CARD_H, CARD_RADIUS);
+    this.doomedGfx.fill({
+      color: hexToNum(activeTheme.gameTheme.pt.lethal),
+      alpha: DOOMED_FILL_ALPHA,
+    });
   }
 
   setHighlight(

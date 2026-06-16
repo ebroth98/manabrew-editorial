@@ -1,22 +1,26 @@
-import { Fragment, useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { GameCard, Player } from "@/types/manabrew";
 import type { Prompt } from "@/protocol";
 import { type ZonePanelItem } from "@/stores/usePreferencesStore";
-import { PixiGameCanvas } from "@/pixi/PixiGameCanvas";
-import { PixiPhaseStripCanvas } from "@/pixi/PixiPhaseStripCanvas";
-import type { BattlefieldState, GameCanvasCallbacks, ScreenBounds } from "@/pixi/types";
+import { BoardCanvas, type BoardCanvasLayout, type BoardCanvasRegion } from "@/pixi/BoardCanvas";
+import { BoardArrowsCanvas } from "@/pixi/BoardArrowsCanvas";
+import { SELF_HEIGHT_FRACTION, STRIP_BAND_PX } from "@/pixi/board/boardLayout";
+import { isFeatureEnabled } from "@/featureFlags";
+import { computeCombatOutcome } from "@/components/game/combatOutcome";
+import type { BoardScene } from "@/pixi/board/BoardScene";
+import type { BlockingRect } from "@/pixi/board/types";
+import { usePreferencesStore } from "@/stores/usePreferencesStore";
+import type { ArrowSpec, BattlefieldState, GameCanvasCallbacks, ScreenBounds } from "@/pixi/types";
 import { usePhaseStopStore } from "@/stores/usePhaseStopStore";
-import type { PixiGameScene } from "@/pixi/PixiGameScene";
 import type { PromptType } from "@/protocol";
-import { OpponentHalf, PlayerPanel } from "@/components/game/panels";
-import type { PlacementGhost } from "@/components/game/game.types";
+import { PlayerPanel } from "@/components/game/panels";
+import { OPPONENT_SEATS } from "@/components/game/game.types";
 import { manaAbilityInfos } from "@/components/game/game.utils";
 import { useHandScale } from "@/hooks/useHandScale";
 import { HAND_CARD_BASE } from "@/components/game/game.styles";
+import { GAP } from "@/pixi/constants";
 import { computeBaseLayout, HAND_FAN_PARAMS } from "@/pixi/HandLayout";
 import type { HandActionOption } from "@/stores/useGameUIStore";
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-import { cn } from "@/lib/utils";
 import { ReconnectBanner } from "@/components/lobby/ReconnectBanner";
 
 function promptOf<TType extends PromptType>(
@@ -28,21 +32,17 @@ function promptOf<TType extends PromptType>(
     : null;
 }
 
-// Footprint of the bottom-right action cluster (PASS, Pass-Until-End,
-// phase buttons). Matches MainActionOverlay's `w-[300px]` + its visible
-// vertical extent so the battlefield doesn't auto-place or let the user
-// drag cards underneath it.
-// Only reserve space for the bottom-most mana pool strip — the prompt
-// overlay now sits higher and doesn't block card placement.
-const PASS_BUTTON_RESERVED = { width: 312, height: 50 } as const;
-
-// Bottom-left player cluster (avatar + zone tiles + mana row). Sized to
-// cover the panel's natural footprint so cards auto-place around it, but
-// only the rows at the bottom are affected — the rest of the grid uses
-// the full canvas width.
-const PLAYER_CLUSTER_BLOCKER = { width: 420, height: 140 } as const;
-
 const SELF_PANEL_SCALE = 0.85;
+const UNIFIED_OPPONENT_PANEL_SCALE = 0.72;
+/** Bottom-right footprint of the action cluster (`MainActionOverlay`:
+ *  `right-12` + `w-[300px]`) plus a small gap — reserved so the split self
+ *  zones and the hand fan stay left of the PASS / KEEP-MULLIGAN buttons. */
+const ACTION_CLUSTER_RESERVE_PX = 360;
+/** Minimum hand-fan width in the split (perimeter) self layout. Below this the
+ *  right-side zones wrap to a 2-column grid to give the hand more room. Set
+ *  high so the grid is the norm on laptop widths; only very wide displays keep
+ *  the single zone row. */
+const HAND_MIN_WIDTH_PX = 820;
 
 interface GameBoardProps {
   // Core game state
@@ -64,9 +64,20 @@ interface GameBoardProps {
 
   // Combat state
   pendingAttackers: string[];
-  pendingAttacker: string | null;
+  /** Blocker armed in blocker-first declare-blockers, awaiting its attacker. */
+  pendingBlocker?: string | null;
+  /** Blockers chosen so far during damage-assignment ordering (in order). */
+  damageOrder?: string[];
+  /** All blockers the engine wants ordered (drives selectable rings). */
+  damageOrderBlockerIds?: string[];
   selectedAttackDefenderId?: string | null;
   blockAssignments: { blockerId: string; attackerId: string }[];
+  /** Locked-in blocker→attacker assignments from the engine; combined with
+   *  pending blockAssignments to drive unified-board combat staging. */
+  combatAssignments?: { blockerId: string; attackerId: string }[];
+  /** Arrow specs for the unified board (attack/attach/placement). */
+  arrowSpecs?: ArrowSpec[];
+  castingArrow?: { sourceCardId: string; hostile: boolean } | null;
   playerIsTargetable: (playerId: string) => boolean;
 
   // Per-player game-wide flags
@@ -79,12 +90,8 @@ interface GameBoardProps {
   // Preferences
   zonePanelOrder: ZonePanelItem[];
 
-  // Stack placement preview
-  placementGhost?: PlacementGhost | null;
-
   // Battlefield drag state
   isOverBattlefield: boolean;
-  battlefieldContainerRef: React.RefObject<HTMLDivElement | null>;
   draggingCardId?: string;
   draggingIsPermanent?: boolean;
   castingCardId?: string | null;
@@ -103,6 +110,8 @@ interface GameBoardProps {
   onFlipCard: () => void;
   onBattlefieldClick: (card: GameCard) => void;
   onAttackerClick: (card: GameCard) => void;
+  onAssignBlock: (blockerId: string, attackerId: string) => void;
+  onUnassignBlock: (blockerId: string) => void;
   onTargetPlayer: (playerId: string) => void;
   onOpenZone: (
     title: string,
@@ -125,19 +134,17 @@ interface GameBoardProps {
   onUntapLand?: (card: GameCard) => void;
   onUntapLands?: (cardIds: string[]) => void;
 
-  /** Out-ref populated with the live Pixi scene so Game.tsx can share it
-   *  with the full-board PixiArrowsCanvas. */
-  pixiSceneRef?: React.MutableRefObject<PixiGameScene | null>;
-
   /** Canvas-local keep-out rects (e.g. the StackDisplay panel when it is
    *  mounted) so battlefield cards beneath them move into a free cell. */
   pixiExternalBlockers?: ScreenBounds[];
 
-  /** Per-opponent Pixi scene refs, keyed by player id. Each opponent's
-   *  canvas writes into its ref once the scene is live, so the full-board
-   *  arrow layer can resolve opponent sprite positions without DOM
-   *  fallbacks. Provided by `Game.tsx` which maintains the ref bag. */
-  getOpponentPixiSceneRef?: (playerId: string) => React.MutableRefObject<PixiGameScene | null>;
+  /** Out-ref populated with the live unified BoardScene so Game.tsx can read
+   *  its canvas for the stack-panel keep-out translation. */
+  boardSceneRef?: React.MutableRefObject<BoardScene | null>;
+
+  /** Attached to the battlefield drop area so `useHandDrag` can detect when a
+   *  dragged hand card is over the board (drop-to-cast). */
+  battlefieldContainerRef?: React.RefObject<HTMLDivElement | null>;
 
   /** Mulligan-bottom selection overlay applied to the in-game hand so
    *  the player picks cards to send to the bottom of the library
@@ -162,17 +169,20 @@ export function GameBoard({
   promptType,
   currentPrompt,
   pendingAttackers,
-  pendingAttacker,
+  pendingBlocker,
+  damageOrder,
+  damageOrderBlockerIds,
   selectedAttackDefenderId,
   blockAssignments,
+  combatAssignments,
+  arrowSpecs,
+  castingArrow,
   playerIsTargetable,
   monarchId,
   initiativeHolderId,
   turnFlashPlayerId,
   zonePanelOrder,
-  placementGhost,
   isOverBattlefield,
-  battlefieldContainerRef,
   draggingCardId,
   draggingIsPermanent,
   castingCardId,
@@ -185,6 +195,8 @@ export function GameBoard({
   onFlipCard,
   onBattlefieldClick,
   onAttackerClick,
+  onAssignBlock,
+  onUnassignBlock,
   onTargetPlayer,
   onOpenZone,
   onOpenZoneAndCast,
@@ -196,9 +208,9 @@ export function GameBoard({
   onTapLandAbility,
   onUntapLand,
   onUntapLands,
-  pixiSceneRef,
   pixiExternalBlockers,
-  getOpponentPixiSceneRef,
+  boardSceneRef,
+  battlefieldContainerRef,
   handSelectionMode,
   handSelectedIds,
   onHandCardToggle,
@@ -207,10 +219,6 @@ export function GameBoard({
   const toggleSelfStop = usePhaseStopStore((s) => s.toggleSelfStop);
 
   const vScale = useHandScale();
-  // Reserve the visible portion of the hand for drag clamping. The hand
-  // now sits lower (45% of card clipped below zone), so the reserved
-  // strip is thinner — roughly 35% of the container height.
-  const handBottomReserved = Math.round(HAND_CARD_BASE.containerH * vScale * 0.35);
 
   const handWidth = useMemo(() => {
     if (myHand.length === 0) return 0;
@@ -227,16 +235,14 @@ export function GameBoard({
     return Math.max(...xs) - Math.min(...xs) + cardW;
   }, [myHand.length, vScale]);
 
+  // Vertical space the hand fan occupies inside the self region (it peeks ~55%
+  // of a card above the zone bottom). Subtracted from the self region before
+  // computing the battlefield card scale so the "always 3 rows" guarantee is
+  // measured against the area actually free for permanents.
+  const selfBottomReserve = Math.round(0.55 * HAND_CARD_BASE.cardH * vScale) + GAP;
+
   const CLUSTER_GAP_FROM_HAND_PX = 12;
   const CLUSTER_MIN_WIDTH_PX = 120;
-  const clusterMaxWidthCss = useMemo(() => {
-    // `calc(50% - handHalf - gap - left-pad)` keeps the cluster's right
-    // edge comfortably left of the hand's left edge at every battlefield
-    // width. Falls back to 50%- if we haven't measured the hand yet.
-    const handHalf = handWidth / 2;
-    const pad = CLUSTER_GAP_FROM_HAND_PX + 8;
-    return `max(${CLUSTER_MIN_WIDTH_PX}px, calc(50% - ${handHalf + pad}px))`;
-  }, [handWidth]);
   const isTargetingPrompt = promptType === "chooseTargetCard" || promptType === "chooseTargetAny";
   const chooseActionPrompt = promptOf(currentPrompt, "chooseAction");
   const chooseAttackersPrompt = promptOf(currentPrompt, "chooseAttackers");
@@ -247,6 +253,44 @@ export function GameBoard({
   const payCombatCostPrompt = promptOf(currentPrompt, "payCombatCost");
   const payManaCostPrompt = promptOf(currentPrompt, "payManaCost");
   const promptAttackerIds = chooseBlockersPrompt?.input.attackerIds;
+
+  // Combat preview: which creatures would die + how much damage reaches the
+  // local player, from the locked-in combat plus any mid-selection blocks.
+  const attackingCardIdSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of myPermanents) if (c.isAttacking) s.add(c.id);
+    for (const list of opponentPermanentsByPlayer.values())
+      for (const c of list) if (c.isAttacking) s.add(c.id);
+    return s;
+  }, [myPermanents, opponentPermanentsByPlayer]);
+  const combatAssignmentsAll = useMemo(() => {
+    const byBlocker = new Map<string, string>();
+    for (const a of combatAssignments ?? []) byBlocker.set(a.blockerId, a.attackerId);
+    // Local pending blocks are merged regardless of prompt so they keep the
+    // spatial staging alive after the player submits, until the engine echoes
+    // the locked-in blocks (then `useCombatState` clears the local set).
+    for (const a of blockAssignments) byBlocker.set(a.blockerId, a.attackerId);
+    // Only stage assignments whose attacker is still attacking: once combat
+    // ends the attacker drops `isAttacking`, so staging self-clears even if a
+    // stale local/engine assignment lingers (otherwise a blocker stays frozen
+    // at the divider instead of returning home).
+    return [...byBlocker]
+      .filter(([, attackerId]) => attackingCardIdSet.has(attackerId))
+      .map(([blockerId, attackerId]) => ({ blockerId, attackerId }));
+  }, [combatAssignments, blockAssignments, attackingCardIdSet]);
+  const combatOutcome = useMemo(() => {
+    const cards = [...myPermanents, ...[...opponentPermanentsByPlayer.values()].flat()];
+    return computeCombatOutcome(cards, combatAssignmentsAll);
+  }, [myPermanents, opponentPermanentsByPlayer, combatAssignmentsAll]);
+  const doomedCardIds = useMemo(() => [...combatOutcome.doomedCardIds], [combatOutcome]);
+  const myIncomingDamage = useMemo(() => {
+    if (promptType !== "chooseBlockers") return 0;
+    return (promptAttackerIds ?? []).reduce(
+      (sum, id) => sum + (combatOutcome.attackerFaceDamage.get(id) ?? 0),
+      0,
+    );
+  }, [promptType, promptAttackerIds, combatOutcome]);
+
   const chooseActionActions = chooseActionPrompt?.input.actions;
   const manaAbilityOptions = chooseActionActions
     ? manaAbilityInfos(chooseActionActions)
@@ -295,21 +339,24 @@ export function GameBoard({
           ]
         : promptType === "chooseBlockers"
           ? chooseBlockersPrompt?.input.availableBlockerIds
-          : promptType === "chooseTargetCard"
-            ? chooseTargetCardPrompt?.input.validCardIds
-            : promptType === "chooseTargetAny"
-              ? chooseTargetAnyPrompt?.input.validCardIds
-              : promptType === "chooseTargetCardFromZone" &&
-                  chooseTargetCardFromZonePrompt?.input.zone === "Battlefield"
-                ? chooseTargetCardFromZonePrompt.input.validCardIds
-                : promptType === "chooseAction"
-                  ? chooseActionAbilityCardIds
-                  : undefined,
+          : promptType === "chooseDamageAssignmentOrder"
+            ? damageOrderBlockerIds
+            : promptType === "chooseTargetCard"
+              ? chooseTargetCardPrompt?.input.validCardIds
+              : promptType === "chooseTargetAny"
+                ? chooseTargetAnyPrompt?.input.validCardIds
+                : promptType === "chooseTargetCardFromZone" &&
+                    chooseTargetCardFromZonePrompt?.input.zone === "Battlefield"
+                  ? chooseTargetCardFromZonePrompt.input.validCardIds
+                  : promptType === "chooseAction"
+                    ? chooseActionAbilityCardIds
+                    : undefined,
     [
       promptType,
       chooseAttackersPrompt,
       pendingAttackers,
       chooseBlockersPrompt,
+      damageOrderBlockerIds,
       chooseTargetCardPrompt,
       chooseTargetAnyPrompt,
       chooseTargetCardFromZonePrompt,
@@ -323,9 +370,14 @@ export function GameBoard({
         promptType === "chooseAttackers"
           ? pendingAttackers
           : promptType === "chooseBlockers"
-            ? blockAssignments.map((a) => a.blockerId)
+            ? [
+                ...blockAssignments.map((a) => a.blockerId),
+                ...(pendingBlocker ? [pendingBlocker] : []),
+              ]
             : undefined,
       attackingCardIds: promptAttackerIds,
+      doomedCardIds,
+      orderedCardIds: damageOrder,
       selectableCardIds: selectableBattlefieldCardIds,
       tappableLandIds: chooseActionActions
         ? chooseActionActions
@@ -343,8 +395,11 @@ export function GameBoard({
       myPermanents,
       promptType,
       pendingAttackers,
+      pendingBlocker,
       blockAssignments,
       promptAttackerIds,
+      doomedCardIds,
+      damageOrder,
       selectableBattlefieldCardIds,
       chooseActionActions,
       payCombatCostPrompt,
@@ -411,6 +466,8 @@ export function GameBoard({
       onUntapLands,
       onFlipCard,
       onAttackerClick,
+      onAssignBlock,
+      onUnassignBlock,
     }),
     [
       promptType,
@@ -428,6 +485,8 @@ export function GameBoard({
       onUntapLands,
       onFlipCard,
       onAttackerClick,
+      onAssignBlock,
+      onUnassignBlock,
     ],
   );
 
@@ -460,20 +519,28 @@ export function GameBoard({
     [toggleSelfStop, toggleOpponentStop],
   );
 
-  // ── Resizable split via custom drag handle on phase strip left edge ──
-  const [splitPct, setSplitPct] = useState(45); // opponent % of total height
   const boardRef = useRef<HTMLDivElement>(null);
 
-  const onGripPointerDown = useCallback((e: React.PointerEvent) => {
+  // ── Unified single-canvas board ──
+  const boardArrangementPref = usePreferencesStore((s) => s.boardArrangement);
+  const battlefieldAutoSort = usePreferencesStore((s) => s.battlefieldAutoSort);
+  // The wrap-around (perimeter) layout is gated behind a feature flag; until
+  // it's enabled the board is locked to the row arrangement.
+  const boardArrangement = isFeatureEnabled("wraparoundBoardLayout") ? boardArrangementPref : "row";
+  const [unifiedLayout, setUnifiedLayout] = useState<BoardCanvasLayout | null>(null);
+  const localSceneRef = useRef<BoardScene | null>(null);
+  const sceneRef = boardSceneRef ?? localSceneRef;
+  const [unifiedSplit, setUnifiedSplit] = useState(SELF_HEIGHT_FRACTION);
+
+  const onUnifiedGripDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     const el = boardRef.current;
     if (!el) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     const onMove = (ev: PointerEvent) => {
       const rect = el.getBoundingClientRect();
-      const y = ev.clientY - rect.top;
-      const pct = Math.max(20, Math.min(80, (y / rect.height) * 100));
-      setSplitPct(pct);
+      const selfFrac = (rect.height - (ev.clientY - rect.top)) / rect.height;
+      setUnifiedSplit(Math.max(0.2, Math.min(0.8, selfFrac)));
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
@@ -483,253 +550,415 @@ export function GameBoard({
     window.addEventListener("pointerup", onUp);
   }, []);
 
+  // Per-opponent column widths (row arrangement resize grips). Equal split
+  // until the user drags a boundary; reset implicitly when the count changes
+  // (length mismatch → BoardCanvas falls back to equal).
+  const [opponentSplits, setOpponentSplits] = useState<number[]>([]);
+  const opponentFractions = opponentSplits.length === opponents.length ? opponentSplits : undefined;
+
+  const onOpponentGripDown = useCallback(
+    (boundary: number) => (e: React.PointerEvent) => {
+      e.preventDefault();
+      const el = boardRef.current;
+      if (!el) return;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      const count = opponents.length;
+      const start =
+        opponentSplits.length === count
+          ? [...opponentSplits]
+          : Array.from({ length: count }, () => 1 / count);
+      const pairSum = start[boundary]! + start[boundary + 1]!;
+      const before = start.slice(0, boundary).reduce((a, b) => a + b, 0);
+      const onMove = (ev: PointerEvent) => {
+        const rect = el.getBoundingClientRect();
+        const x = (ev.clientX - rect.left) / rect.width;
+        const left = Math.max(0.1, Math.min(pairSum - 0.1, x - before));
+        const next = [...start];
+        next[boundary] = left;
+        next[boundary + 1] = pairSum - left;
+        setOpponentSplits(next);
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [opponents.length, opponentSplits],
+  );
+
+  const unifiedRegions = useMemo((): BoardCanvasRegion[] => {
+    const oppState = (cards: GameCard[]): BattlefieldState => ({
+      cards,
+      attackingCardIds: promptType === "chooseBlockers" ? promptAttackerIds : undefined,
+      doomedCardIds,
+      orderedCardIds: damageOrder,
+      selectableCardIds: selectableBattlefieldCardIds,
+      hostileTargeting,
+    });
+    return [
+      { playerId: me.id, isLocal: true, state: pixiBattlefield },
+      ...opponents.map((op) => ({
+        playerId: op.id,
+        isLocal: false,
+        state: oppState(opponentPermanentsByPlayer.get(op.id) ?? []),
+      })),
+    ];
+  }, [
+    me.id,
+    opponents,
+    opponentPermanentsByPlayer,
+    pixiBattlefield,
+    promptType,
+    promptAttackerIds,
+    doomedCardIds,
+    damageOrder,
+    selectableBattlefieldCardIds,
+    hostileTargeting,
+  ]);
+
+  // On the unified board the self region is offset (e.g. the perimeter
+  // arrangement puts it in the center column), so anchor the panel to the
+  // self region's left edge rather than the container corner.
+  const selfPanelLeftPx = (unifiedLayout?.self?.x ?? 0) + 8;
+  // The hand fan is centered in the self region; cap the cluster so its
+  // right edge stays left of the hand's left edge. Measured against the
+  // self region's half-width (not the board's), so it stays clear in the
+  // perimeter arrangement where the self column is narrower than the board.
+  const selfHalfWidthPx = (unifiedLayout?.self?.width ?? 0) / 2;
+  const clusterMaxWidthPx = Math.max(
+    CLUSTER_MIN_WIDTH_PX,
+    selfHalfWidthPx - handWidth / 2 - CLUSTER_GAP_FROM_HAND_PX - 8,
+  );
+  // Perimeter (wrap-around) seats the self cluster MTGA-style: avatar + mana
+  // on the far left, zone tiles on the far right, hand centered between.
+  const selfIsSplit = boardArrangement === "perimeter";
+  const selfRect = unifiedLayout?.self;
+  // Keep the hand at least HAND_MIN_WIDTH_PX wide; if a single row of zones on
+  // the right would squeeze it below that, wrap them into a 2-column grid.
+  const selfSplit = useMemo(() => {
+    const off = { left: 0, right: 0, grid: false };
+    if (boardArrangement !== "perimeter") return off;
+    const sx = unifiedLayout?.self?.x ?? 0;
+    const sw = unifiedLayout?.self?.width ?? 0;
+    if (sw === 0) return off;
+    const left = 130;
+    const tileStride = (72 + 10) * SELF_PANEL_SCALE;
+    const zoneTileCount = 3 + ((myCommandZone?.length ?? 0) > 0 ? 1 : 0);
+    const rowWidth = zoneTileCount * tileStride;
+    const rightForWidth = (w: number) => Math.max(0, ACTION_CLUSTER_RESERVE_PX + w - sx);
+    const handIfRow = sw - left - rightForWidth(rowWidth);
+    const grid = handIfRow < HAND_MIN_WIDTH_PX;
+    const zonesWidth = grid ? Math.min(zoneTileCount, 2) * tileStride : rowWidth;
+    return { left, right: Math.round(rightForWidth(zonesWidth)), grid };
+  }, [boardArrangement, myCommandZone?.length, unifiedLayout?.self?.x, unifiedLayout?.self?.width]);
+  const handInsets = useMemo(
+    () => ({ left: selfSplit.left, right: selfSplit.right }),
+    [selfSplit.left, selfSplit.right],
+  );
+
+  // Measure each player's React panel and feed it back as a per-player
+  // keep-out so battlefield cards never lay out under their own zones/avatar.
+  // Keyed "self" (its split sub-sections are measured individually) or by
+  // opponent id.
+  const panelElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const setPanelEl = useCallback((key: string, el: HTMLDivElement | null) => {
+    if (el) panelElsRef.current.set(key, el);
+    else panelElsRef.current.delete(key);
+  }, []);
+  const lastPanelBlockersRef = useRef<string>("");
+  useLayoutEffect(() => {
+    const board = boardRef.current;
+    const scene = sceneRef.current;
+    if (!board || !scene) return;
+    const b = board.getBoundingClientRect();
+    const toRect = (el: Element): BlockingRect => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left - b.left, y: r.top - b.top, width: r.width, height: r.height };
+    };
+    const next: Record<string, BlockingRect[]> = {};
+    for (const [key, el] of panelElsRef.current) {
+      const id = key === "self" ? me.id : key;
+      const sections = el.querySelectorAll<HTMLElement>("[data-panel-section]");
+      next[id] = sections.length > 0 ? [...sections].map(toRect) : [toRect(el)];
+    }
+    // The action / PASS cluster (bottom-right, rendered outside this subtree)
+    // is a self-region keep-out so cards never lay out under the buttons.
+    const actionEl = document.querySelector<HTMLElement>("[data-action-cluster]");
+    if (actionEl) (next[me.id] ??= []).push(toRect(actionEl));
+    const json = JSON.stringify(next);
+    if (json === lastPanelBlockersRef.current) return;
+    lastPanelBlockersRef.current = json;
+    scene.setPlayerBlockers(new Map(Object.entries(next)));
+    // Re-measure only when something that moves/resizes a panel changes —
+    // layout, opponent set, zone-tile counts, arrangement, or the grid wrap.
+  }, [
+    sceneRef,
+    me.id,
+    unifiedLayout,
+    opponents,
+    myCommandZone?.length,
+    graveyard.length,
+    exile.length,
+    boardArrangement,
+    selfSplit.grid,
+    promptType,
+  ]);
+  // Span from the self zone's left edge to just left of the action cluster so
+  // the right-anchored zones never sit under the PASS / KEEP-MULLIGAN buttons.
+  const splitBoardWidth = selfRect ? 2 * selfRect.x + selfRect.width : 0;
+  const splitPanelWidth = Math.max(
+    CLUSTER_MIN_WIDTH_PX,
+    splitBoardWidth - ACTION_CLUSTER_RESERVE_PX - (selfRect ? selfRect.x + 8 : 0),
+  );
+  const selfPanel = (
+    <div
+      ref={(el) => setPanelEl("self", el)}
+      className="absolute bottom-2 z-30 pointer-events-none origin-bottom-left"
+      style={
+        selfIsSplit && selfRect
+          ? {
+              left: selfRect.x + 8,
+              width: splitPanelWidth / SELF_PANEL_SCALE,
+              transform: `scale(${SELF_PANEL_SCALE})`,
+            }
+          : {
+              left: selfPanelLeftPx,
+              maxWidth: `calc(${clusterMaxWidthPx}px / ${SELF_PANEL_SCALE})`,
+              transform: `scale(${SELF_PANEL_SCALE})`,
+            }
+      }
+    >
+      <PlayerPanel
+        player={me}
+        isOpponent={false}
+        seat="self"
+        verticalAlign="bottom"
+        incomingDamage={myIncomingDamage}
+        split={selfIsSplit}
+        zonesGrid={selfSplit.grid}
+        isActiveTurn={activePlayerId === me.id}
+        // Pulse only marks a *reaction window*: a non-active player handed
+        // priority to respond. This skips the constant self-glow during your
+        // own turn while still flagging when you (or an opponent) must react.
+        isPriorityPlayer={priorityPlayerId === me.id && activePlayerId !== me.id}
+        isTargetable={playerIsTargetable(me.id)}
+        onTarget={() => onTargetPlayer(me.id)}
+        isFlashing={turnFlashPlayerId === me.id}
+        isMonarch={monarchId === me.id}
+        hasInitiative={initiativeHolderId === me.id}
+        commanders={myCommandZone}
+        graveyard={graveyard}
+        exile={exile}
+        onCastCommander={onCastSpell}
+        onCommanderDragStart={onHandCardDragStart}
+        draggingCardId={draggingCardId}
+        onHoverCard={(card, e) => onHoverCard(card, e, { useAnchor: true })}
+        onOpenCommandZone={() => {
+          if ((myCommandZone?.length ?? 0) > 0) {
+            if (isTargetingPrompt && commandTargetIds.length > 0) {
+              onOpenZone("Your Command Zone", myCommandZone!, onTargetFromZone, commandTargetIds);
+              return;
+            }
+            if ((commandPlayableIds?.length ?? 0) > 0 && promptType === "chooseAction") {
+              onOpenZoneAndCast(
+                "Your Command Zone",
+                myCommandZone!,
+                (_cardId) => {},
+                commandPlayableIds,
+              );
+            } else {
+              onOpenZone("Your Command Zone", myCommandZone!);
+            }
+          }
+        }}
+        onOpenGraveyard={() => {
+          if (isTargetingPrompt && graveyardTargetIds.length > 0) {
+            onOpenZone("Your Graveyard", graveyard, onTargetFromZone, graveyardTargetIds);
+            return;
+          }
+          if (
+            promptType === "chooseTargetCardFromZone" &&
+            chooseTargetCardFromZonePrompt?.input.zone === "Graveyard"
+          ) {
+            onReopenZoneTarget();
+            return;
+          }
+          if (graveyardPlayableIds.length > 0 && promptType === "chooseAction") {
+            onOpenZoneAndCast("Your Graveyard", graveyard, (_cardId) => {}, graveyardPlayableIds);
+          } else {
+            onOpenZone("Your Graveyard", graveyard);
+          }
+        }}
+        onOpenExile={() => {
+          if (isTargetingPrompt && exileTargetIds.length > 0) {
+            onOpenZone("Your Exile", exile, onTargetFromZone, exileTargetIds);
+            return;
+          }
+          if (
+            promptType === "chooseTargetCardFromZone" &&
+            chooseTargetCardFromZonePrompt?.input.zone === "Exile"
+          ) {
+            onReopenZoneTarget();
+            return;
+          }
+          if (exilePlayableIds.length > 0 && promptType === "chooseAction") {
+            onOpenZoneAndCast("Your Exile", exile, (_cardId) => {}, exilePlayableIds);
+          } else {
+            onOpenZone("Your Exile", exile);
+          }
+        }}
+        hasPlayableInGraveyard={
+          promptType === "chooseAction" && graveyard.some((c) => c.isPlayable)
+        }
+        hasPlayableInExile={promptType === "chooseAction" && exile.some((c) => c.isPlayable)}
+        hasTargetInGraveyard={isTargetingPrompt && graveyardTargetIds.length > 0}
+        hasTargetInExile={isTargetingPrompt && exileTargetIds.length > 0}
+        targetHostile={hostileTargeting}
+        zonePanelOrder={zonePanelOrder}
+      />
+    </div>
+  );
+
+  // Reserve hand-fan space at the bottom corners so the centered hand clears
+  // the split self cluster (avatar left, zone tiles right). Row keeps the full
+  // width (the capped cluster handles its own clearance there).
+
   return (
     <div
       ref={boardRef}
-      className="game-board-surface relative flex flex-col min-h-0 flex-1 overflow-visible"
+      className="game-board-surface relative flex flex-col min-h-0 flex-1 overflow-hidden"
     >
-      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-        <ReconnectBanner className="shadow-sm bg-background/95" />
+      <ReconnectBanner />
+      <div ref={battlefieldContainerRef} className="absolute inset-0 z-10 overflow-hidden">
+        <BoardCanvas
+          regions={unifiedRegions}
+          hand={pixiHand}
+          arrowSpecs={arrowSpecs ?? []}
+          castingArrow={castingArrow}
+          declareBlockers={promptType === "chooseBlockers"}
+          combatBlocks={combatAssignmentsAll}
+          phaseStrip={pixiPhaseStrip}
+          phaseStripCallbacks={pixiPhaseStripCallbacks}
+          arrangement={boardArrangement}
+          selfHeightFraction={unifiedSplit}
+          opponentFractions={opponentFractions}
+          callbacks={pixiCallbacks}
+          externalBlockers={pixiExternalBlockers}
+          handInsets={handInsets}
+          isDropActive={isOverBattlefield}
+          autoSort={battlefieldAutoSort}
+          selfBottomReserve={selfBottomReserve}
+          sceneRef={sceneRef}
+          getHandActions={getHandActions}
+          onSelectHandAction={(_card, action) => onSelectHandAction?.(action)}
+          onLayout={setUnifiedLayout}
+        />
       </div>
-
-      {/* ── Split: opponent (top) / phase strip / me (bottom) ─── */}
-
-      {/* Opponent half */}
-      <div style={{ flex: `${splitPct} 1 0%` }} className="min-h-0 overflow-visible">
-        {opponents.length <= 1 ? (
-          <OpponentHalf
-            player={opponents[0]!}
-            opponentIndex={0}
-            permanents={opponentPermanentsByPlayer.get(opponents[0]!.id) ?? []}
-            graveyard={opponents[0]!.graveyard}
-            exile={opponents[0]!.exile}
-            commandZone={opponents[0]!.commandZone}
-            isTargetable={playerIsTargetable(opponents[0]!.id)}
-            isSelectedTarget={selectedAttackDefenderId === opponents[0]!.id}
-            onTarget={() => onTargetPlayer(opponents[0]!.id)}
-            isFlashing={turnFlashPlayerId === opponents[0]?.id}
-            isMonarch={monarchId === opponents[0]?.id}
-            hasInitiative={initiativeHolderId === opponents[0]?.id}
-            activePlayerId={activePlayerId}
-            priorityPlayerId={priorityPlayerId}
-            step={step}
-            promptType={promptType}
-            pendingAttacker={pendingAttacker}
-            attackerIds={promptAttackerIds}
-            selectableCardIds={selectableBattlefieldCardIds}
-            onClickCard={onBattlefieldClick}
-            onClickAnyCard={onAttackerClick}
-            onHoverCard={(card, e, opts) => onHoverCard(card, e, { useAnchor: true, ...opts })}
-            onFlipCard={onFlipCard}
-            onOpenZone={onOpenZone}
-            zonePanelOrder={zonePanelOrder}
-            hostileTargeting={hostileTargeting}
-            manaAbilityOptions={manaAbilityOptions}
-            pixiSceneRef={getOpponentPixiSceneRef?.(opponents[0]!.id)}
-          />
-        ) : (
-          <ResizablePanelGroup orientation="horizontal">
-            {opponents.map((op, i) => (
-              <Fragment key={op.id}>
-                {i > 0 && <ResizableHandle />}
-                <ResizablePanel className="overflow-visible">
-                  <OpponentHalf
-                    player={op}
-                    opponentIndex={i}
-                    permanents={opponentPermanentsByPlayer.get(op.id) ?? []}
-                    graveyard={op.graveyard}
-                    exile={op.exile}
-                    commandZone={op.commandZone}
-                    isTargetable={playerIsTargetable(op.id)}
-                    isSelectedTarget={selectedAttackDefenderId === op.id}
-                    onTarget={() => onTargetPlayer(op.id)}
-                    isFlashing={turnFlashPlayerId === op.id}
-                    isMonarch={monarchId === op.id}
-                    hasInitiative={initiativeHolderId === op.id}
-                    activePlayerId={activePlayerId}
-                    priorityPlayerId={priorityPlayerId}
-                    step={step}
-                    promptType={promptType}
-                    pendingAttacker={pendingAttacker}
-                    attackerIds={promptAttackerIds}
-                    selectableCardIds={selectableBattlefieldCardIds}
-                    onClickCard={onBattlefieldClick}
-                    onClickAnyCard={onAttackerClick}
-                    onHoverCard={(card, e, opts) =>
-                      onHoverCard(card, e, { useAnchor: true, ...opts })
-                    }
-                    onFlipCard={onFlipCard}
-                    onOpenZone={onOpenZone}
-                    zonePanelOrder={zonePanelOrder}
-                    hostileTargeting={hostileTargeting}
-                    manaAbilityOptions={manaAbilityOptions}
-                    pixiSceneRef={getOpponentPixiSceneRef?.(op.id)}
-                  />
-                </ResizablePanel>
-              </Fragment>
-            ))}
-          </ResizablePanelGroup>
-        )}
+      {selfPanel}
+      {unifiedLayout?.opponents.map(({ playerId, rect, orientation }, i) => {
+        const op = opponents.find((o) => o.id === playerId);
+        if (!op) return null;
+        const scale = `scale(${UNIFIED_OPPONENT_PANEL_SCALE})`;
+        // Seat the panel against the player's edge: top opponents at the
+        // region's top-left, side opponents vertically centered on their column.
+        const panelStyle: React.CSSProperties =
+          orientation === "left"
+            ? {
+                left: rect.x + 8,
+                top: rect.y + rect.height / 2,
+                transform: `translateY(-50%) ${scale}`,
+                transformOrigin: "left center",
+              }
+            : orientation === "right"
+              ? {
+                  left: rect.x + rect.width - 8,
+                  top: rect.y + rect.height / 2,
+                  transform: `translate(-100%, -50%) ${scale}`,
+                  transformOrigin: "right center",
+                }
+              : {
+                  left: rect.x + 8,
+                  top: rect.y + 8,
+                  transform: scale,
+                  transformOrigin: "top left",
+                };
+        return (
+          <div
+            key={playerId}
+            ref={(el) => setPanelEl(playerId, el)}
+            className="absolute z-30"
+            style={panelStyle}
+          >
+            <PlayerPanel
+              player={op}
+              isOpponent
+              seat={OPPONENT_SEATS[i] ?? "opponent1"}
+              verticalAlign="top"
+              zoneOrientation={
+                orientation === "left" || orientation === "right" ? "vertical" : "horizontal"
+              }
+              isActiveTurn={activePlayerId === op.id}
+              isPriorityPlayer={priorityPlayerId === op.id && activePlayerId !== op.id}
+              isTargetable={playerIsTargetable(op.id)}
+              isSelectedTarget={selectedAttackDefenderId === op.id}
+              onTarget={() => onTargetPlayer(op.id)}
+              isFlashing={turnFlashPlayerId === op.id}
+              isMonarch={monarchId === op.id}
+              hasInitiative={initiativeHolderId === op.id}
+              commanders={op.commandZone}
+              graveyard={op.graveyard}
+              exile={op.exile}
+              onOpenCommandZone={
+                (op.commandZone?.length ?? 0) > 0
+                  ? () => onOpenZone(`${op.name}'s Command Zone`, op.commandZone!)
+                  : undefined
+              }
+              onOpenGraveyard={() => onOpenZone(`${op.name}'s Graveyard`, op.graveyard)}
+              onOpenExile={() => onOpenZone(`${op.name}'s Exile`, op.exile)}
+              onHoverCard={(card, e) => onHoverCard(card, e, { useAnchor: true })}
+              zonePanelOrder={zonePanelOrder}
+            />
+          </div>
+        );
+      })}
+      <div className="absolute inset-0 z-40 pointer-events-none">
+        <BoardArrowsCanvas sceneRef={sceneRef} />
       </div>
-
-      {/* Phase strip — the center line with resize grip on the left */}
-      <div className="h-20 w-full shrink-0 relative">
-        {/* Resize grip — overlaid on the left, above the phase strip */}
+      {boardArrangement === "row" &&
+        unifiedLayout &&
+        unifiedLayout.opponents.slice(1).map(({ playerId, rect }) => (
+          <div
+            key={`oppgrip-${playerId}`}
+            className="absolute z-50 w-3 cursor-col-resize flex items-center justify-center group"
+            style={{ left: rect.x - 6, top: 0, height: rect.height }}
+            onPointerDown={onOpponentGripDown(
+              unifiedLayout.opponents.findIndex((o) => o.playerId === playerId) - 1,
+            )}
+          >
+            <div className="w-[3px] h-16 rounded-full bg-white/25 group-hover:bg-white/50" />
+          </div>
+        ))}
+      {unifiedLayout?.self && (
         <div
-          className="absolute left-2 top-0 h-full w-10 cursor-row-resize z-20 flex items-center justify-center"
-          onPointerDown={onGripPointerDown}
+          className="absolute z-50 w-10 cursor-row-resize flex items-center justify-center group"
+          style={{
+            left: unifiedLayout.self.x + 4,
+            // Center on the divider line (where the phase strip sits), not the
+            // self-region top, which is half a band below it.
+            top: unifiedLayout.dividerY - STRIP_BAND_PX / 2,
+            height: STRIP_BAND_PX,
+          }}
+          onPointerDown={onUnifiedGripDown}
         >
           <div className="flex flex-col items-center gap-[3px]">
-            <div className="w-4 h-[2px] rounded-full bg-white/25" />
-            <div className="w-6 h-[2px] rounded-full bg-white/35" />
-            <div className="w-4 h-[2px] rounded-full bg-white/25" />
+            <div className="w-4 h-[2px] rounded-full bg-white/25 group-hover:bg-white/50" />
+            <div className="w-6 h-[2px] rounded-full bg-white/35 group-hover:bg-white/60" />
+            <div className="w-4 h-[2px] rounded-full bg-white/25 group-hover:bg-white/50" />
           </div>
         </div>
-        {/* Phase strip — full width, centered */}
-        <div className="absolute inset-0">
-          <PixiPhaseStripCanvas state={pixiPhaseStrip} callbacks={pixiPhaseStripCallbacks} />
-        </div>
-      </div>
-
-      {/* Player half */}
-      <div style={{ flex: `${100 - splitPct} 1 0%` }} className="min-h-0 overflow-visible">
-        <div className="flex flex-col h-full overflow-visible">
-          <div className="flex flex-1 min-h-0 overflow-visible">
-            <div
-              ref={battlefieldContainerRef}
-              className={cn("relative flex flex-col flex-1 min-w-0 overflow-visible")}
-            >
-              {/* Cluster is given a `max-width` (not explicit width)
-                    driven by a ResizeObserver on the hand container.
-                    The container sizes to its content naturally, so
-                    there's no empty gutter at the right — but the cap
-                    triggers `flex-wrap` once the zones + avatar would
-                    start overlapping the hand. */}
-              <div
-                className="absolute bottom-2 left-2 z-30 pointer-events-none origin-bottom-left"
-                style={{
-                  maxWidth: `calc((${clusterMaxWidthCss}) / ${SELF_PANEL_SCALE})`,
-                  transform: `scale(${SELF_PANEL_SCALE})`,
-                }}
-              >
-                <PlayerPanel
-                  player={me}
-                  isOpponent={false}
-                  seat="self"
-                  verticalAlign="bottom"
-                  isActiveTurn={activePlayerId === me.id}
-                  isPriorityPlayer={priorityPlayerId === me.id}
-                  isTargetable={playerIsTargetable(me.id)}
-                  onTarget={() => onTargetPlayer(me.id)}
-                  isFlashing={turnFlashPlayerId === me.id}
-                  isMonarch={monarchId === me.id}
-                  hasInitiative={initiativeHolderId === me.id}
-                  commanders={myCommandZone}
-                  graveyard={graveyard}
-                  exile={exile}
-                  onCastCommander={onCastSpell}
-                  onCommanderDragStart={onHandCardDragStart}
-                  draggingCardId={draggingCardId}
-                  onHoverCard={(card, e) => onHoverCard(card, e, { useAnchor: true })}
-                  onOpenCommandZone={() => {
-                    if ((myCommandZone?.length ?? 0) > 0) {
-                      if (isTargetingPrompt && commandTargetIds.length > 0) {
-                        onOpenZone(
-                          "Your Command Zone",
-                          myCommandZone!,
-                          onTargetFromZone,
-                          commandTargetIds,
-                        );
-                        return;
-                      }
-                      if ((commandPlayableIds?.length ?? 0) > 0 && promptType === "chooseAction") {
-                        onOpenZoneAndCast(
-                          "Your Command Zone",
-                          myCommandZone!,
-                          (_cardId) => {},
-                          commandPlayableIds,
-                        );
-                      } else {
-                        onOpenZone("Your Command Zone", myCommandZone!);
-                      }
-                    }
-                  }}
-                  onOpenGraveyard={() => {
-                    if (isTargetingPrompt && graveyardTargetIds.length > 0) {
-                      onOpenZone("Your Graveyard", graveyard, onTargetFromZone, graveyardTargetIds);
-                      return;
-                    }
-                    if (
-                      promptType === "chooseTargetCardFromZone" &&
-                      chooseTargetCardFromZonePrompt?.input.zone === "Graveyard"
-                    ) {
-                      onReopenZoneTarget();
-                      return;
-                    }
-                    if (graveyardPlayableIds.length > 0 && promptType === "chooseAction") {
-                      onOpenZoneAndCast(
-                        "Your Graveyard",
-                        graveyard,
-                        (_cardId) => {},
-                        graveyardPlayableIds,
-                      );
-                    } else {
-                      onOpenZone("Your Graveyard", graveyard);
-                    }
-                  }}
-                  onOpenExile={() => {
-                    if (isTargetingPrompt && exileTargetIds.length > 0) {
-                      onOpenZone("Your Exile", exile, onTargetFromZone, exileTargetIds);
-                      return;
-                    }
-                    if (
-                      promptType === "chooseTargetCardFromZone" &&
-                      chooseTargetCardFromZonePrompt?.input.zone === "Exile"
-                    ) {
-                      onReopenZoneTarget();
-                      return;
-                    }
-                    if (exilePlayableIds.length > 0 && promptType === "chooseAction") {
-                      onOpenZoneAndCast("Your Exile", exile, (_cardId) => {}, exilePlayableIds);
-                    } else {
-                      onOpenZone("Your Exile", exile);
-                    }
-                  }}
-                  hasPlayableInGraveyard={
-                    promptType === "chooseAction" && graveyard.some((c) => c.isPlayable)
-                  }
-                  hasPlayableInExile={
-                    promptType === "chooseAction" && exile.some((c) => c.isPlayable)
-                  }
-                  hasTargetInGraveyard={isTargetingPrompt && graveyardTargetIds.length > 0}
-                  hasTargetInExile={isTargetingPrompt && exileTargetIds.length > 0}
-                  targetHostile={hostileTargeting}
-                  zonePanelOrder={zonePanelOrder}
-                />
-              </div>
-              <div className="absolute inset-0 z-10 overflow-hidden">
-                <PixiGameCanvas
-                  boardId="self"
-                  battlefield={pixiBattlefield}
-                  hand={pixiHand}
-                  sceneRef={pixiSceneRef}
-                  placementGhostName={
-                    placementGhost?.controllerId === me.id ? placementGhost.cardName : null
-                  }
-                  isDropActive={isOverBattlefield}
-                  callbacks={pixiCallbacks}
-                  bottomReserved={handBottomReserved}
-                  bottomLeftReserved={PLAYER_CLUSTER_BLOCKER}
-                  getHandActions={getHandActions}
-                  onSelectHandAction={(_card, action) => onSelectHandAction?.(action)}
-                  bottomRightReserved={PASS_BUTTON_RESERVED}
-                  externalBlockers={pixiExternalBlockers}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

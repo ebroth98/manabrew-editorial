@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import type { Player } from "@/types/manabrew";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -30,6 +30,7 @@ export function PlayerAvatar({
   badges,
   seatColor,
   isActiveTurn,
+  isPriorityPlayer,
   isTargetable,
   isSelectedTarget,
   onTarget,
@@ -39,8 +40,28 @@ export function PlayerAvatar({
   const theme = useTheme();
   const themeColors = theme.gameTheme;
   const fontSizes = theme.gameTheme.fontSizes;
+
+  // Flash the life badge red when this player loses life. Bumping a key on
+  // each loss remounts the badge so the one-shot CSS animation replays; the
+  // animation self-clears, so no effect/timer is needed.
+  const [prevLife, setPrevLife] = useState(player.life);
+  const [lifeLossKey, setLifeLossKey] = useState(0);
+  // A floating "+N / −N" rises above the avatar on any life change; bumping a
+  // key remounts it so the one-shot animation replays.
+  const [lifeFloatKey, setLifeFloatKey] = useState(0);
+  const [lifeDelta, setLifeDelta] = useState(0);
+  if (player.life !== prevLife) {
+    if (player.life < prevLife) setLifeLossKey((k) => k + 1);
+    setLifeDelta(player.life - prevLife);
+    setLifeFloatKey((k) => k + 1);
+    setPrevLife(player.life);
+  }
   const targetableColor = withAlpha(themeColors.promptAction.attackAction, 0.9);
   const selectedTargetColor = themeColors.promptAction.attackAction;
+  const priorityColor = themeColors.activeAction.priority;
+  // Show the "waiting on this player" pulse only when the avatar isn't already
+  // carrying a target highlight (those take visual precedence).
+  const showPriority = !!isPriorityPlayer && !isTargetable && !isSelectedTarget;
 
   const ringStyle: CSSProperties = isSelectedTarget
     ? {
@@ -57,6 +78,20 @@ export function PlayerAvatar({
       className={cn("relative inline-flex flex-col items-center gap-0.5", className)}
       data-player-id={player.id}
     >
+      {lifeFloatKey > 0 && (
+        <span
+          key={lifeFloatKey}
+          aria-hidden
+          className="animate-life-float pointer-events-none absolute left-1/2 top-0 z-40 font-extrabold leading-none tabular-nums"
+          style={{
+            color: lifeDelta < 0 ? themeColors.pt.lethal : themeColors.life,
+            fontSize: fontSizes.life,
+            textShadow: "0 1px 3px rgba(0, 0, 0, 0.85)",
+          }}
+        >
+          {lifeDelta > 0 ? `+${lifeDelta}` : lifeDelta}
+        </span>
+      )}
       <div
         className="relative"
         style={{ width: AVATAR_PX, height: AVATAR_PX }}
@@ -88,10 +123,25 @@ export function PlayerAvatar({
           </AvatarFallback>
         </Avatar>
 
+        {showPriority && (
+          <span
+            aria-label={`Waiting on ${player.name}`}
+            className="pointer-events-none absolute inset-0 z-20 rounded-full animate-player-priority-pulse"
+            style={{ "--priority-color": priorityColor } as CSSProperties}
+          />
+        )}
+
         <div className="pointer-events-none absolute left-1/2 -bottom-2 -translate-x-1/2 z-30">
           <span
-            className="flex items-center gap-1 rounded-full px-2 py-0.5 text-white shadow ring-1 ring-black/50"
-            style={{ backgroundColor: "rgba(0, 0, 0, 0.82)" }}
+            key={lifeLossKey}
+            className={cn(
+              "flex items-center gap-1 rounded-full px-2 py-0.5 text-white shadow ring-1 ring-black/50",
+              lifeLossKey > 0 && "animate-life-flash",
+            )}
+            style={{
+              backgroundColor: "rgba(0, 0, 0, 0.82)",
+              ...({ "--life-flash-color": themeColors.pt.lethal } as CSSProperties),
+            }}
           >
             <Heart
               className="h-3.5 w-3.5"

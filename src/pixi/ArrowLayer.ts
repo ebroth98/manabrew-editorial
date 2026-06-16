@@ -13,6 +13,9 @@ export interface ArrowDef {
   toX: number;
   toY: number;
   type: ArrowType;
+  /** Explicit hue (e.g. the casting arrow's intent color); falls back to the
+   *  type's theme color when omitted. */
+  color?: number;
 }
 
 // ── Layer ordering ─────────────────────────────────────────────────────────
@@ -69,6 +72,7 @@ const PLACEMENT_DASH_SPEED_PX_PER_SEC = 48;
 const PLACEMENT_HEAD_LEN = 14;
 const PLACEMENT_HEAD_WIDTH = 11;
 
+// ── Cast (source→cursor targeting arrow — bold dashed, big filled head) ─────
 const CAST_STROKE_WIDTH = 5;
 const CAST_ALPHA = 0.9;
 const CAST_DASH = 15;
@@ -306,6 +310,20 @@ export class ArrowLayer {
       case "block":
         this.drawPainterly(entry, arrow);
         return;
+      case "casting":
+        // Bold dashed targeting arrow (matches the original board's cast arrow)
+        // — distinct from the painterly combat stroke.
+        this.drawPlacement(entry, arrow, {
+          color: arrow.color ?? hexToNum(this.theme.gameTheme.arrow.friendlyTarget),
+          strokeWidth: CAST_STROKE_WIDTH,
+          alpha: CAST_ALPHA,
+          dash: CAST_DASH,
+          gap: CAST_GAP,
+          headLen: CAST_HEAD_LEN,
+          headWidth: CAST_HEAD_WIDTH,
+          dashOffset: 0,
+        });
+        return;
       case "attach":
         this.drawRune(entry, arrow);
         return;
@@ -321,18 +339,6 @@ export class ArrowLayer {
           dashOffset: this.placementDashOffset,
         });
         return;
-      case "cast":
-        this.drawPlacement(entry, arrow, {
-          color: hexToNum(this.theme.gameTheme.arrow.friendlyTarget),
-          strokeWidth: CAST_STROKE_WIDTH,
-          alpha: CAST_ALPHA,
-          dash: CAST_DASH,
-          gap: CAST_GAP,
-          headLen: CAST_HEAD_LEN,
-          headWidth: CAST_HEAD_WIDTH,
-          dashOffset: 0,
-        });
-        return;
     }
   }
 
@@ -340,11 +346,13 @@ export class ArrowLayer {
   private drawPainterly(entry: ArrowEntry, arrow: ArrowDef): void {
     const { ax1, ay1, ax2, ay2 } = shortenEndpoints(arrow.fromX, arrow.fromY, arrow.toX, arrow.toY);
     const curve = cubicCurve(ax1, ay1, ax2, ay2, BOW_PAINTERLY);
-    const hueHex =
-      arrow.type === "attack"
-        ? this.theme.gameTheme.pointer.hostile
-        : this.theme.gameTheme.pointer.friendly;
-    const hue = hexToNum(hueHex);
+    const hue =
+      arrow.color ??
+      hexToNum(
+        arrow.type === "attack"
+          ? this.theme.gameTheme.pointer.hostile
+          : this.theme.gameTheme.pointer.friendly,
+      );
 
     const gradKey = `${ax1.toFixed(1)},${ay1.toFixed(1)},${ax2.toFixed(1)},${ay2.toFixed(1)},${hue}`;
     if (entry.gradKey !== gradKey || !entry.underGrad || !entry.coreGrad) {

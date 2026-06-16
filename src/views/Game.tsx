@@ -2,7 +2,6 @@ import { useGameStore } from "@/stores/useGameStore";
 import { asDeckCard } from "@/lib/decks";
 import { useGameUIStore } from "@/stores/useGameUIStore";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
-import { useCastDragStore } from "@/stores/useCastDragStore";
 import { useAutoResolvePrompt } from "@/components/game/prompts/useAutoResolvePrompt";
 import { useShallow } from "zustand/react/shallow";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -16,10 +15,10 @@ import { ManualTabletopControls } from "@/components/game/ManualTabletopControls
 import { MainActionOverlay, RightActionPanel } from "@/components/game/panels";
 import { StackDisplay } from "@/components/game/panels/StackDisplay";
 import { useCastingState } from "@/hooks/useCastingState";
-import { PixiArrowsCanvas } from "@/pixi/PixiArrowsCanvas";
-import type { PixiGameScene } from "@/pixi/PixiGameScene";
+import type { BoardScene } from "@/pixi/board/BoardScene";
+import { PERIMETER_SIDE_FRACTION } from "@/pixi/board/boardLayout";
+import { isFeatureEnabled } from "@/featureFlags";
 import { buildArrowSpecs } from "@/components/game/arrowSpecs";
-import { buildPointerSpecs } from "@/components/game/pointerSpecs";
 import { getExpandedManaAbilities } from "@/components/game/manaUtils";
 import { PlayModePicker } from "@/components/game/PlayModePicker";
 import { HAND_CARD_BASE } from "@/components/game/game.styles";
@@ -54,7 +53,6 @@ import { Card } from "@/components/game/Card";
 import { cn } from "@/lib/utils";
 import { applyManualTabletopAction, getSelectedGameRuntime } from "@/game";
 import type { HandActionOption } from "@/stores/useGameUIStore";
-import type { PlacementGhost } from "@/components/game/game.types";
 import type { GameRuntime, ManualTabletopApi } from "@/game";
 
 /** Prompt types where hover card preview is allowed (no modal overlay). */
@@ -133,6 +131,8 @@ export default function Game({ exitTo }: GameProps = {}) {
     })),
   );
   const flashDurationMs = usePreferencesStore((s) => s.flashDurationMs);
+  const boardArrangementPref = usePreferencesStore((s) => s.boardArrangement);
+  const boardArrangement = isFeatureEnabled("wraparoundBoardLayout") ? boardArrangementPref : "row";
   const zonePanelOrder = usePreferencesStore((s) => s.zonePanelOrder);
   const vScale = useHandScale();
   const themeColors = useTheme().gameTheme;
@@ -140,30 +140,9 @@ export default function Game({ exitTo }: GameProps = {}) {
   const devExtraOpponents =
     (location.state as { devExtraOpponents?: number } | null)?.devExtraOpponents ?? 0;
   const containerRef = useRef<HTMLDivElement>(null);
-  // Ref populated by PixiGameCanvas once its scene is live. Used by the
-  // full-board PixiArrowsCanvas to read sprite positions across canvases.
-  const pixiSceneRef = useRef<PixiGameScene | null>(null);
-
-  // Per-opponent Pixi scene refs — one `MutableRefObject` per player id.
-  // Each opponent's PixiGameCanvas writes its live scene into its ref so
-  // the arrow layer can read opponent sprite positions without a DOM
-  // fallback. The dispenser lazily creates the ref object the first time
-  // a given opponent asks for it so the identity is stable across
-  // re-renders (React requires refs not to flicker between invocations).
-  const opponentSceneRefsRef = useRef<Map<string, React.MutableRefObject<PixiGameScene | null>>>(
-    new Map(),
-  );
-  const getOpponentPixiSceneRef = useCallback(
-    (playerId: string): React.MutableRefObject<PixiGameScene | null> => {
-      let ref = opponentSceneRefsRef.current.get(playerId);
-      if (!ref) {
-        ref = { current: null };
-        opponentSceneRefsRef.current.set(playerId, ref);
-      }
-      return ref;
-    },
-    [],
-  );
+  // Live unified BoardScene, populated by BoardCanvas. Used here to translate
+  // the StackDisplay panel into canvas-local coords for the keep-out rect.
+  const boardSceneRef = useRef<BoardScene | null>(null);
 
   // Rect of the StackDisplay panel in canvas-local coords, or null when the
   // stack isn't rendered. Fed to the Pixi scene as an external blocker so
@@ -181,7 +160,7 @@ export default function Game({ exitTo }: GameProps = {}) {
     let lastKey = "";
     const tick = () => {
       raf = requestAnimationFrame(tick);
-      const scene = pixiSceneRef.current;
+      const scene = boardSceneRef.current;
       const panel = document.querySelector<HTMLElement>("[data-stack-panel]");
       if (!scene || !panel) {
         if (lastKey !== "") {
@@ -214,6 +193,8 @@ export default function Game({ exitTo }: GameProps = {}) {
     activePrompt?.input.type === "chooseAttackers" ? activePrompt.input : null;
   const chooseBlockersInput =
     activePrompt?.input.type === "chooseBlockers" ? activePrompt.input : null;
+  const damageOrderInput =
+    activePrompt?.input.type === "chooseDamageAssignmentOrder" ? activePrompt.input : null;
   const payCombatCostInput =
     activePrompt?.input.type === "payCombatCost" ? activePrompt.input : null;
   const payManaCostInput = activePrompt?.input.type === "payManaCost" ? activePrompt.input : null;
@@ -546,8 +527,13 @@ export default function Game({ exitTo }: GameProps = {}) {
   const {
     pendingAttackers,
     pendingAttacker,
+    pendingBlocker,
     attackDefenderId,
     blockAssignments,
+    assignBlockPair,
+    unassignBlock,
+    damageOrder,
+    undoDamageOrder,
     multipleAttackDefenders,
     awaitingAttackTarget,
     playerIsTargetable,
@@ -563,6 +549,7 @@ export default function Game({ exitTo }: GameProps = {}) {
     targetPlayer: casting.wrappedTargetPlayer,
     respond,
     currentPrompt: activePrompt,
+    engineHasBlocks: (gameView?.combatAssignments?.length ?? 0) > 0,
   });
   const selectedAttackDefender = chooseAttackersInput?.possibleDefenderIds.find(
     (defender) => defender.id === attackDefenderId,
@@ -847,11 +834,6 @@ export default function Game({ exitTo }: GameProps = {}) {
     dismissHover: preview.dismiss,
   });
 
-  const setCastDragActive = useCastDragStore((s) => s.setActive);
-  useEffect(() => {
-    setCastDragActive(!!draggingHandCard);
-  }, [draggingHandCard, setCastDragActive]);
-
   const draggingIsPermanent = draggingHandCard ? isPermanentSpellCard(draggingHandCard) : false;
   const ghostCardW = Math.round(HAND_CARD_BASE.cardW * vScale);
   const ghostCardH = Math.round(HAND_CARD_BASE.cardH * vScale);
@@ -954,27 +936,33 @@ export default function Game({ exitTo }: GameProps = {}) {
     });
     return map;
   }, [me, opponents, themeColors.playerColors]);
-  // DEV: pad with simulated opponents to test multi-player layout
-  const displayOpponents = [
-    ...opponents,
-    ...Array.from(
-      { length: devExtraOpponents },
-      (_, i) =>
-        ({
-          id: `dev-fake-${i}`,
-          name: `Dev Opp ${opponents.length + i + 1}`,
-          isHuman: false,
-          life: 20,
-          poison: 0,
-          hand: [],
-          graveyard: [],
-          exile: [],
-          commandZone: [],
-          libraryCount: 40,
-          manaPool: {} as Record<string, number>,
-        }) as Player,
-    ),
-  ];
+  // DEV: pad with simulated opponents to test multi-player layout. Memoized so
+  // the array identity is stable across renders — it flows into the board's
+  // region set and panel-measurement, which would otherwise relayout/measure
+  // on every render.
+  const displayOpponents = useMemo(
+    () => [
+      ...opponents,
+      ...Array.from(
+        { length: devExtraOpponents },
+        (_, i) =>
+          ({
+            id: `dev-fake-${i}`,
+            name: `Dev Opp ${opponents.length + i + 1}`,
+            isHuman: false,
+            life: 20,
+            poison: 0,
+            hand: [],
+            graveyard: [],
+            exile: [],
+            commandZone: [],
+            libraryCount: 40,
+            manaPool: {} as Record<string, number>,
+          }) as Player,
+      ),
+    ],
+    [opponents, devExtraOpponents],
+  );
   // Stabilize attackerIds so useGameArrows' useEffect doesn't re-run every render
   const attackerIds = useMemo(
     () => chooseBlockersInput?.attackerIds ?? [],
@@ -1019,6 +1007,7 @@ export default function Game({ exitTo }: GameProps = {}) {
         battlefieldAttachments,
         stack: gameView?.stack ?? [],
         activeStackObjectId: hoveredStackObjectIdForSpecs,
+        stageBlockers: true,
       }),
     [
       promptType,
@@ -1048,47 +1037,9 @@ export default function Game({ exitTo }: GameProps = {}) {
     ];
   }, [liveArrowSpecs, debugArrowType, me?.id, opponent?.id]);
 
-  const livePointerSpecs = useMemo(
-    () =>
-      buildPointerSpecs({
-        stack: gameView?.stack ?? [],
-        activeStackObjectId: hoveredStackObjectIdForSpecs,
-      }),
-    [gameView?.stack, hoveredStackObjectIdForSpecs],
-  );
-
-  // Dev-only: append a single force-rendered pointer spec for the
-  // intent the operator has selected in the dev panel so each glyph can
-  // be inspected on the live board without needing a real spell. Acts
-  // as a radio (one at a time) so glyphs never stack.
-  const debugPointerIntent = useGameDevStore((s) => s.debugPointerIntent);
   const debugBattlefieldKeywords = useGameDevStore((s) => s.debugBattlefieldKeywords);
   const debugCardEnabled = useGameDevStore((s) => s.debugCardEnabled);
   const debugCardName = useGameDevStore((s) => s.debugCardName);
-  const pointerSpecs = useMemo(() => {
-    if (!debugPointerIntent || !me?.id || !opponent?.id) return livePointerSpecs;
-    return [
-      ...livePointerSpecs,
-      {
-        from: { kind: "player" as const, id: me.id },
-        to: { kind: "player" as const, id: opponent.id },
-        intent: debugPointerIntent,
-      },
-    ];
-  }, [livePointerSpecs, debugPointerIntent, me?.id, opponent?.id]);
-
-  const hoveredStackObjectId = useStackUIStore((s) => s.hoveredStackObjectId);
-  const placementGhost = useMemo((): PlacementGhost | null => {
-    const stack = gameView?.stack;
-    if (!stack || stack.length === 0) return null;
-    const active =
-      (hoveredStackObjectId ? stack.find((obj) => obj.id === hoveredStackObjectId) : null) ??
-      stack[stack.length - 1];
-    const hasTargets = (active.targets ?? []).length > 0;
-    if (hasTargets) return null;
-    if (!active.isPermanentSpell) return null;
-    return { stackObjectId: active.id, cardName: active.name, controllerId: active.controllerId };
-  }, [gameView?.stack, hoveredStackObjectId]);
 
   const visibleCardsById = useMemo(() => {
     if (!gameView) return new Map<string, GameCard>();
@@ -1105,6 +1056,33 @@ export default function Game({ exitTo }: GameProps = {}) {
     }
     return map;
   }, [gameView, debugCardEnabled, debugCardName, debugBattlefieldKeywords, me?.id]);
+
+  // Memoized so the board's region set has stable inputs and doesn't relayout
+  // every render. Pending attackers render as tapped for an immediate
+  // "selected" signal; tap state flips for real engine-side once committed.
+  const myPermanents = useMemo<GameCard[]>(() => {
+    if (!gameView || !me) return [];
+    const pendingSet = new Set(pendingAttackers);
+    const list = gameView.battlefield
+      .filter((c) => c.controllerId === me.id)
+      .map((c) => (pendingSet.has(c.id) ? { ...c, tapped: true } : c));
+    if (debugCardEnabled) {
+      list.push(buildDebugKeywordCard(me.id, debugCardName, debugBattlefieldKeywords));
+    }
+    return list;
+  }, [gameView, me, pendingAttackers, debugCardEnabled, debugCardName, debugBattlefieldKeywords]);
+
+  const opponentPermanentsByPlayer = useMemo(() => {
+    const map = new Map<string, GameCard[]>();
+    if (!gameView) return map;
+    for (const op of opponents) {
+      map.set(
+        op.id,
+        gameView.battlefield.filter((c) => c.controllerId === op.id),
+      );
+    }
+    return map;
+  }, [gameView, opponents]);
 
   const stackCardsBySourceId = useMemo(() => {
     const byId = new Map<string, GameCard>();
@@ -1289,7 +1267,7 @@ export default function Game({ exitTo }: GameProps = {}) {
     if (!gameView?.gameOver) return;
     const pending = tryConsumeGauntletMatch();
     if (!pending) return;
-    const humanWon = (gameView.winnerId ?? "").toLowerCase().includes("0");
+    const humanWon = gameView.winnerId != null && gameView.winnerId === myPlayerSlot;
     void useLimitedStore
       .getState()
       .recordGauntletOutcome(pending.gauntletId, humanWon, true, humanWon)
@@ -1299,7 +1277,7 @@ export default function Game({ exitTo }: GameProps = {}) {
       .finally(() => {
         navigate(`/gauntlet/${pending.gauntletId}`);
       });
-  }, [gameView?.gameOver, gameView?.winnerId, navigate]);
+  }, [gameView?.gameOver, gameView?.winnerId, myPlayerSlot, navigate]);
 
   if (!isGameActive) return <Navigate to={exitTo ?? "/lobby"} replace />;
 
@@ -1325,22 +1303,6 @@ export default function Game({ exitTo }: GameProps = {}) {
   );
   const markIfPlayable = (c: GameCard): GameCard =>
     promptPlayableIds.has(c.id) ? { ...c, isPlayable: true } : c;
-  // Pending attackers display as tapped so the user has an immediate
-  // visual signal of "selected" without us drawing a misleading arrow
-  // toward an arbitrary default opponent. Tap state flips for real on
-  // the engine side once the attack commits.
-  const pendingAttackerSet = new Set(pendingAttackers);
-  const markIfPendingAttacker = (c: GameCard): GameCard =>
-    pendingAttackerSet.has(c.id) ? { ...c, tapped: true } : c;
-  const myPermanents = gameView.battlefield
-    .filter((c) => c.controllerId === me.id)
-    .map(markIfPendingAttacker);
-  if (debugCardEnabled) {
-    myPermanents.push(buildDebugKeywordCard(me.id, debugCardName, debugBattlefieldKeywords));
-  }
-  const opponentPermanentsByPlayer = new Map(
-    opponents.map((op) => [op.id, gameView.battlefield.filter((c) => c.controllerId === op.id)]),
-  );
 
   // Game over overlay
   if (gameView.gameOver || promptType === "gameOver") {
@@ -1363,6 +1325,17 @@ export default function Game({ exitTo }: GameProps = {}) {
 
   const targetingCursorActive =
     casting.showArrow && !casting.targetId && !intentPrefersArrow(casting.arrowIntent);
+
+  // Intents that read better as a line draw a live source→cursor arrow (the
+  // cursor-glyph affordance handles the rest). Closes the gap left when the
+  // legacy pointer/casting-arrow overlay was removed.
+  const castingArrow =
+    casting.showArrow &&
+    casting.castingCardId &&
+    !casting.targetId &&
+    intentPrefersArrow(casting.arrowIntent)
+      ? { sourceCardId: casting.castingCardId, hostile: casting.arrowHostile }
+      : null;
 
   return (
     <div
@@ -1390,27 +1363,10 @@ export default function Game({ exitTo }: GameProps = {}) {
       }
     >
       <FullscreenToggle />
-      <PixiArrowsCanvas
-        mainSceneRef={pixiSceneRef}
-        opponentSceneRefs={opponentSceneRefsRef.current}
-        arrowSpecs={arrowSpecs}
-        pointerSpecs={pointerSpecs}
-        castingArrow={
-          casting.showArrow && casting.castingCardId && intentPrefersArrow(casting.arrowIntent)
-            ? {
-                castingCardId: casting.castingCardId,
-                targetId: casting.targetId,
-                hostile: casting.arrowHostile,
-                intent: casting.arrowIntent,
-              }
-            : null
-        }
-      />
       <div className="flex min-h-0 flex-1 overflow-visible">
         <GameBoard
-          pixiSceneRef={pixiSceneRef}
+          boardSceneRef={boardSceneRef}
           pixiExternalBlockers={stackBlockerRect ? [stackBlockerRect] : []}
-          getOpponentPixiSceneRef={getOpponentPixiSceneRef}
           handSelectionMode={mulliganPutBack.active}
           handSelectedIds={mulliganPutBack.selected}
           onHandCardToggle={mulliganPutBack.toggle}
@@ -1430,13 +1386,17 @@ export default function Game({ exitTo }: GameProps = {}) {
           promptType={promptType}
           currentPrompt={activePrompt}
           pendingAttackers={pendingAttackers}
-          pendingAttacker={pendingAttacker}
+          pendingBlocker={pendingBlocker}
+          damageOrder={damageOrder}
+          damageOrderBlockerIds={damageOrderInput?.blockerIds ?? []}
           selectedAttackDefenderId={attackDefenderId}
           blockAssignments={blockAssignments}
+          combatAssignments={combatAssignments}
+          arrowSpecs={arrowSpecs}
+          castingArrow={castingArrow}
           playerIsTargetable={playerIsTargetable}
           turnFlashPlayerId={turnFlashPlayerId}
           zonePanelOrder={zonePanelOrder}
-          placementGhost={placementGhost}
           isOverBattlefield={isOverBattlefield}
           battlefieldContainerRef={battlefieldContainerRef}
           draggingCardId={draggingHandCard?.id}
@@ -1464,6 +1424,8 @@ export default function Game({ exitTo }: GameProps = {}) {
             handleBattlefieldClick(card);
           }}
           onAttackerClick={handleAttackerClick}
+          onAssignBlock={assignBlockPair}
+          onUnassignBlock={unassignBlock}
           onTargetPlayer={handleTargetPlayer}
           onOpenZone={(title, cards, onClickCard, clickableCardIds) => {
             if (manualApi) {
@@ -1576,9 +1538,22 @@ export default function Game({ exitTo }: GameProps = {}) {
           }
           onBeginAttackTargetPick={selectAllAttackersForPick}
           pendingAttacker={pendingAttacker}
+          pendingBlocker={pendingBlocker}
           attackerIds={chooseBlockersInput?.attackerIds ?? []}
           blockAssignments={blockAssignments}
           onDeclareBlockers={(assignments) => respond({ type: "declareBlockers", assignments })}
+          damageOrderCount={damageOrder.length}
+          damageOrderTotal={damageOrderInput?.blockerIds.length ?? 0}
+          onConfirmDamageOrder={() =>
+            respond({ type: "damageAssignmentOrderDecision", orderedBlockerIds: damageOrder })
+          }
+          onUndoDamageOrder={undoDamageOrder}
+          onDefaultDamageOrder={() =>
+            respond({
+              type: "damageAssignmentOrderDecision",
+              orderedBlockerIds: damageOrderInput?.blockerIds ?? [],
+            })
+          }
           onOpenStack={() => setSpellStackModalOpen(true)}
           targetCompletionLabel={targetCompletion?.label}
           onCompleteTargets={targetCompletion?.onComplete}
@@ -1662,6 +1637,9 @@ export default function Game({ exitTo }: GameProps = {}) {
         }
         showPreStackFlash={shouldShowPreStackFlash}
         rightPanelCollapsed={isActionPanelCollapsed}
+        rightInsetExtra={
+          boardArrangement === "perimeter" ? `${PERIMETER_SIDE_FRACTION * 100}%` : undefined
+        }
         playerColorMap={playerColorMap}
         validSpellIds={
           promptType === "chooseTargetSpell" ? (activePrompt?.input.validSpellIds ?? []) : []

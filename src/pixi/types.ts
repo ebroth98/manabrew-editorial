@@ -30,31 +30,21 @@ export type ArrowEndpoint =
   | { kind: "stack"; id: string }
   /** "Drop here" anchor for the placement preview. `playerId` selects
    *  which player's battlefield the ghost points at — when set, the
-   *  resolver looks up that player's PixiGameScene; when omitted it
-   *  falls back to the local player's scene. */
+   *  resolver looks up that player's board region; when omitted it
+   *  falls back to the local player's region. */
   | { kind: "placement-ghost"; playerId?: string };
 
 /** Arrows render combat declarations (`attack` / `block`, painterly
  *  variant), attach relationships (`attach`, rune variant — Equipment /
  *  Aura targeting), and the placement preview (`placement`, dashed
- *  marching-ants) when casting a permanent spell. Every other targeting
- *  interaction renders as a `PointerSpec` instead. */
-export type ArrowType = "attack" | "block" | "attach" | "placement" | "cast";
+ *  marching-ants) when casting a permanent spell, and the live targeting
+ *  arrow (`casting`, painterly with an explicit intent color). */
+export type ArrowType = "attack" | "block" | "attach" | "placement" | "casting";
 
 export interface ArrowSpec {
   from: ArrowEndpoint;
   to: ArrowEndpoint;
   type: ArrowType;
-}
-
-/** A targeting pointer — floating icon anchored to a source card with a
- *  cursor-following or target-anchored endpoint, plus an animated glow on
- *  the source (and target, when locked). Icon and color derive from the
- *  intent via the theme. */
-export interface PointerSpec {
-  from: ArrowEndpoint;
-  to: ArrowEndpoint;
-  intent: import("@/types/promptType").TargetingIntent;
 }
 
 /**
@@ -91,19 +81,27 @@ export interface GameCanvasCallbacks {
   onUntapLand?: (card: GameCard) => void;
   onUntapLands?: (cardIds: string[]) => void;
   onAttackerClick?: (card: GameCard) => void;
+  /** Drag-to-block: a blocker sprite was dropped onto an attacker sprite. */
+  onAssignBlock?: (blockerId: string, attackerId: string) => void;
+  /** Drag-to-unblock: a staged blocker was dragged back off its attacker. */
+  onUnassignBlock?: (blockerId: string) => void;
   onCastSpell?: (cardId: string) => void;
   /**
    * Dismiss the hover preview immediately (no 250ms grace). Used when
    * the scene begins a drag so the preview doesn't linger on the cursor.
    */
   onDismissHoverPreview?: () => void;
-  onUsableHeightChange?: (height: number) => void;
 }
 
 export interface BattlefieldState {
   cards: GameCard[];
   pendingCardIds?: string[];
   attackingCardIds?: string[];
+  /** Creatures that would die in the current combat — drawn with a lethal ring. */
+  doomedCardIds?: string[];
+  /** Blockers chosen so far in damage-assignment ordering; index+1 is shown as a
+   *  numbered badge on each (first in line takes damage first). */
+  orderedCardIds?: string[];
   selectableCardIds?: string[];
   tappableLandIds?: string[];
   untappableLandIds?: string[];

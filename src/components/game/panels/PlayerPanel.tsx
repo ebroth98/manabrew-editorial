@@ -25,6 +25,18 @@ interface PlayerPanelProps {
    *  alters layout — the badge/mana row always sits above the avatar
    *  and zones. */
   verticalAlign?: "top" | "bottom";
+  /** `vertical` stacks the avatar above a vertical zone column — used for the
+   *  left/right seats in the perimeter arrangement where the column is narrow. */
+  zoneOrientation?: "horizontal" | "vertical";
+  /** Split layout: avatar + mana on the far left, zone tiles on the far right,
+   *  with the hand fan centered in the gap (perimeter self seat). */
+  split?: boolean;
+  /** Split-only: wrap the right-side zone tiles into a 2-column grid so they
+   *  take less horizontal space when the hand would otherwise be squeezed. */
+  zonesGrid?: boolean;
+  /** Predicted combat damage to this player this turn — shown as a red badge
+   *  while blocks are being decided. */
+  incomingDamage?: number;
   isActiveTurn?: boolean;
   isPriorityPlayer?: boolean;
   isTargetable?: boolean;
@@ -58,8 +70,12 @@ export function PlayerPanel({
   seat,
   className,
   verticalAlign: _verticalAlign = "bottom",
+  zoneOrientation = "horizontal",
+  split = false,
+  zonesGrid = false,
+  incomingDamage = 0,
   isActiveTurn,
-  isPriorityPlayer: _isPriorityPlayer,
+  isPriorityPlayer,
   isTargetable,
   isSelectedTarget,
   onTarget,
@@ -253,6 +269,7 @@ export function PlayerPanel({
         badges={orbitBadges}
         seatColor={seatColor}
         isActiveTurn={isActiveTurn}
+        isPriorityPlayer={isPriorityPlayer}
         isTargetable={isTargetable}
         isSelectedTarget={isSelectedTarget}
         onTarget={onTarget}
@@ -265,10 +282,12 @@ export function PlayerPanel({
   // ZoneActionColumn so it shares the same `flex-wrap` row as the zone
   // tiles — when the cluster narrows, the avatar wraps onto its own
   // row above the zones automatically.
+  const isVertical = zoneOrientation === "vertical";
   const zonesRow = (
     <ZoneActionColumn
-      orientation="horizontal"
-      wrap={!isOpponent}
+      orientation={isVertical ? "vertical" : "horizontal"}
+      columns={split && zonesGrid ? 2 : undefined}
+      wrap={!isOpponent && !split}
       libraryCount={player.libraryCount}
       graveyard={graveyard}
       exile={exile}
@@ -287,12 +306,21 @@ export function PlayerPanel({
       onCommanderDragStart={onCommanderDragStart}
       draggingCardId={draggingCardId}
       onHoverCard={onHoverCard}
-      leading={avatarCell}
+      leading={isVertical || split ? undefined : avatarCell}
     />
   );
 
   const manaRow = (
     <div className="flex h-7 w-fit items-center justify-start gap-2 px-1 pointer-events-auto">
+      {incomingDamage > 0 && (
+        <span
+          className="inline-flex items-center gap-0.5 font-extrabold leading-none tabular-nums animate-pulse"
+          style={{ color: themeColors.pt.lethal, fontSize: fontSizes.badgeCount }}
+          title="Predicted combat damage"
+        >
+          <GameIcon name="crossed-swords" className="h-[18px] w-[18px]" />−{incomingDamage}
+        </span>
+      )}
       {rowBadges.length > 0 && (
         <div className="flex items-center gap-1.5">
           {rowBadges.map((b) => {
@@ -362,6 +390,20 @@ export function PlayerPanel({
     </div>
   );
 
+  // Split: avatar + mana hug the far left, zone tiles hug the far right, so
+  // the centered hand fan sits in the gap between them.
+  if (split) {
+    return (
+      <div className={cn("flex w-full items-end justify-between gap-3 min-w-0", className)}>
+        <div data-panel-section="identity" className="flex flex-col items-start gap-1">
+          {avatarCell}
+          {manaRow}
+        </div>
+        <div data-panel-section="zones">{zonesRow}</div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -372,10 +414,12 @@ export function PlayerPanel({
         // wrap together instead of being locked into a rigid 2-col
         // grid.
         "flex w-full flex-col gap-1 min-w-0",
+        isVertical && "items-center",
         className,
       )}
     >
       {manaRow}
+      {isVertical && avatarCell}
       {zonesRow}
     </div>
   );
