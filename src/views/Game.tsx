@@ -535,6 +535,8 @@ export default function Game({ exitTo }: GameProps = {}) {
     pendingBlocker,
     attackDefenderId,
     blockAssignments,
+    blockError,
+    blockRequirement,
     assignBlockPair,
     unassignBlock,
     damageOrder,
@@ -557,9 +559,19 @@ export default function Game({ exitTo }: GameProps = {}) {
     targetablePlayerIds: boardTargets?.playerIds ?? [],
     engineHasBlocks: (gameView?.combatAssignments?.length ?? 0) > 0,
   });
-  const selectedAttackDefender = chooseAttackersInput?.possibleDefenderIds.find(
-    (defender) => defender.id === attackDefenderId,
+  const selectedAttackDefender = chooseAttackersInput?.attackTargets.find(
+    (target) => target.id === attackDefenderId,
   );
+  const blockRequirementError = useMemo<string | null>(() => {
+    if (!blockRequirement) return null;
+    const name =
+      gameView?.battlefield.find((c) => c.id === blockRequirement.attackerId)?.name ??
+      "This attacker";
+    const creatures = (n: number) => `${n} ${n === 1 ? "creature" : "creatures"}`;
+    return blockRequirement.kind === "min"
+      ? `${name} must be blocked by ${creatures(blockRequirement.count)} (${blockRequirement.assigned} assigned).`
+      : `${name} can be blocked by at most ${creatures(blockRequirement.count)} (${blockRequirement.assigned} assigned).`;
+  }, [blockRequirement, gameView?.battlefield]);
   const { declineTargets } = casting;
   const targetCompletion = useMemo(() => {
     if (activePrompt?.input.type !== "chooseBoardTargets") return null;
@@ -801,7 +813,7 @@ export default function Game({ exitTo }: GameProps = {}) {
       return true;
     }
     if (promptType === "chooseBlockers") {
-      if (blockAssignments.length === 0) return false;
+      if (blockAssignments.length === 0 || blockRequirement) return false;
       respond({ type: "declareBlockers", assignments: blockAssignments });
       return true;
     }
@@ -956,9 +968,9 @@ export default function Game({ exitTo }: GameProps = {}) {
   );
   // Stabilize attackerIds so useGameArrows' useEffect doesn't re-run every render
   const attackerIds = useMemo(
-    () => chooseBlockersInput?.attackerIds ?? [],
+    () => chooseBlockersInput?.attackers.map((a) => a.attackerId) ?? [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [chooseBlockersInput?.attackerIds.join(",")],
+    [chooseBlockersInput?.attackers.map((a) => a.attackerId).join(",")],
   );
   const combatAssignments = useMemo(
     () => gameView?.combatAssignments ?? [],
@@ -1378,6 +1390,7 @@ export default function Game({ exitTo }: GameProps = {}) {
           currentPrompt={activePrompt}
           boardTargets={boardTargets}
           pendingAttackers={pendingAttackers}
+          pendingAttacker={pendingAttacker}
           pendingBlocker={pendingBlocker}
           damageOrder={damageOrder}
           damageOrderBlockerIds={damageOrderInput?.blockerIds ?? []}
@@ -1514,7 +1527,7 @@ export default function Game({ exitTo }: GameProps = {}) {
           isWaitingForResponse={isWaitingForResponse}
           isAutoPassing={isAutoPassing}
           isPassingUntilEot={isPassingUntilEot}
-          availableAttackerIds={chooseAttackersInput?.availableAttackerIds ?? []}
+          availableAttackerIds={chooseAttackersInput?.attackers.map((a) => a.attackerId) ?? []}
           pendingAttackers={pendingAttackers}
           onPassPriority={unifiedPass}
           onPassUntilEot={activatePassUntilEot}
@@ -1527,7 +1540,9 @@ export default function Game({ exitTo }: GameProps = {}) {
           onBeginAttackTargetPick={selectAllAttackersForPick}
           pendingAttacker={pendingAttacker}
           pendingBlocker={pendingBlocker}
-          attackerIds={chooseBlockersInput?.attackerIds ?? []}
+          blockError={blockError}
+          blockRequirementError={blockRequirementError}
+          attackerIds={chooseBlockersInput?.attackers.map((a) => a.attackerId) ?? []}
           blockAssignments={blockAssignments}
           onDeclareBlockers={(assignments) => respond({ type: "declareBlockers", assignments })}
           damageOrderCount={damageOrder.length}
