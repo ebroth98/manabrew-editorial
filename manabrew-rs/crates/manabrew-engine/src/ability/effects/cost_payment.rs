@@ -411,8 +411,8 @@ fn try_pay_effect_cost(
             let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
             let kind = effect_cost_part_kind(part);
             let message = format!(
-                "Pay {} cost for {}?",
-                kind,
+                "Pay {} for {}?",
+                effect_cost_part_display(part),
                 card_name.as_deref().unwrap_or("unknown")
             );
             if !ctx.agents[payer.index()].confirm_payment(payer, kind, &message, sa.source, sa.api)
@@ -714,29 +714,45 @@ pub(super) fn resolve_effect_with_unless_cost(
             continue;
         }
         let cost_kind = cost.to_simple_string();
-        let prompt = format!(
-            "Pay {} to prevent {}?",
-            if cost_kind.is_empty() {
-                "this cost".to_string()
-            } else {
-                cost_kind.clone()
-            },
-            sa.source
-                .map(|cid| ctx.game.card(cid).card_name.clone())
-                .unwrap_or_else(|| "this effect".to_string())
-        );
+        let cost_display = crate::cost::to_prompt_string(&cost);
+        let prompt = if cost_display.is_empty() {
+            "Pay this cost?".to_string()
+        } else {
+            format!("Pay {}?", cost_display)
+        };
         let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
         ctx.agents[payer.index()].snapshot_state(ctx.game, ctx.mana_pools);
         let pay_life_unless = matches!(cost.parts.as_slice(), [CostPart::PayLife(_)])
             && !is_spell_payment_context(sa, ctx.game);
         if pay_life_unless {
             let kind = effect_cost_part_kind(&cost.parts[0]);
-            let message = format!("Pay {} cost for {}?", kind, card_name.unwrap_or("unknown"));
+            let message = format!(
+                "Pay {} for {}?",
+                effect_cost_part_display(&cost.parts[0]),
+                card_name.unwrap_or("unknown")
+            );
             if !ctx.agents[payer.index()].confirm_payment(payer, kind, &message, sa.source, sa.api)
             {
                 continue;
             }
         }
+        let prevent_targets: Vec<crate::agent::GameEntity> = sa
+            .target_chosen
+            .all_target_cards()
+            .into_iter()
+            .map(crate::agent::GameEntity::Card)
+            .chain(
+                sa.target_chosen
+                    .all_target_players()
+                    .into_iter()
+                    .map(crate::agent::GameEntity::Player),
+            )
+            .collect();
+        let effect_text = if sa.stack_description.is_empty() {
+            sa.rebuilt_description()
+        } else {
+            sa.stack_description.clone()
+        };
         if !ctx.agents[payer.index()].pay_cost_to_prevent_effect(
             payer,
             if cost_kind.is_empty() {
@@ -748,6 +764,8 @@ pub(super) fn resolve_effect_with_unless_cost(
             sa.source,
             sa.api,
             true,
+            &prevent_targets,
+            &effect_text,
         ) {
             continue;
         }
@@ -934,5 +952,15 @@ fn effect_cost_part_kind(part: &CostPart) -> &'static str {
         CostPart::AddMana { .. } => "AddMana",
         CostPart::FlipCoin(_) => "FlipCoin",
         _ => "Cost",
+    }
+}
+
+pub(crate) fn effect_cost_part_display(part: &CostPart) -> String {
+    match part {
+        CostPart::PayLife(v) => format!("{} {{LIFE}}", v),
+        CostPart::DamageYou(v) => format!("{} damage", v),
+        CostPart::Draw(v) => format!("draw {}", v),
+        CostPart::Mill(v) => format!("mill {}", v),
+        other => effect_cost_part_kind(other).to_string(),
     }
 }

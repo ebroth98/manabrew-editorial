@@ -1,7 +1,9 @@
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
+
 import { Label } from "@/components/ui/label";
 import type { PromptType } from "@/protocol";
 import { usePromptPreferencesStore } from "@/stores/usePromptPreferencesStore";
+import { isPromptLoggingEnabled, setPromptLoggingEnabled } from "@/lib/debugPrompts";
 
 interface OptionalCostRow {
   promptType: PromptType;
@@ -40,12 +42,10 @@ const OPTIONAL_COST_ROWS: OptionalCostRow[] = [
 
 export function PromptPreferencesPanel() {
   const showOverrides = usePromptPreferencesStore((s) => s.show);
-  const triggerMemory = usePromptPreferencesStore((s) => s.triggerMemory);
   const setShow = usePromptPreferencesStore((s) => s.setShow);
   const clearShow = usePromptPreferencesStore((s) => s.clearShow);
-  const resetForNewGame = usePromptPreferencesStore((s) => s.resetForNewGame);
 
-  const rememberedCount = Object.keys(triggerMemory).length;
+  const [logPrompts, setLogPrompts] = useState(isPromptLoggingEnabled);
 
   function setOptionalCostSkip(promptType: PromptType, skip: boolean) {
     if (skip) setShow(promptType, false);
@@ -92,28 +92,25 @@ export function PromptPreferencesPanel() {
       </div>
 
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold">Triggered ability memory</h3>
-        <div className="rounded-lg border bg-card/40 p-3 flex items-start justify-between gap-4">
-          <div className="space-y-1 max-w-prose">
-            <p className="text-sm">
-              {rememberedCount > 0
-                ? `${rememberedCount} source card${rememberedCount === 1 ? "" : "s"} remembered for this game.`
-                : "No remembered answers for the current game."}
-            </p>
+        <h3 className="text-sm font-semibold">Debug</h3>
+        <div className="rounded-lg border bg-card/40 p-3 flex items-start gap-3">
+          <input
+            id="prompt-debug-log"
+            type="checkbox"
+            checked={logPrompts}
+            onChange={(e) => {
+              setPromptLoggingEnabled(e.target.checked);
+              setLogPrompts(e.target.checked);
+            }}
+            className="mt-1 accent-primary h-4 w-4"
+          />
+          <div className="space-y-1">
+            <Label htmlFor="prompt-debug-log">Log prompts to console</Label>
             <p className="text-xs text-muted-foreground">
-              The "Always yes / Always no" buttons in the optional-trigger modal write to this
-              memory. It clears automatically at the start of every new game; clear it manually if
-              you want to be asked again right away.
+              Print every prompt the UI receives (not state updates) to the dev console, including
+              the full JSON. Useful for reporting prompt issues.
             </p>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={resetForNewGame}
-            disabled={rememberedCount === 0}
-          >
-            Forget all
-          </Button>
         </div>
       </div>
     </section>
