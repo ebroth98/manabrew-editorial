@@ -182,24 +182,6 @@ pub enum JavaRawPromptBody {
         #[serde(rename = "sourceCardId")]
         source_card_id: Option<String>,
     },
-    ChooseDig {
-        #[serde(default)]
-        cards: Vec<JavaRawCardOption>,
-        #[serde(default = "one")]
-        max: usize,
-        #[serde(default)]
-        optional: bool,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
-    },
-    ChooseDelve {
-        #[serde(default)]
-        cards: Vec<JavaRawCardOption>,
-        #[serde(default)]
-        max: usize,
-        #[serde(rename = "sourceCardName")]
-        source_card_name: Option<String>,
-    },
     ChooseConvoke {
         #[serde(default)]
         cards: Vec<JavaRawCardOption>,
@@ -306,6 +288,8 @@ pub enum JavaRawPromptBody {
         tappable_land_ids: Vec<String>,
         #[serde(rename = "untappableLandIds", default)]
         untappable_land_ids: Vec<String>,
+        #[serde(rename = "delveSourceIds", default)]
+        delve_source_ids: Vec<String>,
         #[serde(rename = "manaPoolTotal", default)]
         mana_pool_total: i32,
         #[serde(rename = "canConfirmFromPool", default)]
@@ -368,8 +352,6 @@ impl JavaRawPromptBody {
             JavaRawPromptBody::ChooseCardName { .. } => "choose_card_name",
             JavaRawPromptBody::ChooseScry { .. } => "choose_scry",
             JavaRawPromptBody::ChooseSurveil { .. } => "choose_surveil",
-            JavaRawPromptBody::ChooseDig { .. } => "choose_dig",
-            JavaRawPromptBody::ChooseDelve { .. } => "choose_delve",
             JavaRawPromptBody::ChooseConvoke { .. } => "choose_convoke",
             JavaRawPromptBody::ChooseImprovise { .. } => "choose_improvise",
             JavaRawPromptBody::ReorderLibrary { .. } => "reorder_library",
@@ -684,9 +666,6 @@ pub enum JavaAction {
     ScryDecision {
         zone_card_ids: Vec<Vec<String>>,
     },
-    DigDecision {
-        chosen_card_ids: Vec<String>,
-    },
     ReorderLibraryDecision {
         ordered_card_ids: Vec<String>,
     },
@@ -715,6 +694,14 @@ pub enum JavaAction {
         color: Option<String>,
     },
     UntapLand {
+        #[serde(rename = "cardId")]
+        card_id: String,
+    },
+    Delve {
+        #[serde(rename = "cardId")]
+        card_id: String,
+    },
+    Undelve {
         #[serde(rename = "cardId")]
         card_id: String,
     },

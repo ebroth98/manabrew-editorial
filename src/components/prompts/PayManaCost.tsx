@@ -1,4 +1,5 @@
 import { Ban, Check, WandSparkles } from "lucide-react";
+import { GiVortex } from "react-icons/gi";
 import { DynamicTextRender } from "@/components/game/DynamicTextRender";
 import { ManaPool } from "@/components/game/panels/ManaPool";
 import { PROMPT_BUTTON_COLUMN } from "@/components/game/game.styles";
@@ -37,10 +38,25 @@ export function PayManaCost({
     <div className={cn(PROMPT_BUTTON_COLUMN, "w-full")}>
       {payManaCostInfo && (
         <>
-          <p className="text-xs text-muted-foreground">
-            Cast <span className="font-semibold text-foreground">{payManaCostInfo.cardName}</span>{" "}
-            for <DynamicTextRender text={payManaCostInfo.manaCost} />
-          </p>
+          {payManaCostInfo.description ? (
+            <p className="text-xs text-muted-foreground">
+              <DynamicTextRender className="align-middle" text={payManaCostInfo.description} />
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Cast <span className="font-semibold text-foreground">{payManaCostInfo.cardName}</span>{" "}
+              for <DynamicTextRender className="align-middle" text={payManaCostInfo.manaCost} />
+            </p>
+          )}
+          {!!payManaCostInfo.delveCount && (
+            <p className="text-xs text-muted-foreground">
+              Delved for{" "}
+              <DynamicTextRender
+                className="align-middle"
+                text={`{${payManaCostInfo.delveCount}}`}
+              />
+            </p>
+          )}
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>Mana pool:</span>
             <ManaPool pool={payManaCostInfo.manaPool} />
@@ -58,6 +74,17 @@ export function PayManaCost({
           onClick={primaryAction}
           disabled={isWaitingForResponse}
         />
+        {payManaCostInfo?.delveAvailable && payManaCostInfo.onOpenDelve && (
+          <PromptActionButton
+            layout={buttonLayout}
+            label="Delve"
+            icon={<GiVortex className="h-3.5 w-3.5" />}
+            variant="outline"
+            baseColor={promptActionColors.defenseAction}
+            onClick={payManaCostInfo.onOpenDelve}
+            disabled={isWaitingForResponse}
+          />
+        )}
         <PromptActionButton
           layout={buttonLayout}
           label="Cancel"

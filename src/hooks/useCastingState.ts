@@ -5,17 +5,11 @@ import { TargetingIntent } from "@/types/promptType";
 import { useTargetIntentStore } from "@/stores/useTargetIntentStore";
 
 /** Prompt types that are part of the spell-casting flow. */
-const CASTING_PROMPT_TYPES = new Set([
-  "chooseBoardTargets",
-  "payManaCost",
-  "payCombatCost",
-  "chooseDelve",
-  "specifyManaCombo",
-]);
+const CASTING_PROMPT_TYPES = new Set(["chooseBoardTargets", "payManaCost"]);
 
 interface UseCastingStateOptions {
   currentPrompt: Prompt | null | undefined;
-  respond: (output: PromptOutput) => void;
+  respond: (output: PromptOutput["output"]) => void;
 }
 
 export function useCastingState({ currentPrompt, respond }: UseCastingStateOptions) {

@@ -82,7 +82,7 @@ pub fn normalize_java_prompt(prompt: JavaRawPrompt) -> AgentPrompt {
             zone,
             owner_player_id,
             message,
-        } => PromptInput::RevealCards(manabrew_protocol::prompts::reveal_cards::RevealCardsInput {
+        } => PromptInput::RevealCards(manabrew_protocol::prompts::reveal::RevealCardsInput {
             cards: prompt_cards(&cards, &card_index),
             zone: zone.unwrap_or_else(|| "unknown".to_string()),
             owner_player_id: owner_player_id.unwrap_or_else(|| format!("player-{player}")),
@@ -92,18 +92,25 @@ pub fn normalize_java_prompt(prompt: JavaRawPrompt) -> AgentPrompt {
             sides,
             rolls,
             winner_player_id,
-        } => PromptInput::FirstPlayerRoll(manabrew_protocol::prompts::first_player_roll::FirstPlayerRollInput {
-            sides,
-            rolls: rolls
-                .iter()
-                .map(|roll| crate::prompt::FirstPlayerRollEntry {
-                    player_id: roll.player_id.clone(),
-                    player_name: roll.player_name.clone(),
-                    value: roll.value,
-                })
-                .collect(),
-            winner_player_id: winner_player_id.unwrap_or_else(|| format!("player-{player}")),
-        }),
+        } => {
+            let winner_id = winner_player_id.unwrap_or_else(|| format!("player-{player}"));
+            PromptInput::DiceRolled(manabrew_protocol::prompts::dice_rolled::DiceRolledInput {
+                sides,
+                rolls: rolls
+                    .iter()
+                    .map(|roll| manabrew_protocol::prompts::dice_rolled::DiceRollEntry {
+                        label: Some(roll.player_name.clone()),
+                        highlighted: roll.player_id == winner_id,
+                        player_id: Some(roll.player_id.clone()),
+                        natural_results: vec![roll.value],
+                        final_results: vec![roll.value],
+                        ignored_rolls: vec![],
+                    })
+                    .collect(),
+                title: Some("Roll for first player".to_string()),
+                source_card_name: None,
+            })
+        }
         JavaRawPromptBody::ChooseAttackers {
             attackers,
             defenders,
@@ -306,6 +313,8 @@ pub fn normalize_java_prompt(prompt: JavaRawPrompt) -> AgentPrompt {
             source_card_name: _,
         } => PromptInput::ChooseColor(manabrew_protocol::prompts::choose_color::ChooseColorInput {
             valid_colors: options,
+            amount: 1,
+            repeat_allowed: false,
         }),
         JavaRawPromptBody::ChooseType {
             options,
@@ -357,26 +366,6 @@ pub fn normalize_java_prompt(prompt: JavaRawPrompt) -> AgentPrompt {
                 ],
             })
         }
-        JavaRawPromptBody::ChooseDig {
-            cards,
-            max,
-            optional,
-            source_card_name: _,
-        } => PromptInput::Dig(manabrew_protocol::prompts::dig::DigInput {
-            card_ids: card_ids(&cards),
-            cards: prompt_cards(&cards, &card_index),
-            num_to_take: max,
-            optional,
-        }),
-        JavaRawPromptBody::ChooseDelve {
-            cards,
-            max,
-            source_card_name: _,
-        } => PromptInput::ChooseDelve(manabrew_protocol::prompts::choose_delve::ChooseDelveInput {
-            valid_card_ids: card_ids(&cards),
-            zone_cards: prompt_cards(&cards, &card_index),
-            max_cards: max,
-        }),
         JavaRawPromptBody::ChooseConvoke {
             cards,
             description: _,
@@ -549,11 +538,13 @@ pub fn normalize_java_prompt(prompt: JavaRawPrompt) -> AgentPrompt {
             mana_ability_options,
             tappable_land_ids,
             untappable_land_ids,
+            delve_source_ids,
             mana_pool_total,
             can_confirm_from_pool,
         } => PromptInput::PayManaCost(manabrew_protocol::prompts::pay_mana_cost::PayManaCostInput {
             card_id: card_id.unwrap_or_default(),
             card_name: card_name.unwrap_or_default(),
+            description: None,
             mana_cost: mana_cost.unwrap_or_default(),
             mana_ability_options: mana_ability_options
                 .iter()
@@ -561,24 +552,22 @@ pub fn normalize_java_prompt(prompt: JavaRawPrompt) -> AgentPrompt {
                 .collect(),
             tappable_source_ids: tappable_land_ids,
             untappable_source_ids: untappable_land_ids,
+            delve_source_ids,
             mana_pool_total,
             can_confirm_from_pool,
         }),
         JavaRawPromptBody::SpecifyManaCombo {
             available_colors,
             amount,
-        } => PromptInput::SpecifyManaCombo(
-            manabrew_protocol::prompts::specify_mana_combo::SpecifyManaComboInput {
-                available_colors,
-                amount,
-            },
-        ),
+        } => PromptInput::ChooseColor(manabrew_protocol::prompts::choose_color::ChooseColorInput {
+            valid_colors: available_colors,
+            amount: amount as u32,
+            repeat_allowed: true,
+        }),
     };
     let deciding_player_id = if matches!(
         inner,
-        PromptInput::FirstPlayerRoll(
-            manabrew_protocol::prompts::first_player_roll::FirstPlayerRollInput { .. }
-        )
+        PromptInput::DiceRolled(manabrew_protocol::prompts::dice_rolled::DiceRolledInput { .. })
     ) {
         String::new()
     } else {
@@ -593,7 +582,9 @@ pub fn normalize_java_prompt(prompt: JavaRawPrompt) -> AgentPrompt {
 
 pub fn translate_java_player_action(action: &PromptOutput) -> Result<JavaAction, JavaActionError> {
     let java = match action {
-        PromptOutput::ChooseAction(ChooseActionOutput::Act { action_id }) => {
+        PromptOutput::ChooseAction(ChooseActionOutput::ChooseActionDecision(
+            ChooseActionDecision::Act { action_id },
+        )) => {
             if let Some(index) = action_id
                 .strip_prefix("prompt-action-")
                 .and_then(|s| s.parse::<usize>().ok())
@@ -625,7 +616,7 @@ pub fn translate_java_player_action(action: &PromptOutput) -> Result<JavaAction,
         PromptOutput::RevealCards(RevealCardsOutput::RevealCardsAcknowledged) => {
             JavaAction::RevealCardsAcknowledged
         }
-        PromptOutput::FirstPlayerRoll(FirstPlayerRollOutput::FirstPlayerRollAcknowledged) => {
+        PromptOutput::DiceRolled(DiceRolledOutput::DiceRolledAcknowledged) => {
             JavaAction::FirstPlayerRollAcknowledged
         }
         PromptOutput::ChooseCards(ChooseCardsOutput::ChooseCardsDecision { chosen_card_ids }) => {
@@ -641,9 +632,19 @@ pub fn translate_java_player_action(action: &PromptOutput) -> Result<JavaAction,
         PromptOutput::ChooseBoolean(ChooseBooleanOutput::Decision { value }) => {
             JavaAction::BooleanDecision { accept: *value }
         }
-        PromptOutput::ChooseColor(ChooseColorOutput::ColorDecision { color }) => {
-            JavaAction::StringDecision {
-                value: color.clone().unwrap_or_default(),
+        PromptOutput::ChooseColor(ChooseColorOutput::ColorDecision { chosen_colors }) => {
+            let total: u32 = chosen_colors.values().copied().sum();
+            if total <= 1 {
+                JavaAction::StringDecision {
+                    value: chosen_colors.keys().next().cloned().unwrap_or_default(),
+                }
+            } else {
+                JavaAction::ManaComboDecision {
+                    chosen_colors: chosen_colors
+                        .iter()
+                        .flat_map(|(c, n)| std::iter::repeat(c.clone()).take(*n as usize))
+                        .collect(),
+                }
             }
         }
         PromptOutput::ChooseType(ChooseTypeOutput::TypeDecision { chosen_type }) => {
@@ -664,14 +665,6 @@ pub fn translate_java_player_action(action: &PromptOutput) -> Result<JavaAction,
         PromptOutput::Scry(ScryOutput::ScryDecision { zone_card_ids }) => {
             JavaAction::ScryDecision {
                 zone_card_ids: zone_card_ids.clone(),
-            }
-        }
-        PromptOutput::Dig(DigOutput::DigDecision { chosen_card_ids }) => JavaAction::DigDecision {
-            chosen_card_ids: chosen_card_ids.clone(),
-        },
-        PromptOutput::ChooseDelve(ChooseDelveOutput::DelveDecision { chosen_card_ids }) => {
-            JavaAction::ChooseCards {
-                card_ids: chosen_card_ids.clone(),
             }
         }
         PromptOutput::ReorderCards(ReorderCardsOutput::ReorderDecision { ordered_card_ids }) => {
@@ -747,34 +740,37 @@ pub fn translate_java_player_action(action: &PromptOutput) -> Result<JavaAction,
                     .collect(),
             }
         }
-        PromptOutput::ManaSource(ManaSourceAction::TapForMana {
+        PromptOutput::ChooseAction(ChooseActionOutput::ManaSourceAction(source))
+        | PromptOutput::PayManaCost(PayManaCostOutput::ManaSourceAction(source)) => {
+            mana_source_to_java(source)
+        }
+        PromptOutput::PayManaCost(PayManaCostOutput::DelveAction(DelveAction::Delve {
             card_id,
-            ability_index,
-            color,
-        }) => JavaAction::TapLand {
-            card_id: card_id.clone(),
-            mana_ability_index: *ability_index,
-            color: color.clone(),
-        },
-        PromptOutput::ManaSource(ManaSourceAction::Untap { card_id }) => JavaAction::UntapLand {
+        })) => JavaAction::Delve {
             card_id: card_id.clone(),
         },
-        PromptOutput::PayManaCost(PayManaCostOutput::PayManaCost { auto }) => {
+        PromptOutput::PayManaCost(PayManaCostOutput::DelveAction(DelveAction::Undelve {
+            card_id,
+        })) => JavaAction::Undelve {
+            card_id: card_id.clone(),
+        },
+        PromptOutput::PayManaCost(PayManaCostOutput::ManaPayment(ManaPayment::Pay { auto })) => {
             JavaAction::PayMana { auto: *auto }
         }
-        PromptOutput::SpecifyManaCombo(SpecifyManaComboOutput::ManaComboDecision {
-            chosen_colors,
-        }) => JavaAction::ManaComboDecision {
-            chosen_colors: chosen_colors.clone(),
-        },
-        PromptOutput::PayManaCost(PayManaCostOutput::PayLife) => JavaAction::PayLife,
-        PromptOutput::PayManaCost(PayManaCostOutput::CancelManaCost) => JavaAction::CancelMana,
-        PromptOutput::ChooseAction(ChooseActionOutput::Pass { until_phase }) => JavaAction::Pass {
+        PromptOutput::PayManaCost(PayManaCostOutput::ManaPayment(ManaPayment::PayLife)) => {
+            JavaAction::PayLife
+        }
+        PromptOutput::PayManaCost(PayManaCostOutput::ManaPayment(ManaPayment::Cancel)) => {
+            JavaAction::CancelMana
+        }
+        PromptOutput::ChooseAction(ChooseActionOutput::ChooseActionDecision(
+            ChooseActionDecision::Pass { until_phase },
+        )) => JavaAction::Pass {
             until_phase: until_phase.clone(),
         },
-        PromptOutput::ChooseAction(ChooseActionOutput::Concede) => {
-            JavaAction::Pass { until_phase: None }
-        }
+        PromptOutput::ChooseAction(ChooseActionOutput::ChooseActionDecision(
+            ChooseActionDecision::Concede,
+        )) => JavaAction::Pass { until_phase: None },
         other => {
             return Err(JavaActionError {
                 action_type: player_action_label(other),
@@ -782,6 +778,23 @@ pub fn translate_java_player_action(action: &PromptOutput) -> Result<JavaAction,
         }
     };
     Ok(java)
+}
+
+fn mana_source_to_java(source: &ManaSourceAction) -> JavaAction {
+    match source {
+        ManaSourceAction::TapForMana {
+            card_id,
+            ability_index,
+            color,
+        } => JavaAction::TapLand {
+            card_id: card_id.clone(),
+            mana_ability_index: *ability_index,
+            color: color.clone(),
+        },
+        ManaSourceAction::Untap { card_id } => JavaAction::UntapLand {
+            card_id: card_id.clone(),
+        },
+    }
 }
 
 fn java_target_to_ref(target: crate::java_raw::JavaRawStackTarget) -> TargetRef {
@@ -794,12 +807,9 @@ fn java_target_to_ref(target: crate::java_raw::JavaRawStackTarget) -> TargetRef 
 
 fn player_action_label(action: &PromptOutput) -> &'static str {
     match action {
-        PromptOutput::ChooseAction(ChooseActionOutput::RestoreSnapshot { .. }) => "restoreSnapshot",
-        PromptOutput::SpecifyManaCombo(SpecifyManaComboOutput::ManaComboDecision { .. }) => {
-            "manaComboDecision"
-        }
-        PromptOutput::PayCombatCost(PayCombatCostOutput::PayCombatCost) => "payCombatCost",
-        PromptOutput::PayCombatCost(PayCombatCostOutput::DeclineCombatCost) => "declineCombatCost",
+        PromptOutput::ChooseAction(ChooseActionOutput::ChooseActionDecision(
+            ChooseActionDecision::RestoreSnapshot { .. },
+        )) => "restoreSnapshot",
         PromptOutput::DiceRolled(DiceRolledOutput::DiceRolledAcknowledged) => {
             "diceRolledAcknowledged"
         }

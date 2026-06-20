@@ -108,6 +108,8 @@ interface GameBoardProps {
     clickableCardIds?: string[],
   ) => void;
   onTargetFromZone: (cardId: string) => void;
+  delveAvailable?: boolean;
+  onOpenDelveZone?: () => void;
   onCastSpell: (cardId: string) => void;
   onTapLand?: (card: GameCard) => void;
   onTapLands?: (cardIds: string[]) => void;
@@ -180,6 +182,8 @@ export function GameBoard({
   onOpenZone,
   onOpenZoneAndCast,
   onTargetFromZone,
+  delveAvailable,
+  onOpenDelveZone,
   onCastSpell,
   onTapLand,
   onTapLands,
@@ -222,7 +226,6 @@ export function GameBoard({
   const chooseAttackersPrompt = promptOf(currentPrompt, "chooseAttackers");
   const chooseBlockersPrompt = promptOf(currentPrompt, "chooseBlockers");
   const boardTargetsPrompt = promptOf(currentPrompt, "chooseBoardTargets");
-  const payCombatCostPrompt = promptOf(currentPrompt, "payCombatCost");
   const payManaCostPrompt = promptOf(currentPrompt, "payManaCost");
   const promptAttackerIds = chooseBlockersPrompt?.input.attackers.map((a) => a.attackerId);
   const [dragBlockerId, setDragBlockerId] = useState<string | null>(null);
@@ -246,8 +249,7 @@ export function GameBoard({
   const chooseActionActions = chooseActionPrompt?.input.actions;
   const manaAbilityOptions = chooseActionActions
     ? manaAbilityInfos(chooseActionActions)
-    : (payCombatCostPrompt?.input.manaAbilityOptions ??
-      payManaCostPrompt?.input.manaAbilityOptions);
+    : payManaCostPrompt?.input.manaAbilityOptions;
   const chooseActionAbilityCardIds = chooseActionActions
     ?.filter((a) => a.type === "activateAbility")
     .map((a) => a.cardId);
@@ -325,12 +327,10 @@ export function GameBoard({
         ? chooseActionActions
             .filter((a) => a.type === "activateAbility" && a.isManaAbility)
             .map((a) => a.cardId)
-        : (payCombatCostPrompt?.input.tappableSourceIds ??
-          payManaCostPrompt?.input.tappableSourceIds),
+        : payManaCostPrompt?.input.tappableSourceIds,
       untappableLandIds: chooseActionActions
         ? chooseActionActions.filter((a) => a.type === "undoMana").map((a) => a.cardId)
-        : (payCombatCostPrompt?.input.untappableSourceIds ??
-          payManaCostPrompt?.input.untappableSourceIds),
+        : payManaCostPrompt?.input.untappableSourceIds,
       manaAbilityOptions,
       hostileTargeting,
     }),
@@ -344,7 +344,6 @@ export function GameBoard({
       damageOrder,
       selectableBattlefieldCardIds,
       chooseActionActions,
-      payCombatCostPrompt,
       payManaCostPrompt,
       manaAbilityOptions,
       hostileTargeting,
@@ -686,6 +685,10 @@ export function GameBoard({
           }
         }}
         onOpenGraveyard={() => {
+          if (delveAvailable && onOpenDelveZone) {
+            onOpenDelveZone();
+            return;
+          }
           if (isTargetingPrompt && graveyardTargetIds.length > 0) {
             onOpenZone(
               "Your Graveyard",
@@ -714,7 +717,7 @@ export function GameBoard({
           }
         }}
         hasPlayableInGraveyard={
-          promptType === "chooseAction" && graveyard.some((c) => c.isPlayable)
+          (promptType === "chooseAction" && graveyard.some((c) => c.isPlayable)) || !!delveAvailable
         }
         hasPlayableInExile={promptType === "chooseAction" && exile.some((c) => c.isPlayable)}
         hasTargetInGraveyard={isTargetingPrompt && graveyardTargetIds.length > 0}

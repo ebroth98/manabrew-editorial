@@ -90,8 +90,8 @@ impl BotAgent for SimpleAi {
                 self.last_choose_action_signature = Some(signature);
                 self.last_choose_action_choice = pick.clone();
                 Some(PromptOutput::ChooseAction(
-                    pick.map(|action_id| ChooseActionOutput::Act { action_id })
-                        .unwrap_or(ChooseActionOutput::Pass { until_phase: None }),
+                    pick.map(|action_id| ChooseActionOutput::ChooseActionDecision(ChooseActionDecision::Act { action_id }))
+                        .unwrap_or(ChooseActionOutput::ChooseActionDecision(ChooseActionDecision::Pass { until_phase: None })),
                 ))
             }
             PromptInput::ChooseAttackers(manabrew_protocol::prompts::choose_attackers::ChooseAttackersInput {
@@ -155,14 +155,7 @@ impl BotAgent for SimpleAi {
                 }
                 Some(PromptOutput::Scry(ScryOutput::ScryDecision { zone_card_ids }))
             }
-            PromptInput::Dig(manabrew_protocol::prompts::dig::DigInput {
-                card_ids,
-                num_to_take,
-                ..
-            }) => Some(PromptOutput::Dig(DigOutput::DigDecision {
-                chosen_card_ids: card_ids.into_iter().take(num_to_take).collect(),
-            })),
-            PromptInput::RevealCards(manabrew_protocol::prompts::reveal_cards::RevealCardsInput { .. }) => Some(PromptOutput::RevealCards(RevealCardsOutput::RevealCardsAcknowledged)),
+            PromptInput::RevealCards(manabrew_protocol::prompts::reveal::RevealCardsInput { .. }) => Some(PromptOutput::RevealCards(RevealCardsOutput::RevealCardsAcknowledged)),
             PromptInput::ChooseBoolean(manabrew_protocol::prompts::choose_boolean::ChooseBooleanInput {
                 presentation,
                 confirm_label,
@@ -185,9 +178,19 @@ impl BotAgent for SimpleAi {
                     chosen_indices: (0..take.min(options.len())).collect(),
                 }))
             }
-            PromptInput::ChooseColor(manabrew_protocol::prompts::choose_color::ChooseColorInput { valid_colors, .. }) => {
+            PromptInput::ChooseColor(manabrew_protocol::prompts::choose_color::ChooseColorInput { valid_colors, amount, repeat_allowed }) => {
+                let mut chosen: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
+                if repeat_allowed {
+                    if let Some(c) = valid_colors.first() {
+                        chosen.insert(c.clone(), amount);
+                    }
+                } else {
+                    for c in valid_colors.iter().take(amount as usize) {
+                        chosen.insert(c.clone(), 1);
+                    }
+                }
                 Some(PromptOutput::ChooseColor(ChooseColorOutput::ColorDecision {
-                    color: valid_colors.first().cloned(),
+                    chosen_colors: chosen,
                 }))
             }
             PromptInput::ChooseType(manabrew_protocol::prompts::choose_type::ChooseTypeInput { valid_types, .. }) => Some(PromptOutput::ChooseType(ChooseTypeOutput::TypeDecision {
@@ -220,44 +223,22 @@ impl BotAgent for SimpleAi {
                 }
                 Some(PromptOutput::ChooseCombatDamageAssignment(ChooseCombatDamageAssignmentOutput::CombatDamageAssignmentDecision { assignments }))
             }
-            PromptInput::PayCombatCost(manabrew_protocol::prompts::pay_combat_cost::PayCombatCostInput {
+            PromptInput::PayManaCost(manabrew_protocol::prompts::pay_mana_cost::PayManaCostInput {
                 tappable_source_ids,
-                mana_pool_total,
-                cost,
+                can_confirm_from_pool,
                 ..
             }) => {
-                if mana_pool_total >= cost {
-                    Some(PromptOutput::PayCombatCost(PayCombatCostOutput::PayCombatCost))
+                if can_confirm_from_pool {
+                    Some(PromptOutput::PayManaCost(PayManaCostOutput::ManaPayment(ManaPayment::Pay { auto: true })))
                 } else if !tappable_source_ids.is_empty() {
-                    Some(PromptOutput::ManaSource(ManaSourceAction::TapForMana {
+                    Some(PromptOutput::PayManaCost(PayManaCostOutput::ManaSourceAction(ManaSourceAction::TapForMana {
                         card_id: tappable_source_ids[0].clone(),
                         ability_index: None,
                         color: None,
-                    }))
+                    })))
                 } else {
-                    Some(PromptOutput::PayCombatCost(PayCombatCostOutput::DeclineCombatCost))
+                    Some(PromptOutput::PayManaCost(PayManaCostOutput::ManaPayment(ManaPayment::Cancel)))
                 }
-            }
-            PromptInput::PayManaCost(manabrew_protocol::prompts::pay_mana_cost::PayManaCostInput { .. }) => Some(PromptOutput::PayManaCost(PayManaCostOutput::PayManaCost { auto: true })),
-            PromptInput::ChooseDelve(manabrew_protocol::prompts::choose_delve::ChooseDelveInput {
-                valid_card_ids,
-                max_cards,
-                ..
-            }) => Some(PromptOutput::ChooseDelve(ChooseDelveOutput::DelveDecision {
-                chosen_card_ids: valid_card_ids.into_iter().take(max_cards).collect(),
-            })),
-            PromptInput::SpecifyManaCombo(manabrew_protocol::prompts::specify_mana_combo::SpecifyManaComboInput {
-                available_colors,
-                amount,
-                ..
-            }) => {
-                let color = available_colors
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| "C".to_string());
-                Some(PromptOutput::SpecifyManaCombo(SpecifyManaComboOutput::ManaComboDecision {
-                    chosen_colors: vec![color; amount],
-                }))
             }
             PromptInput::ChooseCards(manabrew_protocol::prompts::choose_cards::ChooseCardsInput {
                 presentation,
@@ -281,9 +262,6 @@ impl BotAgent for SimpleAi {
             // every transport must produce an ack — keeps the engine's
             // broadcast loop polymorphic (no `if is_human` branching).
             PromptInput::DiceRolled(manabrew_protocol::prompts::dice_rolled::DiceRolledInput { .. }) => Some(PromptOutput::DiceRolled(DiceRolledOutput::DiceRolledAcknowledged)),
-            PromptInput::FirstPlayerRoll(manabrew_protocol::prompts::first_player_roll::FirstPlayerRollInput { .. }) => {
-                Some(PromptOutput::FirstPlayerRoll(FirstPlayerRollOutput::FirstPlayerRollAcknowledged))
-            }
         }
     }
 }

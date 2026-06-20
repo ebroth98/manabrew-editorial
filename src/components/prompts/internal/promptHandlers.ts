@@ -7,7 +7,7 @@ import type {
   PromptType as PromptKind,
 } from "@/protocol";
 
-export type RespondPayload = PromptOutput;
+export type RespondPayload = PromptOutput["output"];
 type PromptOf<TType extends PromptKind> = PromptRequest<Extract<PromptInput, { type: TType }>>;
 
 export type AutoResolution =
@@ -66,11 +66,8 @@ const PROMPT_HANDLER_OVERRIDES: Partial<{
   ["chooseCardName"]: { showByDefault: true, resolve: forced.singleLegalName },
   ["chooseBoolean"]: { showByDefault: true, resolve: optionalCosts.skipBoolean },
   ["chooseCards"]: { showByDefault: true, resolve: forced.forcedCardChoice },
-  ["chooseDelve"]: { showByDefault: true, resolve: optionalCosts.skipDelve },
   ["reorderCards"]: { showByDefault: true, resolve: forced.singleCardOrder },
   ["scry"]: { showByDefault: true, resolve: forced.emptyScry },
-  ["dig"]: { showByDefault: true, resolve: forced.emptyDig },
-  ["firstPlayerRoll"]: { showByDefault: true, resolve: informational.ackFirstPlayerRoll },
   ["diceRolled"]: { showByDefault: true, resolve: informational.ackDiceRolled },
 };
 

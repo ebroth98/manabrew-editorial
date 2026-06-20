@@ -765,12 +765,8 @@ public final class ManaBrewInteractiveController extends PlayerController implem
         if (cards == null) {
             return chooseEntitiesGeneric(optionList, min, max, sa);
         }
-        final CardCollection selected;
-        if (sa != null && sa.getApi() == ApiType.Dig) {
-            selected = session.awaitDigChoice(me(), cards, min, max, sourceName(sa));
-        } else {
-            selected = session.awaitCardChoice("choose_cards_for_effect", me(), cards, min, max, sourceName(sa), sourceCardId(sa), title);
-        }
+        final CardCollection selected = session.awaitCardChoice(
+                "choose_cards_for_effect", me(), cards, min, max, sourceName(sa), sourceCardId(sa), title);
         final List<T> out = new ArrayList<>();
         for (final Card card : selected) {
             for (final T option : optionList) {
@@ -864,7 +860,7 @@ public final class ManaBrewInteractiveController extends PlayerController implem
         if (probingPayability) {
             return new CardCollection(grave.subList(0, max));
         }
-        return session.awaitCardChoice("choose_delve", me(), grave, 0, max);
+        return CardCollection.EMPTY;
     }
 
     @Override
@@ -1048,12 +1044,6 @@ public final class ManaBrewInteractiveController extends PlayerController implem
 
     @Override
     public boolean confirmTrigger(final WrappedAbility sa) {
-        if (sa != null) {
-            final SpellAbility wrapped = sa.getWrappedAbility();
-            if (wrapped.hasParam("Cost") && !wrapped.getParam("Cost").equals("0")) {
-                return true;
-            }
-        }
         return session.awaitBooleanChoice(
                 "choose_optional_trigger",
                 me(),
@@ -1230,7 +1220,7 @@ public final class ManaBrewInteractiveController extends PlayerController implem
         }
         final ManaCostBeingPaid assistCost = new ManaCostBeingPaid(ManaCost.get(willPay));
         final GameSnapshot snapshot = beginManaPaymentSnapshot();
-        if (payManaInteractively(assistCost, sa, true, snapshot)) {
+        if (payManaInteractively(assistCost, sa, true, snapshot, null)) {
             cost.decreaseGenericMana(willPay);
             return true;
         }
@@ -1692,7 +1682,7 @@ public final class ManaBrewInteractiveController extends PlayerController implem
         boolean paid = toPayBeing.isPaid();
         if (!paid) {
             applyManaConversionMatrix(matrix, sa);
-            paid = payManaInteractively(toPayBeing, sa, effect, snapshot);
+            paid = payManaInteractively(toPayBeing, sa, effect, snapshot, cardsToDelve);
             if (paid) {
                 sa.getHostCard().setXManaCostPaidByColor(toPayBeing.getXManaCostPaidByColor());
             }
@@ -1780,7 +1770,8 @@ public final class ManaBrewInteractiveController extends PlayerController implem
     }
 
     private boolean payManaInteractively(
-            final ManaCostBeingPaid unpaid, final SpellAbility sa, final boolean effect, final GameSnapshot sessionSnapshot) {
+            final ManaCostBeingPaid unpaid, final SpellAbility sa, final boolean effect,
+            final GameSnapshot sessionSnapshot, final CardCollection cardsToDelve) {
         final ManaPool pool = player.getManaPool();
         final Map<Integer, Card> sessionTapped = new LinkedHashMap<>();
         final Map<Integer, ManaCostShard> sessionConvoke = new LinkedHashMap<>();
@@ -1788,6 +1779,7 @@ public final class ManaBrewInteractiveController extends PlayerController implem
         final boolean convoke = sa.isSpell() && host != null
                 && (host.hasKeyword(Keyword.CONVOKE) || sa.hasParam("TapCreaturesForMana"));
         final boolean improvise = sa.isSpell() && host != null && host.hasKeyword(Keyword.IMPROVISE);
+        final boolean delve = cardsToDelve != null && sa.isSpell() && host != null && host.hasKeyword(Keyword.DELVE);
         // CR 118.3c: a mandatory cost the pool can already cover may not be cancelled
         // (mirrors InputPayManaOfCostPayment's constructor).
         boolean mandatory = false;
@@ -1803,6 +1795,9 @@ public final class ManaBrewInteractiveController extends PlayerController implem
             final List<Card> convokeSources = convoke || improvise
                     ? convokePaymentSources(player, convoke, improvise)
                     : new ArrayList<>();
+            final List<Card> delveSources = delve
+                    ? delvePaymentSources(player, unpaid, cardsToDelve)
+                    : new ArrayList<>();
             final boolean canConfirm = poolCanCover(pool, unpaid, sa);
             final boolean lifeInsteadBlack =
                     player.hasKeyword("PayLifeInsteadOf:B") && unpaid.hasAnyKind(ManaAtom.BLACK);
@@ -1810,7 +1805,7 @@ public final class ManaBrewInteractiveController extends PlayerController implem
                     && player.canPayLife(2, effect, sa);
             final ManaBrewInteractiveSession.ManaPaymentChoice choice = session.awaitManaPaymentChoice(
                     me(), sa.getHostCard(), unpaid.toString(), sources, untappable, convokeSources,
-                    pool.totalMana(), canConfirm, !mandatory, canPayLife, 2);
+                    delveSources, pool.totalMana(), canConfirm, !mandatory, canPayLife, 2);
             switch (choice.kind()) {
                 case TAP: {
                     if (choice.convokeCard() != null) {
@@ -1845,6 +1840,17 @@ public final class ManaBrewInteractiveController extends PlayerController implem
                     }
                     break;
                 }
+                case DELVE: {
+                    payDelve(unpaid, cardsToDelve, choice.delveCard());
+                    if (unpaid.isPaid()) {
+                        return true;
+                    }
+                    break;
+                }
+                case UNDELVE: {
+                    undelve(unpaid, cardsToDelve, choice.delveCard());
+                    break;
+                }
                 case PAY_LIFE: {
                     if (player.canPayLife(2, effect, sa)) {
                         if (unpaid.payPhyrexian()) {
@@ -1862,6 +1868,9 @@ public final class ManaBrewInteractiveController extends PlayerController implem
                 }
                 case PAY: {
                     if (choice.auto()) {
+                        if (delve) {
+                            autoDelve(unpaid, cardsToDelve, delvePaymentSources(player, unpaid, cardsToDelve));
+                        }
                         if (autoPay.payManaCost(unpaid.toManaCost(), sa, effect)) {
                             return true;
                         }
@@ -1932,6 +1941,48 @@ public final class ManaBrewInteractiveController extends PlayerController implem
             }
         }
         return out;
+    }
+
+    private List<Card> delvePaymentSources(
+            final Player payer, final ManaCostBeingPaid unpaid, final CardCollection cardsToDelve) {
+        // Already-delved cards stay offered so they can be un-delved
+        final List<Card> out = new ArrayList<>(cardsToDelve);
+        if (unpaid.getGenericManaAmount() > 0) {
+            for (final Card c : payer.getCardsIn(ZoneType.Graveyard)) {
+                if (!out.contains(c)) {
+                    out.add(c);
+                }
+            }
+        }
+        return out;
+    }
+
+    private void payDelve(
+            final ManaCostBeingPaid unpaid, final CardCollection cardsToDelve, final Card card) {
+        if (card == null || cardsToDelve.contains(card) || unpaid.getGenericManaAmount() <= 0) {
+            return;
+        }
+        cardsToDelve.add(card);
+        unpaid.decreaseGenericMana(1);
+    }
+
+    private void undelve(
+            final ManaCostBeingPaid unpaid, final CardCollection cardsToDelve, final Card card) {
+        if (card == null || !cardsToDelve.contains(card)) {
+            return;
+        }
+        cardsToDelve.remove(card);
+        unpaid.increaseGenericMana(1);
+    }
+
+    private void autoDelve(
+            final ManaCostBeingPaid unpaid, final CardCollection cardsToDelve, final List<Card> delveSources) {
+        for (final Card c : delveSources) {
+            if (unpaid.getGenericManaAmount() <= 0) {
+                break;
+            }
+            payDelve(unpaid, cardsToDelve, c);
+        }
     }
 
     private void payConvoke(

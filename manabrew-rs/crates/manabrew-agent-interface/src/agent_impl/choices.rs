@@ -168,7 +168,9 @@ pub(super) fn mulligan_decision_recv<T: Responder>(
     // so a torn-down session exits cleanly.
     match agent.recv_action() {
         PromptOutput::Mulligan(MulliganOutput::MulliganDecision { keep }) => keep,
-        PromptOutput::ChooseAction(ChooseActionOutput::Concede) => true,
+        PromptOutput::ChooseAction(ChooseActionOutput::ChooseActionDecision(
+            ChooseActionDecision::Concede,
+        )) => true,
         other => panic!("mulligan_decision_recv expected MulliganDecision, got {other:?}"),
     }
 }
@@ -525,7 +527,7 @@ pub(super) fn reveal_cards<T: Responder>(
         .collect();
     let message = message_prefix.unwrap_or("Look at these cards").to_string();
     agent.send_prompt(
-        PromptInput::RevealCards(manabrew_protocol::prompts::reveal_cards::RevealCardsInput {
+        PromptInput::RevealCards(manabrew_protocol::prompts::reveal::RevealCardsInput {
             cards,
             zone: zone.to_string(),
             owner_player_id: crate::ids_codec::player_id_str(owner),
@@ -607,11 +609,15 @@ pub(super) fn choose_color<T: Responder>(
     agent.send_prompt(
         PromptInput::ChooseColor(manabrew_protocol::prompts::choose_color::ChooseColorInput {
             valid_colors: valid_colors.to_vec(),
+            amount: 1,
+            repeat_allowed: false,
         }),
         None,
     );
     match agent.recv_action() {
-        PromptOutput::ChooseColor(ChooseColorOutput::ColorDecision { color }) => color,
+        PromptOutput::ChooseColor(ChooseColorOutput::ColorDecision { chosen_colors }) => {
+            chosen_colors.into_keys().next()
+        }
         _ => valid_colors.first().cloned(),
     }
 }

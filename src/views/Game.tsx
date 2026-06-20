@@ -183,8 +183,6 @@ export default function Game({ exitTo }: GameProps = {}) {
     activePrompt?.input.type === "chooseBlockers" ? activePrompt.input : null;
   const damageOrderInput =
     activePrompt?.input.type === "chooseDamageAssignmentOrder" ? activePrompt.input : null;
-  const payCombatCostInput =
-    activePrompt?.input.type === "payCombatCost" ? activePrompt.input : null;
   const payManaCostInput = activePrompt?.input.type === "payManaCost" ? activePrompt.input : null;
   const mulliganInput = activePrompt?.input.type === "mulligan" ? activePrompt.input : null;
   const tappableLandIds = useMemo<string[]>(
@@ -193,15 +191,15 @@ export default function Game({ exitTo }: GameProps = {}) {
         ? chooseActionInput.actions.flatMap((a) =>
             a.type === "activateAbility" && a.isManaAbility ? [a.cardId] : [],
           )
-        : (payCombatCostInput?.tappableSourceIds ?? payManaCostInput?.tappableSourceIds ?? []),
-    [chooseActionInput, payCombatCostInput, payManaCostInput],
+        : (payManaCostInput?.tappableSourceIds ?? []),
+    [chooseActionInput, payManaCostInput],
   );
   const untappableLandIds = useMemo<string[]>(
     () =>
       chooseActionInput
         ? chooseActionInput.actions.flatMap((a) => (a.type === "undoMana" ? [a.cardId] : []))
-        : (payCombatCostInput?.untappableSourceIds ?? payManaCostInput?.untappableSourceIds ?? []),
-    [chooseActionInput, payCombatCostInput, payManaCostInput],
+        : (payManaCostInput?.untappableSourceIds ?? []),
+    [chooseActionInput, payManaCostInput],
   );
 
   const mulliganPutBack = useMulliganSelection(activePrompt, (cardIds) =>
@@ -320,8 +318,7 @@ export default function Game({ exitTo }: GameProps = {}) {
       }
       return map;
     }
-    const rawOptions =
-      payCombatCostInput?.manaAbilityOptions ?? payManaCostInput?.manaAbilityOptions ?? [];
+    const rawOptions = payManaCostInput?.manaAbilityOptions ?? [];
     if (rawOptions.length === 0) return map;
     const byCard = new Map<string, ActivatableAbilityInfo[]>();
     for (const ab of rawOptions) {
@@ -336,11 +333,7 @@ export default function Game({ exitTo }: GameProps = {}) {
       );
     }
     return map;
-  }, [
-    chooseActionInput,
-    payCombatCostInput?.manaAbilityOptions,
-    payManaCostInput?.manaAbilityOptions,
-  ]);
+  }, [chooseActionInput, payManaCostInput?.manaAbilityOptions]);
 
   const tappableLandIdSet = useMemo(() => new Set(tappableLandIds), [tappableLandIds]);
 
@@ -601,7 +594,18 @@ export default function Game({ exitTo }: GameProps = {}) {
     clickableCardIds?: string[],
     targetHostile?: boolean,
   ) {
-    openZoneViewer({ title, cards, onClickCard, clickableCardIds, targetHostile });
+    const stickyPromptType =
+      onClickCard && currentPrompt?.input.type === "chooseBoardTargets"
+        ? "chooseBoardTargets"
+        : undefined;
+    openZoneViewer({
+      title,
+      cards,
+      onClickCard,
+      clickableCardIds,
+      targetHostile,
+      stickyPromptType,
+    });
   }
   function openManualZone(title: string, cards: GameCard[]) {
     openZoneViewer({
@@ -641,8 +645,7 @@ export default function Game({ exitTo }: GameProps = {}) {
   }
 
   const handleTapLand = (card: GameCard) => {
-    const paymentManaOptions =
-      payCombatCostInput?.manaAbilityOptions ?? payManaCostInput?.manaAbilityOptions;
+    const paymentManaOptions = payManaCostInput?.manaAbilityOptions;
     if (paymentManaOptions) {
       const manaAbilities = getDisplayedManaAbilities(card.id, paymentManaOptions).map((ab) =>
         toAbilityOption(ab),
@@ -794,8 +797,6 @@ export default function Game({ exitTo }: GameProps = {}) {
     isPassingUntilEot,
     unifiedPass,
     activatePassUntilEot,
-    libraryPeekModal,
-    setLibraryPeekModal,
     spellStackModalOpen,
     setSpellStackModalOpen,
   } = usePromptEffects({
@@ -816,9 +817,9 @@ export default function Game({ exitTo }: GameProps = {}) {
   payManaPrimaryRef.current = () => {
     if (promptType !== "payManaCost") return;
     if (activePrompt?.input.canConfirmFromPool) {
-      respond({ type: "payManaCost", auto: false });
+      respond({ type: "pay", auto: false });
     } else {
-      respond({ type: "payManaCost", auto: true });
+      respond({ type: "pay", auto: true });
     }
   };
   const confirmPromptRef = useRef<() => boolean>(() => false);
@@ -853,12 +854,7 @@ export default function Game({ exitTo }: GameProps = {}) {
     return false;
   };
 
-  const preview = useCardPreview([
-    viewingZone,
-    libraryPeekModal,
-    spellStackModalOpen,
-    abilityPickerState,
-  ]);
+  const preview = useCardPreview([viewingZone, spellStackModalOpen, abilityPickerState]);
 
   const battlefieldContainerRef = useRef<HTMLDivElement>(null);
   const { draggingHandCard, ghostPos, isOverBattlefield, startHandCardDrag } = useHandDrag({
@@ -952,6 +948,78 @@ export default function Game({ exitTo }: GameProps = {}) {
     () => gameView?.players?.filter((p) => p.id !== me?.id) ?? [],
     [gameView?.players, me?.id],
   );
+
+  const payManaCostPrompt =
+    currentPrompt?.input.type === "payManaCost" ? currentPrompt.input : null;
+  const delveSourceIds = useMemo(
+    () => payManaCostPrompt?.delveSourceIds ?? [],
+    [payManaCostPrompt],
+  );
+  const payManaCardId = payManaCostPrompt?.cardId ?? null;
+  const [delvedCardIds, setDelvedCardIds] = useState<string[]>([]);
+  const delvedCardIdsRef = useRef<string[]>([]);
+  delvedCardIdsRef.current = delvedCardIds;
+
+  useEffect(() => {
+    setDelvedCardIds([]);
+  }, [payManaCardId]);
+
+  const handleDelveCard = useCallback(
+    (cardId: string) => {
+      if (useGameStore.getState().isWaitingForResponse) return;
+      const current = delvedCardIdsRef.current;
+      const isDelved = current.includes(cardId);
+      respond(isDelved ? { type: "undelve", cardId } : { type: "delve", cardId });
+      const next = isDelved ? current.filter((id) => id !== cardId) : [...current, cardId];
+      delvedCardIdsRef.current = next;
+      setDelvedCardIds(next);
+    },
+    [respond],
+  );
+
+  const openDelveZone = useCallback(() => {
+    openZoneViewer({
+      title: "Delve — Your Graveyard",
+      cards: me?.graveyard ?? [],
+      onClickCard: handleDelveCard,
+      clickableCardIds: delveSourceIds,
+      selectedCardIds: delvedCardIdsRef.current,
+      clickLabel: "DELVE",
+      selectedLabel: "UN-DELVE",
+      stickyPromptType: "payManaCost",
+    });
+  }, [openZoneViewer, me?.graveyard, handleDelveCard, delveSourceIds]);
+
+  useEffect(() => {
+    const vz = useGameUIStore.getState().viewingZone;
+    if (vz?.selectedCardIds === undefined) return;
+    openZoneViewer({ ...vz, clickableCardIds: delveSourceIds, selectedCardIds: delvedCardIds });
+  }, [delveSourceIds, delvedCardIds, openZoneViewer]);
+
+  // Keep an open zone-target viewer in sync with the live valid set as each
+  // target is picked (the engine re-prompts with the remaining candidates).
+  // `boardTargets` is null while a response is in flight — leave the viewer be;
+  // if targeting is active but no longer has zone candidates, close it.
+  useEffect(() => {
+    const vz = useGameUIStore.getState().viewingZone;
+    if (vz?.stickyPromptType !== "chooseBoardTargets" || !boardTargets) return;
+    if (!boardTargets.zone) {
+      closeZoneViewer();
+      return;
+    }
+    openZoneViewer({ ...vz, clickableCardIds: boardTargets.zone.validCardIds });
+  }, [boardTargets, openZoneViewer, closeZoneViewer]);
+
+  // Generic sticky-viewer close: a viewer bound to a prompt type stays open
+  // across same-type re-prompts and only closes once the prompt changes type
+  // or ends. Keyed on currentPrompt (not activePrompt) so it survives the null
+  // window while a response is in flight.
+  useEffect(() => {
+    const sticky = viewingZone?.stickyPromptType;
+    if (sticky && currentPrompt?.input.type !== sticky) {
+      closeZoneViewer();
+    }
+  }, [currentPrompt, viewingZone, closeZoneViewer]);
   const opponent = opponents[0];
 
   const playerColorMap = useMemo(() => {
@@ -1421,15 +1489,14 @@ export default function Game({ exitTo }: GameProps = {}) {
               clickableCardIds,
             )
           }
+          delveAvailable={delveSourceIds.length > 0}
+          onOpenDelveZone={openDelveZone}
           onTargetFromZone={(cardId) => {
-            closeZoneViewer();
             casting.wrappedTargetCard(cardId);
           }}
           onCastSpell={handleCastSpell}
           onTapLand={
-            promptType === "chooseAction" ||
-            promptType === "payCombatCost" ||
-            promptType === "payManaCost"
+            promptType === "chooseAction" || promptType === "payManaCost"
               ? handleTapLand
               : undefined
           }
@@ -1451,9 +1518,7 @@ export default function Game({ exitTo }: GameProps = {}) {
             }
           }}
           onUntapLand={
-            promptType === "chooseAction" ||
-            promptType === "payCombatCost" ||
-            promptType === "payManaCost"
+            promptType === "chooseAction" || promptType === "payManaCost"
               ? handleUntapLand
               : undefined
           }
@@ -1533,14 +1598,18 @@ export default function Game({ exitTo }: GameProps = {}) {
               ? {
                   cardName: payManaCostInput.cardName,
                   manaCost: payManaCostInput.manaCost,
+                  description: payManaCostInput.description,
                   manaPool: gameView.players.find((p) => p.isHuman)?.manaPool ?? {},
                   canConfirmFromPool: payManaCostInput.canConfirmFromPool,
+                  delveCount: delvedCardIds.length,
+                  delveAvailable: delveSourceIds.length > 0,
+                  onOpenDelve: openDelveZone,
                 }
               : null
           }
-          onPayManaCost={() => respond({ type: "payManaCost", auto: false })}
-          onAutoManaCost={() => respond({ type: "payManaCost", auto: true })}
-          onCancelManaCost={() => respond({ type: "cancelManaCost" })}
+          onPayManaCost={() => respond({ type: "pay", auto: false })}
+          onAutoManaCost={() => respond({ type: "pay", auto: true })}
+          onCancelManaCost={() => respond({ type: "cancel" })}
           mulliganCount={mulliganInput?.mulliganCount ?? 0}
           onMulliganKeep={() => respond({ type: "mulliganDecision", keep: true })}
           onMulliganDraw={() => respond({ type: "mulliganDecision", keep: false })}
@@ -1612,13 +1681,6 @@ export default function Game({ exitTo }: GameProps = {}) {
         sourceDeckCard={promptSourceDeckCard}
         viewingZone={viewingZone}
         onCloseZone={closeZone}
-        libraryPeekModal={libraryPeekModal}
-        onLibraryPeekConfirm={(selectedIds) => {
-          if (libraryPeekModal!.mode === "discard")
-            respond({ type: "chooseCardsDecision", chosenCardIds: selectedIds });
-          else respond({ type: "digDecision", chosenCardIds: selectedIds });
-          setLibraryPeekModal(null);
-        }}
         spellStackModalOpen={spellStackModalOpen}
         stack={gameView.stack}
         validSpellIds={boardTargets?.spellIds ?? []}
@@ -1675,7 +1737,6 @@ export default function Game({ exitTo }: GameProps = {}) {
         preview.hoveredCard.zoneId !== "hand" &&
         !draggingHandCard &&
         !viewingZone &&
-        !libraryPeekModal &&
         !spellStackModalOpen &&
         !abilityPickerState &&
         (!promptType || HOVER_ALLOWED_PROMPTS.has(promptType)) && (

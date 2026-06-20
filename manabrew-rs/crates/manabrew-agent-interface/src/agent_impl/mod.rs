@@ -451,7 +451,9 @@ impl<R: Responder> PlayerAgent for PromptAgent<R> {
             None,
         );
         match self.recv_action() {
-            PromptOutput::ChooseAction(ChooseActionOutput::Act { action_id }) => {
+            PromptOutput::ChooseAction(ChooseActionOutput::ChooseActionDecision(
+                ChooseActionDecision::Act { action_id },
+            )) => {
                 if let Some(rest) = action_id.strip_prefix("cast:") {
                     let (id_part, mode) = rest.split_once(':').unwrap_or((rest, "normal"));
                     let resolved = parse_card_id(id_part).and_then(|cid| {
@@ -498,8 +500,12 @@ impl<R: Responder> PlayerAgent for PromptAgent<R> {
             }
             // Only the priority-loop branch acts on Concede; other recv_action
             // sites discard it and concede re-enters at the next priority window.
-            PromptOutput::ChooseAction(ChooseActionOutput::Concede) => EnginePlayerAction::Concede,
-            PromptOutput::ChooseAction(ChooseActionOutput::Pass { until_phase }) => {
+            PromptOutput::ChooseAction(ChooseActionOutput::ChooseActionDecision(
+                ChooseActionDecision::Concede,
+            )) => EnginePlayerAction::Concede,
+            PromptOutput::ChooseAction(ChooseActionOutput::ChooseActionDecision(
+                ChooseActionDecision::Pass { until_phase },
+            )) => {
                 // Only store a fast-forward declaration when there's a target phase.
                 // None = atomic single pass, no fast-forward.
                 if until_phase.is_some() {
@@ -507,15 +513,19 @@ impl<R: Responder> PlayerAgent for PromptAgent<R> {
                 }
                 EnginePlayerAction::PassPriority
             }
-            PromptOutput::ChooseAction(ChooseActionOutput::RestoreSnapshot { checkpoint_id }) => {
+            PromptOutput::ChooseAction(ChooseActionOutput::ChooseActionDecision(
+                ChooseActionDecision::RestoreSnapshot { checkpoint_id },
+            )) => {
                 self.pending_restore_checkpoint = Some(checkpoint_id);
                 EnginePlayerAction::PassPriority
             }
-            PromptOutput::ManaSource(ManaSourceAction::TapForMana {
-                card_id,
-                ability_index,
-                color,
-            }) => {
+            PromptOutput::ChooseAction(ChooseActionOutput::ManaSourceAction(
+                ManaSourceAction::TapForMana {
+                    card_id,
+                    ability_index,
+                    color,
+                },
+            )) => {
                 let parsed = parse_card_id(&card_id);
                 match parsed {
                     Some(cid) => {
@@ -560,11 +570,11 @@ impl<R: Responder> PlayerAgent for PromptAgent<R> {
                     None => EnginePlayerAction::PassPriority,
                 }
             }
-            PromptOutput::ManaSource(ManaSourceAction::Untap { card_id }) => {
-                parse_card_id(&card_id)
-                    .map(EnginePlayerAction::UndoMana)
-                    .unwrap_or(EnginePlayerAction::PassPriority)
-            }
+            PromptOutput::ChooseAction(ChooseActionOutput::ManaSourceAction(
+                ManaSourceAction::Untap { card_id },
+            )) => parse_card_id(&card_id)
+                .map(EnginePlayerAction::UndoMana)
+                .unwrap_or(EnginePlayerAction::PassPriority),
             _ => EnginePlayerAction::PassPriority,
         }
     }
@@ -1117,16 +1127,6 @@ impl<R: Responder> PlayerAgent for PromptAgent<R> {
         )
     }
 
-    fn choose_delve(
-        &mut self,
-        player: PlayerId,
-        valid: &[CardId],
-        max: usize,
-        source: Option<CardId>,
-    ) -> Vec<CardId> {
-        costs::choose_delve(self, player, valid, max, source)
-    }
-
     fn choose_improvise(
         &mut self,
         player: PlayerId,
@@ -1291,6 +1291,7 @@ impl<R: Responder> PlayerAgent for PromptAgent<R> {
                 winner,
             } => {
                 let view = self.view();
+                let winner_id = player_id_str(winner);
                 let entries = rolls
                     .into_iter()
                     .map(|(pid, value)| {
@@ -1301,19 +1302,23 @@ impl<R: Responder> PlayerAgent for PromptAgent<R> {
                             .find(|p| p.id == id)
                             .map(|p| p.name.clone())
                             .unwrap_or_else(|| id.clone());
-                        crate::prompt::FirstPlayerRollEntry {
-                            player_id: id,
-                            player_name: name,
-                            value,
+                        manabrew_protocol::prompts::dice_rolled::DiceRollEntry {
+                            label: Some(name),
+                            highlighted: id == winner_id,
+                            player_id: Some(id),
+                            natural_results: vec![value],
+                            final_results: vec![value],
+                            ignored_rolls: vec![],
                         }
                     })
                     .collect();
                 self.present_prompt(
-                    PromptInput::FirstPlayerRoll(
-                        manabrew_protocol::prompts::first_player_roll::FirstPlayerRollInput {
+                    PromptInput::DiceRolled(
+                        manabrew_protocol::prompts::dice_rolled::DiceRolledInput {
                             sides,
                             rolls: entries,
-                            winner_player_id: player_id_str(winner),
+                            title: Some("Roll for first player".to_string()),
+                            source_card_name: None,
                         },
                     ),
                     None,
@@ -1337,11 +1342,16 @@ impl<R: Responder> PlayerAgent for PromptAgent<R> {
                 self.present_prompt(
                     PromptInput::DiceRolled(
                         manabrew_protocol::prompts::dice_rolled::DiceRolledInput {
-                            player_id: player_id_str(player),
                             sides,
-                            natural_results,
-                            final_results,
-                            ignored_rolls,
+                            rolls: vec![manabrew_protocol::prompts::dice_rolled::DiceRollEntry {
+                                label: None,
+                                player_id: Some(player_id_str(player)),
+                                natural_results,
+                                final_results,
+                                ignored_rolls,
+                                highlighted: false,
+                            }],
+                            title: None,
                             source_card_name,
                         },
                     ),

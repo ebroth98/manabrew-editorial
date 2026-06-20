@@ -92,7 +92,7 @@ fn main() {
             label: "Damage".to_string(),
         }),
         GameOver(game_over::GameOverInput {}),
-        RevealCards(reveal_cards::RevealCardsInput {
+        RevealCards(reveal::RevealCardsInput {
             cards: vec![],
             zone: String::new(),
             owner_player_id: String::new(),
@@ -112,14 +112,10 @@ fn main() {
                 scry::ScryDestination::LibraryBottom,
             ],
         }),
-        Dig(dig::DigInput {
-            card_ids: vec![],
-            cards: vec![],
-            num_to_take: 0,
-            optional: false,
-        }),
         ChooseColor(choose_color::ChooseColorInput {
             valid_colors: vec![],
+            amount: 1,
+            repeat_allowed: false,
         }),
         ChooseType(choose_type::ChooseTypeInput {
             type_category: String::new(),
@@ -155,34 +151,17 @@ fn main() {
                 attacker_has_deathtouch: false,
             },
         ),
-        PayCombatCost(pay_combat_cost::PayCombatCostInput {
-            attacker_id: String::new(),
-            attacker_name: String::new(),
-            cost: 0,
-            description: String::new(),
-            mana_ability_options: vec![],
-            tappable_source_ids: vec![],
-            untappable_source_ids: vec![],
-            mana_pool_total: 0,
-        }),
-        ChooseDelve(choose_delve::ChooseDelveInput {
-            valid_card_ids: vec![],
-            zone_cards: vec![],
-            max_cards: 0,
-        }),
         PayManaCost(pay_mana_cost::PayManaCostInput {
             card_id: String::new(),
             card_name: String::new(),
+            description: None,
             mana_cost: String::new(),
             mana_ability_options: vec![],
             tappable_source_ids: vec![],
             untappable_source_ids: vec![],
+            delve_source_ids: vec![],
             mana_pool_total: 0,
             can_confirm_from_pool: false,
-        }),
-        SpecifyManaCombo(specify_mana_combo::SpecifyManaComboInput {
-            available_colors: vec![],
-            amount: 0,
         }),
         ChooseBoolean(choose_boolean::ChooseBooleanInput {
             presentation: common::PromptPresentation {
@@ -213,17 +192,10 @@ fn main() {
             min_choices: 1,
             max_choices: 2,
         }),
-        FirstPlayerRoll(first_player_roll::FirstPlayerRollInput {
+        DiceRolled(dice_rolled::DiceRolledInput {
             sides: 0,
             rolls: vec![],
-            winner_player_id: String::new(),
-        }),
-        DiceRolled(dice_rolled::DiceRolledInput {
-            player_id: String::new(),
-            sides: 0,
-            natural_results: vec![],
-            final_results: vec![],
-            ignored_rolls: vec![],
+            title: None,
             source_card_name: None,
         }),
         ChooseCards(choose_cards::ChooseCardsInput {

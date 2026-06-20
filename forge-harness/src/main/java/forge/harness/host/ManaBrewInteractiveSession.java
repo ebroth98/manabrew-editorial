@@ -238,7 +238,7 @@ public final class ManaBrewInteractiveSession {
         return new PriorityChoice(PriorityActionKind.PASS, null, null);
     }
 
-    enum ManaPaymentKind { TAP, UNTAP, PAY, PAY_LIFE, CANCEL }
+    enum ManaPaymentKind { TAP, UNTAP, PAY, PAY_LIFE, CANCEL, DELVE, UNDELVE }
 
     static final class ManaPaymentChoice {
         private final ManaPaymentKind kind;
@@ -246,6 +246,7 @@ public final class ManaBrewInteractiveSession {
         private final String color;
         private final Card untapCard;
         private final Card convokeCard;
+        private final Card delveCard;
         private final boolean auto;
 
         private ManaPaymentChoice(
@@ -254,6 +255,7 @@ public final class ManaBrewInteractiveSession {
                 final String color,
                 final Card untapCard,
                 final Card convokeCard,
+                final Card delveCard,
                 final boolean auto
         ) {
             this.kind = kind;
@@ -261,6 +263,7 @@ public final class ManaBrewInteractiveSession {
             this.color = color;
             this.untapCard = untapCard;
             this.convokeCard = convokeCard;
+            this.delveCard = delveCard;
             this.auto = auto;
         }
 
@@ -284,6 +287,10 @@ public final class ManaBrewInteractiveSession {
             return convokeCard;
         }
 
+        Card delveCard() {
+            return delveCard;
+        }
+
         boolean auto() {
             return auto;
         }
@@ -296,6 +303,7 @@ public final class ManaBrewInteractiveSession {
             final List<SpellAbility> tappableSources,
             final List<Card> untappableCards,
             final List<Card> convokeSources,
+            final List<Card> delveSources,
             final int poolTotal,
             final boolean canConfirm,
             final boolean canCancel,
@@ -305,14 +313,14 @@ public final class ManaBrewInteractiveSession {
         requireAttached();
         publishManaPaymentPrompt(
                 playerId, payingFor, remainingCost, tappableSources, untappableCards, convokeSources,
-                poolTotal, canConfirm, canCancel, canPayLife, lifeToPay);
+                delveSources, poolTotal, canConfirm, canCancel, canPayLife, lifeToPay);
         while (!closed && !game.isGameOver()) {
             final JsonObject action;
             try {
                 action = actions.take();
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
-                return new ManaPaymentChoice(ManaPaymentKind.CANCEL, null, null, null, null, false);
+                return new ManaPaymentChoice(ManaPaymentKind.CANCEL, null, null, null, null, null, false);
             }
             final String kind = action.has("kind") ? action.get("kind").getAsString() : "";
             switch (kind) {
@@ -322,33 +330,47 @@ public final class ManaBrewInteractiveSession {
                         final String color = action.has("color") && !action.get("color").isJsonNull()
                                 ? action.get("color").getAsString()
                                 : null;
-                        return new ManaPaymentChoice(ManaPaymentKind.TAP, chosen, color, null, null, false);
+                        return new ManaPaymentChoice(ManaPaymentKind.TAP, chosen, color, null, null, null, false);
                     }
                     final Card convokeCard = resolveConvokeSource(action, convokeSources);
                     if (convokeCard == null) {
                         throw new IllegalArgumentException("tap_land did not match a tappable source");
                     }
-                    return new ManaPaymentChoice(ManaPaymentKind.TAP, null, null, null, convokeCard, false);
+                    return new ManaPaymentChoice(ManaPaymentKind.TAP, null, null, null, convokeCard, null, false);
                 }
                 case "untap_land": {
                     final Card card = resolveUntapCard(action, untappableCards);
-                    return new ManaPaymentChoice(ManaPaymentKind.UNTAP, null, null, card, null, false);
+                    return new ManaPaymentChoice(ManaPaymentKind.UNTAP, null, null, card, null, null, false);
+                }
+                case "delve": {
+                    final Card card = resolveDelveSource(action, delveSources);
+                    if (card == null) {
+                        throw new IllegalArgumentException("delve did not match a graveyard source");
+                    }
+                    return new ManaPaymentChoice(ManaPaymentKind.DELVE, null, null, null, null, card, false);
+                }
+                case "undelve": {
+                    final Card card = resolveDelveSource(action, delveSources);
+                    if (card == null) {
+                        throw new IllegalArgumentException("undelve did not match a graveyard source");
+                    }
+                    return new ManaPaymentChoice(ManaPaymentKind.UNDELVE, null, null, null, null, card, false);
                 }
                 case "pay_mana": {
                     final boolean auto = action.has("auto") && action.get("auto").getAsBoolean();
-                    return new ManaPaymentChoice(ManaPaymentKind.PAY, null, null, null, null, auto);
+                    return new ManaPaymentChoice(ManaPaymentKind.PAY, null, null, null, null, null, auto);
                 }
                 case "pay_life":
-                    return new ManaPaymentChoice(ManaPaymentKind.PAY_LIFE, null, null, null, null, false);
+                    return new ManaPaymentChoice(ManaPaymentKind.PAY_LIFE, null, null, null, null, null, false);
                 case "cancel_mana":
                 case "pass":
                 case "pass_priority":
-                    return new ManaPaymentChoice(ManaPaymentKind.CANCEL, null, null, null, null, false);
+                    return new ManaPaymentChoice(ManaPaymentKind.CANCEL, null, null, null, null, null, false);
                 default:
                     throw new UnsupportedOperationException("unsupported mana-payment action kind: " + kind);
             }
         }
-        return new ManaPaymentChoice(ManaPaymentKind.CANCEL, null, null, null, null, false);
+        return new ManaPaymentChoice(ManaPaymentKind.CANCEL, null, null, null, null, null, false);
     }
 
     private SpellAbility resolveTapSource(final JsonObject action, final List<SpellAbility> tappableSources) {
@@ -385,6 +407,21 @@ public final class ManaBrewInteractiveSession {
             return null;
         }
         for (final Card card : convokeSources) {
+            if (SnapshotExtractor.javaCardId(card).equals(cardId)) {
+                return card;
+            }
+        }
+        return null;
+    }
+
+    private Card resolveDelveSource(final JsonObject action, final List<Card> delveSources) {
+        final String cardId = action.has("cardId") && !action.get("cardId").isJsonNull()
+                ? action.get("cardId").getAsString()
+                : null;
+        if (cardId == null) {
+            return null;
+        }
+        for (final Card card : delveSources) {
             if (SnapshotExtractor.javaCardId(card).equals(cardId)) {
                 return card;
             }
@@ -443,6 +480,7 @@ public final class ManaBrewInteractiveSession {
             final List<SpellAbility> tappableSources,
             final List<Card> untappableCards,
             final List<Card> convokeSources,
+            final List<Card> delveSources,
             final int poolTotal,
             final boolean canConfirm,
             final boolean canCancel,
@@ -500,6 +538,12 @@ public final class ManaBrewInteractiveSession {
             untappable.add(SnapshotExtractor.javaCardId(card));
         }
         prompt.add("untappableLandIds", untappable);
+
+        final com.google.gson.JsonArray delve = new com.google.gson.JsonArray();
+        for (final Card card : delveSources) {
+            delve.add(SnapshotExtractor.javaCardId(card));
+        }
+        prompt.add("delveSourceIds", delve);
 
         prompt.add("snapshot", JsonParser.parseString(snapshotJson()));
         latestPromptJson = prompt.toString();
@@ -1141,47 +1185,6 @@ public final class ManaBrewInteractiveSession {
             }
         }
         return result;
-    }
-
-    CardCollection awaitDigChoice(
-            final int playerId,
-            final CardCollectionView cardsForPrompt,
-            final int min,
-            final int max,
-            final String sourceName
-    ) {
-        requireAttached();
-        final List<Card> cards = new ArrayList<Card>(cardsForPrompt);
-        final int clampedMin = Math.min(min, cards.size());
-        final int clampedMax = Math.min(max, cards.size());
-        publishDigPrompt(playerId, cards, clampedMin, clampedMax, sourceName);
-        while (!closed && !game.isGameOver()) {
-            final JsonObject action = takeActionOrNull();
-            if (action == null) {
-                return new CardCollection();
-            }
-            final String actionKind = action.has("kind") ? action.get("kind").getAsString() : "";
-            if ("pass".equals(actionKind) || "pass_priority".equals(actionKind)) {
-                return new CardCollection(cards.subList(0, clampedMin));
-            }
-            if (!"dig_decision".equals(actionKind)) {
-                throw new UnsupportedOperationException("unsupported action kind: " + actionKind);
-            }
-            final CardCollection selected = new CardCollection();
-            if (action.has("chosen_card_ids") && action.get("chosen_card_ids").isJsonArray()) {
-                for (JsonElement element : action.getAsJsonArray("chosen_card_ids")) {
-                    final Card card = findCardByPublishedId(cards, element.getAsString());
-                    if (card != null && !selected.contains(card)) {
-                        selected.add(card);
-                    }
-                }
-            }
-            if (selected.size() < clampedMin || selected.size() > clampedMax) {
-                throw new IllegalArgumentException("selected card count out of range: " + selected.size());
-            }
-            return selected;
-        }
-        return new CardCollection();
     }
 
     CardCollection awaitReorderZone(
@@ -2022,35 +2025,6 @@ public final class ManaBrewInteractiveSession {
         prompt.addProperty("kind", kind);
         prompt.addProperty("sessionId", sessionId);
         prompt.addProperty("player", playerId);
-        if (sourceName != null) {
-            prompt.addProperty("sourceCardName", sourceName);
-        }
-        prompt.add("snapshot", JsonParser.parseString(snapshotJson()));
-        com.google.gson.JsonArray options = new com.google.gson.JsonArray();
-        for (int i = 0; i < cards.size(); i++) {
-            JsonObject option = new JsonObject();
-            option.addProperty("index", i);
-            addCardOption(option, cards.get(i));
-            options.add(option);
-        }
-        prompt.add("cards", options);
-        latestPromptJson = prompt.toString();
-    }
-
-    private void publishDigPrompt(
-            final int playerId,
-            final List<Card> cards,
-            final int min,
-            final int max,
-            final String sourceName
-    ) {
-        JsonObject prompt = new JsonObject();
-        prompt.addProperty("kind", "choose_dig");
-        prompt.addProperty("sessionId", sessionId);
-        prompt.addProperty("player", playerId);
-        prompt.addProperty("min", min);
-        prompt.addProperty("max", max);
-        prompt.addProperty("optional", min == 0);
         if (sourceName != null) {
             prompt.addProperty("sourceCardName", sourceName);
         }

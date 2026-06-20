@@ -168,6 +168,7 @@ pub(super) fn pay_mana_cost<T: Responder>(
             manabrew_protocol::prompts::pay_mana_cost::PayManaCostInput {
                 card_id: card_id_s,
                 card_name: card_name.to_string(),
+                description: None,
                 mana_cost: mana_cost_display.to_string(),
                 mana_ability_options: mana_ability_options
                     .iter()
@@ -184,6 +185,7 @@ pub(super) fn pay_mana_cost<T: Responder>(
                     .collect(),
                 tappable_source_ids: tappable_land_ids,
                 untappable_source_ids: untappable_land_ids,
+                delve_source_ids: Vec::new(),
                 mana_pool_total: mana_pool.total_mana(),
                 can_confirm_from_pool,
             },
@@ -191,24 +193,28 @@ pub(super) fn pay_mana_cost<T: Responder>(
         Some(card_id),
     );
     match agent.recv_action() {
-        PromptOutput::ManaSource(ManaSourceAction::TapForMana {
-            card_id,
-            ability_index,
-            color,
-        }) => parse_card_id(&card_id)
+        PromptOutput::PayManaCost(PayManaCostOutput::ManaSourceAction(
+            ManaSourceAction::TapForMana {
+                card_id,
+                ability_index,
+                color,
+            },
+        )) => parse_card_id(&card_id)
             .map(|card_id| ManaCostAction::TapForMana {
                 card_id,
                 mana_ability_index: ability_index,
                 express_choice: parse_express_mana_choice(color.as_deref()),
             })
             .unwrap_or(ManaCostAction::AttemptedAndFailed),
-        PromptOutput::ManaSource(ManaSourceAction::Untap { card_id }) => parse_card_id(&card_id)
+        PromptOutput::PayManaCost(PayManaCostOutput::ManaSourceAction(
+            ManaSourceAction::Untap { card_id },
+        )) => parse_card_id(&card_id)
             .map(ManaCostAction::Untap)
             .unwrap_or(ManaCostAction::AttemptedAndFailed),
-        PromptOutput::PayManaCost(PayManaCostOutput::PayManaCost { auto }) => {
+        PromptOutput::PayManaCost(PayManaCostOutput::ManaPayment(ManaPayment::Pay { auto })) => {
             ManaCostAction::Pay { auto }
         }
-        PromptOutput::PayManaCost(PayManaCostOutput::CancelManaCost) => {
+        PromptOutput::PayManaCost(PayManaCostOutput::ManaPayment(ManaPayment::Cancel)) => {
             ManaCostAction::AttemptedAndFailed
         }
         _ => ManaCostAction::AttemptedAndFailed,
@@ -231,25 +237,21 @@ pub(super) fn specify_mana_combo<T: Responder>(
     }
 
     agent.send_prompt(
-        PromptInput::SpecifyManaCombo(
-            manabrew_protocol::prompts::specify_mana_combo::SpecifyManaComboInput {
-                available_colors: available_colors.to_vec(),
-                amount,
-            },
-        ),
+        PromptInput::ChooseColor(manabrew_protocol::prompts::choose_color::ChooseColorInput {
+            valid_colors: available_colors.to_vec(),
+            amount: amount as u32,
+            repeat_allowed: true,
+        }),
         source,
     );
     let action = agent.recv_action();
     match action {
-        PromptOutput::SpecifyManaCombo(SpecifyManaComboOutput::ManaComboDecision {
-            chosen_colors,
-        }) => {
-            // Validate: only return valid colors, pad/truncate to amount
+        PromptOutput::ChooseColor(ChooseColorOutput::ColorDecision { chosen_colors }) => {
             let mut result: Vec<String> = chosen_colors
                 .into_iter()
-                .filter(|c| available_colors.contains(c))
+                .filter(|(c, _)| available_colors.contains(c))
+                .flat_map(|(c, n)| std::iter::repeat(c).take(n as usize))
                 .collect();
-            // Pad with first available color if needed
             while result.len() < amount {
                 result.push(available_colors.first().cloned().unwrap_or("C".to_string()));
             }
@@ -260,49 +262,6 @@ pub(super) fn specify_mana_combo<T: Responder>(
             // Default: all first color
             vec![available_colors.first().cloned().unwrap_or("C".to_string()); amount]
         }
-    }
-}
-
-pub(super) fn choose_delve<T: Responder>(
-    agent: &mut PromptAgent<T>,
-    _player: PlayerId,
-    valid: &[CardId],
-    max: usize,
-    source: Option<CardId>,
-) -> Vec<CardId> {
-    let valid_ids = PromptAgent::<T>::card_ids(valid);
-    // Build CardDtos for the graveyard cards
-    let zone_cards: Vec<_> = valid
-        .iter()
-        .filter_map(|&cid| {
-            agent.latest_view.as_ref().and_then(|v| {
-                v.players
-                    .iter()
-                    .flat_map(|p| p.graveyard.iter())
-                    .find(|c| c.id == card_id_str(cid))
-                    .cloned()
-            })
-        })
-        .collect();
-
-    agent.send_prompt(
-        PromptInput::ChooseDelve(manabrew_protocol::prompts::choose_delve::ChooseDelveInput {
-            valid_card_ids: valid_ids,
-            zone_cards,
-            max_cards: max,
-        }),
-        source,
-    );
-    match agent.recv_action() {
-        PromptOutput::ChooseDelve(ChooseDelveOutput::DelveDecision { chosen_card_ids }) => {
-            chosen_card_ids
-                .iter()
-                .filter_map(|id| parse_card_id(id))
-                .filter(|cid| valid.contains(cid))
-                .take(max)
-                .collect()
-        }
-        _ => vec![],
     }
 }
 
