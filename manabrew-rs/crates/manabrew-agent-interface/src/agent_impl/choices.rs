@@ -661,16 +661,20 @@ pub(super) fn choose_type<T: Responder>(
     type_category: &str,
     valid_types: &[String],
 ) -> Option<String> {
-    agent.send_prompt(
-        PromptInput::ChooseType(manabrew_protocol::prompts::choose_type::ChooseTypeInput {
-            type_category: type_category.to_string(),
-            valid_types: valid_types.to_vec(),
-        }),
-        None,
-    );
-    match agent.recv_action() {
-        PromptOutput::ChooseType(ChooseTypeOutput::TypeDecision { chosen_type }) => chosen_type,
-        _ => valid_types.first().cloned(),
+    if valid_types.is_empty() {
+        return None;
+    }
+    let title = if type_category.is_empty() {
+        "Choose a type".to_string()
+    } else {
+        format!("Choose a {type_category} type")
+    };
+    send_selection(agent, &title, None, valid_types.to_vec(), 1, 1, None);
+    match recv_selection(agent) {
+        Some(chosen_indices) => chosen_indices
+            .first()
+            .and_then(|index| valid_types.get(*index).cloned()),
+        None => valid_types.first().cloned(),
     }
 }
 
@@ -679,19 +683,15 @@ pub(super) fn choose_card_name<T: Responder>(
     _player: PlayerId,
     valid_names: &[String],
 ) -> Option<String> {
-    agent.send_prompt(
-        PromptInput::ChooseCardName(
-            manabrew_protocol::prompts::choose_card_name::ChooseCardNameInput {
-                valid_names: valid_names.to_vec(),
-            },
-        ),
-        None,
-    );
-    match agent.recv_action() {
-        PromptOutput::ChooseCardName(ChooseCardNameOutput::CardNameDecision { chosen_name }) => {
-            chosen_name
-        }
-        _ => valid_names.first().cloned(),
+    if valid_names.is_empty() {
+        return None;
+    }
+    send_selection(agent, "Name a card", None, valid_names.to_vec(), 1, 1, None);
+    match recv_selection(agent) {
+        Some(chosen_indices) => chosen_indices
+            .first()
+            .and_then(|index| valid_names.get(*index).cloned()),
+        None => valid_names.first().cloned(),
     }
 }
 
