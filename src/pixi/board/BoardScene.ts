@@ -1,5 +1,5 @@
 import { Application, Container, Graphics, Text, type FederatedPointerEvent } from "pixi.js";
-import type { GameCard, PlaymatSettings } from "@/types/manabrew";
+import type { CardDto, PlaymatSettings } from "@/protocol/game";
 import {
   CardSprite,
   setCardSpriteTheme,
@@ -294,7 +294,7 @@ export class BoardScene {
     return this.localPlayerId ? (this.regions.get(this.localPlayerId)?.zone ?? null) : null;
   }
 
-  updateBattlefield(playerId: string, cards: GameCard[]): void {
+  updateBattlefield(playerId: string, cards: CardDto[]): void {
     this.regions.get(playerId)?.region.updateBattlefield({ cards } as BattlefieldState);
   }
 
