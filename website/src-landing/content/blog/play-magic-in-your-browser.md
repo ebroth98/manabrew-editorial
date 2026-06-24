@@ -26,7 +26,13 @@ You can try it now at [play.manabrew.app](https://play.manabrew.app).
 
 Before each game, solo or multiplayer, you can pick which engine runs it:
 
-- The [**Forge**](https://github.com/Card-Forge/forge) engine, with its complete card pool, AI support, and more than 15 years of development. It's the most stable choice for accurate games. Only available on the desktop app or through a [selfhosted room](https://docs.manabrew.app/self-hosting/).
+--- a/src/content/blog/play-magic-in-your-browser.md
++++ b/src/content/blog/play-magic-in-your-browser.md
+@@ ## Multiple engines supported
+ 
+ Before each game, solo or multiplayer, you can pick which engine runs it:
+ 
+- The [**Forge**](https://github.com/Card-Forge/forge) engine, with its complete card pool, AI support, and more than 15 years of development. It’s the most stable choice for accurate games, and it backs both solo and multiplayer. Play it right in the browser through a hosted room, or run it yourself with the desktop app or a [selfhosted room](https://docs.manabrew.app/self-hosting/).
 - **Manabrew**'s own engine, a Rust port of Forge that runs in the browser. It's lighter
   and fully client-side, and its card support is still growing. Although you can expect some bugs here and there, this is still in early development.
 
