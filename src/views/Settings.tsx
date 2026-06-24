@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferencesStore";
 import { normalizeToWebp, ImageTooLargeError, AVATAR_IMAGE_BUDGET } from "@/lib/imageEncode";
 import { BattlefieldStylePreview } from "@/components/game/BattlefieldStylePreview";
+import { PlaymatEditorModal } from "@/components/editor/PlaymatEditorModal";
 import { isFeatureEnabled } from "@/featureFlags";
 import { THEME_PRESETS, type ThemeColors } from "@/themes";
 import { useServerStore } from "@/stores/useServerStore";
@@ -367,6 +368,8 @@ export default function Settings() {
 
   const zoneOrder = prefs.zonePanelOrder;
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [playmatEditorOpen, setPlaymatEditorOpen] = useState(false);
+  const hasDefaultPlaymat = !!prefs.defaultPlaymat || !!prefs.defaultPlaymatSettings?.color;
 
   async function onAvatarPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -661,6 +664,49 @@ export default function Settings() {
             </div>
 
             <div className="rounded-lg border bg-card/40 p-4 space-y-2">
+              <Label>Default Playmat</Label>
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-24 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
+                  {prefs.defaultPlaymat ? (
+                    <img
+                      src={prefs.defaultPlaymat}
+                      alt="Your default playmat"
+                      className="size-full object-cover"
+                    />
+                  ) : prefs.defaultPlaymatSettings?.color ? (
+                    <span
+                      className="size-full"
+                      style={{ backgroundColor: prefs.defaultPlaymatSettings.color }}
+                      aria-hidden
+                    />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">None</span>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setPlaymatEditorOpen(true)}>
+                    {hasDefaultPlaymat ? "Customize" : "Set playmat"}
+                  </Button>
+                  {hasDefaultPlaymat && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        prefs.setDefaultPlaymat(undefined);
+                        prefs.setDefaultPlaymatSettings(undefined);
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Used in games when the deck you&apos;re playing has no custom playmat of its own.
+              </p>
+            </div>
+
+            <div className="rounded-lg border bg-card/40 p-4 space-y-2">
               <Label>Battlefield Zone Column Order</Label>
               <div className="grid grid-cols-3 gap-2">
                 {(["Top", "Middle", "Bottom"] as const).map((slot, index) => (
@@ -935,6 +981,16 @@ export default function Settings() {
             </div>
           </div>
           {/* end preferences grid */}
+          {playmatEditorOpen && (
+            <PlaymatEditorModal
+              onClose={() => setPlaymatEditorOpen(false)}
+              title="Default Playmat"
+              playmat={prefs.defaultPlaymat}
+              storedSettings={prefs.defaultPlaymatSettings}
+              setPlaymat={prefs.setDefaultPlaymat}
+              setPlaymatSettings={prefs.setDefaultPlaymatSettings}
+            />
+          )}
         </section>
       )}
 
