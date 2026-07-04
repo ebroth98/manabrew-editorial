@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.1](https://github.com/witchesofthehill/manabrew/compare/v1.0.0...v1.0.1) (2026-07-04)
+
+### Fixes
+
+* globe icon ([#337](https://github.com/witchesofthehill/manabrew/issues/337)) ([b8fead2](https://github.com/witchesofthehill/manabrew/commit/b8fead228ae2f33ac84d28b4a845de27ea272c47))
+
 ## [1.0.0](https://github.com/witchesofthehill/manabrew/compare/v0.6.0...v1.0.0) (2026-07-04)
 
 ### Features

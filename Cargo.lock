@@ -3662,7 +3662,7 @@ dependencies = [
 
 [[package]]
 name = "manabrew"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "forge-carddb",
  "forge-cardset-archive",
