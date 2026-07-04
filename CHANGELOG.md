@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/witchesofthehill/manabrew/compare/v0.6.0...v1.0.0) (2026-07-04)
+
+### Features
+
+* **ui:** default tauri play-vs-ai to the forge engine ([#293](https://github.com/witchesofthehill/manabrew/issues/293)) ([72e2eed](https://github.com/witchesofthehill/manabrew/commit/72e2eed8c8d8ec839de16d28a49479304ea2674a))
+* proper infrastructure for release ([#329](https://github.com/witchesofthehill/manabrew/issues/329)) ([#330](https://github.com/witchesofthehill/manabrew/issues/330)) ([a833281](https://github.com/witchesofthehill/manabrew/commit/a833281045b48e7e0ab11a74c7f81fd75c8ebb2d))
+
+### Other
+
+* Misc fixes post-release ([#326](https://github.com/witchesofthehill/manabrew/issues/326)) ([1386825](https://github.com/witchesofthehill/manabrew/commit/1386825c57c5457485507ebf41a55e5cf1605280))
+
 ## [0.6.0](https://github.com/witchesofthehill/manabrew/compare/v0.5.2...v0.6.0) (2026-07-03)
 
 
