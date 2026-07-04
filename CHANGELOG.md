@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.2](https://github.com/witchesofthehill/manabrew/compare/v1.0.1...v1.0.2) (2026-07-04)
+
+### Fixes
+
+* about page and dockerfile ([#338](https://github.com/witchesofthehill/manabrew/issues/338)) ([2d64135](https://github.com/witchesofthehill/manabrew/commit/2d64135ff87c4114d40d2673242829e95235e084))
+
 ## [1.0.1](https://github.com/witchesofthehill/manabrew/compare/v1.0.0...v1.0.1) (2026-07-04)
 
 ### Fixes
