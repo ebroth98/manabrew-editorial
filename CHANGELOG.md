@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.2](https://github.com/witchesofthehill/manabrew/compare/v1.2.1...v1.2.2) (2026-07-06)
+
+### Fixes
+
+* **ui:** retry duplicate usernames under a hidden @NNNN tag ([#366](https://github.com/witchesofthehill/manabrew/issues/366)) ([db3c6a4](https://github.com/witchesofthehill/manabrew/commit/db3c6a490730194767d53b7a16e2c5375fc47b1a))
+
 ## [1.2.1](https://github.com/witchesofthehill/manabrew/compare/v1.2.0...v1.2.1) (2026-07-06)
 
 ## [1.2.0](https://github.com/witchesofthehill/manabrew/compare/v1.1.3...v1.2.0) (2026-07-06)
