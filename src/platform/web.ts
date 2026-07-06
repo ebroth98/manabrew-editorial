@@ -1044,6 +1044,14 @@ class WebServerApi implements IServerApi {
       return;
     }
 
+    if (type === "AuthResult" && !msg.success) {
+      // openSocket resolves on ws.onopen, before auth completes, so
+      // tryReconnect has already reset the backoff by the time a rejection
+      // (e.g. duplicate_username from a second tab) arrives. Count the
+      // rejection so the retry loop backs off instead of hammering the relay.
+      this.reconnectAttempt += 1;
+    }
+
     // Map server message type to event name and payload
     const eventMap: Record<string, [string, unknown]> = {
       AuthResult: [
