@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.0](https://github.com/witchesofthehill/manabrew/compare/v1.1.3...v1.2.0) (2026-07-06)
+
+### Features
+
+* **ui:** let users save and switch between servers ([#349](https://github.com/witchesofthehill/manabrew/issues/349)) ([cb88eb7](https://github.com/witchesofthehill/manabrew/commit/cb88eb758c0718e5a3d93d38696d70a68cb6c6b0))
+
 ## [1.1.3](https://github.com/witchesofthehill/manabrew/compare/v1.1.2...v1.1.3) (2026-07-06)
 
 ### Fixes
