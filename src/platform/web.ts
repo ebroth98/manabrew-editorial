@@ -16,6 +16,7 @@ import type {
   StartMultiplayerGameParams,
   RespondParams,
   RestoreSnapshotParams,
+  SendDirectiveParams,
   ServerConnectParams,
   CreateRoomParams,
   JoinRoomParams,
@@ -29,9 +30,10 @@ import type {
 } from "./types";
 import { SERVER_ERROR_CODE } from "@/types/server";
 import type { RoomRelayEnvelope, StateEnvelope } from "@/types/server";
-import type { Prompt, PromptOutput } from "@/protocol";
+import type { ClientToServerMessage, DirectiveInput, Prompt, PromptOutput } from "@/protocol";
 import type { Deck } from "@/protocol/deck";
 import { expandPresetDeckDefinitions, type PresetDeckDefinition } from "@/lib/presetDecks";
+import { logComms } from "@/lib/commsLog";
 
 /** Flip to true to surface the noisy transport/multiplayer wire logs. */
 const DEBUG_TRANSPORT = false;
@@ -68,6 +70,11 @@ interface RemoteSeat {
   data: Uint8Array;
   /** terminate() flips this so an already-queued rAF poll short-circuits. */
   cancelled: boolean;
+  /** A prompt was read off this SAB and no message was written back yet. */
+  awaitingResponse: boolean;
+  /** Directive awaiting delivery: the SAB holds a single slot, so it can only
+   *  be written while the engine is blocked waiting on this seat's prompt. */
+  pendingDirective: DirectiveInput | null;
 }
 
 // A kind-tagged engine message read off a seat's SAB, awaiting relay.
@@ -96,6 +103,8 @@ class WorkerBridge {
   gameBuffer: SharedArrayBuffer | null = null;
   private gameSignal: Int32Array | null = null;
   private gameData: Uint8Array | null = null;
+  private localAwaitingResponse = false;
+  private localPendingDirective: DirectiveInput | null = null;
 
   /** Per-remote-seat SAB state. Keyed by player slot (`player-N`). */
   private remoteSeats = new Map<string, RemoteSeat>();
@@ -120,6 +129,8 @@ class WorkerBridge {
         signal: new Int32Array(payload.buffer, 0, 2),
         data: new Uint8Array(payload.buffer, 8),
         cancelled: false,
+        awaitingResponse: false,
+        pendingDirective: null,
       };
       this.remoteSeats.set(payload.playerSlot, seat);
       console.log(
@@ -178,6 +189,7 @@ class WorkerBridge {
     event?: unknown;
     prompt?: unknown;
   }): void {
+    logComms("engine", msg);
     switch (msg?.kind) {
       case "state":
         this.eventBus.emit("game:state", msg.state);
@@ -186,6 +198,14 @@ class WorkerBridge {
         this.eventBus.emit("game:display", msg.event);
         break;
       case "prompt":
+        this.localAwaitingResponse = true;
+        if (this.localPendingDirective) {
+          this.writeLocalMessage({
+            kind: "directive",
+            directive: this.localPendingDirective,
+          });
+          this.localPendingDirective = null;
+        }
         this.eventBus.emit("game:prompt", msg.prompt);
         break;
     }
@@ -209,6 +229,16 @@ class WorkerBridge {
           console.log(`[transport←sab/seat ${playerSlot}] engine emitted:`, jsonStr);
         try {
           const msg = JSON.parse(jsonStr);
+          if (msg?.kind === "prompt") {
+            seat.awaitingResponse = true;
+            if (seat.pendingDirective) {
+              this.writeSeatMessage(seat, {
+                kind: "directive",
+                directive: seat.pendingDirective,
+              });
+              seat.pendingDirective = null;
+            }
+          }
           this.eventBus.emit("game:relay_message", { forPlayer: playerSlot, msg });
         } catch (e) {
           console.error(`[WorkerBridge] Failed to parse SAB message for ${playerSlot}:`, e);
@@ -222,45 +252,90 @@ class WorkerBridge {
   }
 
   /**
-   * Routes each `server:state_update` of kind `response` to the SAB for
-   * the seat named in `fromPlayer`. Subscription lives for the page's
-   * lifetime (singleton bridge, no disposal), so the unsubscribe is dropped.
+   * Routes each `server:state_update` of kind `response` or `directive` to
+   * the SAB for the seat named in `fromPlayer`. Subscription lives for the
+   * page's lifetime (singleton bridge, no disposal), so the unsubscribe is
+   * dropped.
    */
   private installRemoteResponseListener(): void {
     this.eventBus.on<{
       from_player: string;
       state: Record<string, unknown>;
     }>("server:state_update", (payload) => {
-      if (payload.state?.kind !== "response") return;
+      const kind = payload.state?.kind;
+      if (kind !== "response" && kind !== "directive") return;
       const fromPlayer = payload.state.fromPlayer as string | undefined;
       if (!fromPlayer) return;
       const seat = this.remoteSeats.get(fromPlayer);
       if (DEBUG_TRANSPORT)
         console.log(
-          `[MP] response← ${fromPlayer}`,
+          `[MP] ${kind}← ${fromPlayer}`,
           seat ? "(routed to SAB)" : "(NO SEAT — dropped)",
         );
       if (!seat) return;
-      const action = payload.state.action;
+      if (kind === "directive") {
+        this.deliverSeatDirective(seat, payload.state.directive as DirectiveInput);
+        return;
+      }
+      const action = payload.state.action as PromptOutput | undefined;
       if (!action) return;
-      const json = new TextEncoder().encode(JSON.stringify(action));
-      Atomics.store(seat.signal, 1, json.length);
-      seat.data.set(json, 0);
-      Atomics.store(seat.signal, 0, 2); // RESPONSE_READY
-      Atomics.notify(seat.signal, 0);
+      this.writeSeatMessage(seat, { kind: "response", action });
     });
+  }
+
+  /** Deliver a directive to a remote seat: now if the engine is blocked on
+   *  that seat's prompt, otherwise at its next prompt. */
+  private deliverSeatDirective(seat: RemoteSeat, directive: DirectiveInput): void {
+    if (seat.awaitingResponse) {
+      this.writeSeatMessage(seat, { kind: "directive", directive });
+    } else {
+      seat.pendingDirective = directive;
+    }
+  }
+
+  private writeSeatMessage(seat: RemoteSeat, message: ClientToServerMessage): void {
+    seat.awaitingResponse = false;
+    const json = new TextEncoder().encode(JSON.stringify(message));
+    Atomics.store(seat.signal, 1, json.length);
+    seat.data.set(json, 0);
+    Atomics.store(seat.signal, 0, 2); // RESPONSE_READY
+    Atomics.notify(seat.signal, 0);
   }
 
   /**
    * Write a response to the SharedArrayBuffer and wake the worker.
    */
   writeResponse(action: PromptOutput): void {
+    this.writeLocalMessage({ kind: "response", action });
+  }
+
+  /** Deliver a directive to the local seat: now if the engine is blocked on
+   *  the local prompt, otherwise at its next prompt. */
+  deliverLocalDirective(directive: DirectiveInput): void {
+    if (this.localAwaitingResponse) {
+      this.writeLocalMessage({ kind: "directive", directive });
+    } else {
+      this.localPendingDirective = directive;
+    }
+  }
+
+  /** Deliver a directive to a remote seat by slot; drops unknown slots. */
+  deliverRemoteDirective(playerSlot: string, directive: DirectiveInput): void {
+    const seat = this.remoteSeats.get(playerSlot);
+    if (seat) this.deliverSeatDirective(seat, directive);
+  }
+
+  hasRemoteSeat(playerSlot: string): boolean {
+    return this.remoteSeats.has(playerSlot);
+  }
+
+  private writeLocalMessage(message: ClientToServerMessage): void {
     if (!this.gameSignal || !this.gameData) {
       console.error("[WorkerBridge] No SharedArrayBuffer available for response");
       return;
     }
-
-    const json = new TextEncoder().encode(JSON.stringify(action));
+    this.localAwaitingResponse = false;
+    const json = new TextEncoder().encode(JSON.stringify(message));
     // Write length
     Atomics.store(this.gameSignal, 1, json.length);
     // Write data
@@ -391,6 +466,8 @@ class WorkerBridge {
     this.gameBuffer = null;
     this.gameSignal = null;
     this.gameData = null;
+    this.localAwaitingResponse = false;
+    this.localPendingDirective = null;
     for (const seat of this.remoteSeats.values()) seat.cancelled = true;
     this.remoteSeats.clear();
     // Response listener stays installed — terminate() is per-game, and a
@@ -468,6 +545,23 @@ class WebGameApi implements IGameApi {
         action: params.action,
         playerSlot: params.playerSlot,
       });
+    }
+  }
+
+  async sendDirective(params: SendDirectiveParams): Promise<void> {
+    if (this.isMultiplayer && !this.isHost && this.serverApi) {
+      // Non-host multiplayer: relay the directive to whoever hosts the engine.
+      await this.serverApi.broadcastState({
+        kind: "directive",
+        fromPlayer: params.playerSlot,
+        directive: params.directive,
+      });
+    } else if (this.bridge.hasRemoteSeat(params.playerSlot)) {
+      // Host conceding an abandoned relay seat.
+      this.bridge.deliverRemoteDirective(params.playerSlot, params.directive);
+    } else {
+      // Host or single-player conceding the local seat.
+      this.bridge.deliverLocalDirective(params.directive);
     }
   }
 
@@ -568,14 +662,10 @@ class WebEventBus implements IEventBus {
 // ============================================================================
 
 interface BotEntry {
-  ws: WebSocket;
-  /** wasm-bindgen handle — has `free()` to release the underlying memory. */
-  bot: {
-    on_open(): string[];
-    on_server_message(text: string): string[];
-    failure(): string | undefined;
-    free(): void;
-  };
+  ws: WebSocket | null;
+  stopped: boolean;
+  attempt: number;
+  reconnectTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000, 30000];
@@ -772,9 +862,7 @@ class WebServerApi implements IServerApi {
     this.reconnectAttempt = 0;
     this.connectParams = null;
     this.stopKeepalive();
-    for (const username of [...this.bots.keys()]) {
-      await this.removeAiBot(username);
-    }
+    this.stopAllBots();
     const ws = this.ws;
     this.ws = null;
     this.relayUrl = null;
@@ -847,6 +935,7 @@ class WebServerApi implements IServerApi {
   }
 
   async leaveRoom(): Promise<void> {
+    this.stopAllBots();
     this.send({ type: "LeaveRoom" });
   }
 
@@ -877,6 +966,7 @@ class WebServerApi implements IServerApi {
   }
 
   async endGame(): Promise<void> {
+    this.stopAllBots();
     this.send({ type: "EndGame" });
   }
 
@@ -901,47 +991,91 @@ class WebServerApi implements IServerApi {
       throw new Error(`Bot '${params.username}' is already running.`);
     }
     const wasm = await this.loadWasm();
-    const bot = new wasm.WasmBot(
-      JSON.stringify({
-        username: params.username,
-        password: this.serverPassword,
-        roomId: params.roomId,
-        roomPassword: params.roomPassword ?? null,
-        deckName: params.deckName,
-        deck: params.deck,
-        commanderName: params.commanderName,
-        agent: params.agent ?? "simple",
-      }),
-    );
-    const ws = new WebSocket(this.relayUrl);
-    const entry: BotEntry = { ws, bot };
+    const config = JSON.stringify({
+      username: params.username,
+      password: this.serverPassword,
+      roomId: params.roomId,
+      roomPassword: params.roomPassword ?? null,
+      deckName: params.deckName,
+      deck: params.deck,
+      commanderName: params.commanderName,
+      agent: params.agent ?? "simple",
+    });
+    const entry: BotEntry = {
+      ws: null,
+      stopped: false,
+      attempt: 0,
+      reconnectTimer: null,
+    };
     this.bots.set(params.username, entry);
-    ws.onopen = () => {
-      for (const msg of bot.on_open()) ws.send(msg);
-    };
-    ws.onmessage = (e: MessageEvent) => {
-      if (typeof e.data !== "string") return;
-      for (const msg of bot.on_server_message(e.data)) ws.send(msg);
-      const failure = bot.failure();
-      if (failure) {
-        console.error(`[bot ${params.username}] ${failure}`);
-        ws.close();
+    const connect = () => {
+      entry.reconnectTimer = null;
+      if (entry.stopped || !this.relayUrl) {
+        this.bots.delete(params.username);
+        return;
       }
+      const bot = new wasm.WasmBot(config);
+      const ws = new WebSocket(this.relayUrl);
+      entry.ws = ws;
+      ws.onopen = () => {
+        for (const msg of bot.on_open()) {
+          logComms("bot-send", `[${params.username}] ${msg}`);
+          ws.send(msg);
+        }
+      };
+      ws.onmessage = (e: MessageEvent) => {
+        if (typeof e.data !== "string") return;
+        logComms("bot-recv", `[${params.username}] ${e.data}`);
+        for (const msg of bot.on_server_message(e.data)) {
+          logComms("bot-send", `[${params.username}] ${msg}`);
+          ws.send(msg);
+        }
+        const failure = bot.failure();
+        if (failure) {
+          console.warn(`[bot ${params.username}] ${failure}`);
+          ws.close();
+        } else {
+          entry.attempt = 0;
+        }
+      };
+      ws.onerror = () => console.error(`[bot ${params.username}] WebSocket error`);
+      ws.onclose = () => {
+        bot.free();
+        entry.ws = null;
+        if (entry.stopped) {
+          this.bots.delete(params.username);
+          return;
+        }
+        const delay =
+          RECONNECT_BACKOFF_MS[Math.min(entry.attempt, RECONNECT_BACKOFF_MS.length - 1)];
+        entry.attempt += 1;
+        console.warn(`[bot ${params.username}] socket closed; reconnecting in ${delay}ms`);
+        entry.reconnectTimer = setTimeout(connect, delay);
+      };
     };
-    ws.onerror = () => console.error(`[bot ${params.username}] WebSocket error`);
-    ws.onclose = () => {
-      bot.free();
-      this.bots.delete(params.username);
-    };
+    connect();
   }
 
   async removeAiBot(username: string): Promise<void> {
     const entry = this.bots.get(username);
     if (!entry) return;
-    entry.ws.close();
-    this.bots.delete(username);
-    // `bot.free()` is invoked from the ws.onclose handler — calling it here too
-    // would double-free the wasm-bindgen handle.
+    entry.stopped = true;
+    if (entry.reconnectTimer) {
+      clearTimeout(entry.reconnectTimer);
+      entry.reconnectTimer = null;
+    }
+    if (entry.ws) {
+      // onclose frees the wasm handle and removes the entry.
+      entry.ws.close();
+    } else {
+      this.bots.delete(username);
+    }
+  }
+
+  private stopAllBots(): void {
+    for (const username of [...this.bots.keys()]) {
+      void this.removeAiBot(username);
+    }
   }
 
   private async loadWasm(): Promise<typeof import("@/wasm/wasm")> {
@@ -960,12 +1094,15 @@ class WebServerApi implements IServerApi {
       console.error("[WebServerApi] Not connected");
       return;
     }
+    logComms("send", msg);
     this.ws.send(JSON.stringify(msg));
   }
 
   private handleServerMessage(msg: Record<string, unknown>): void {
+    logComms("recv", msg);
     if (DEBUG_TRANSPORT) console.log("[transport←ws] received:", JSON.stringify(msg));
     const type = msg.type as string;
+    if (type === "GameAborted") this.stopAllBots();
 
     if (type === "ServerShuttingDown") {
       const reconnectInS = typeof msg.reconnect_in_s === "number" ? msg.reconnect_in_s : 5;
@@ -984,6 +1121,13 @@ class WebServerApi implements IServerApi {
       switch (envelope.kind) {
         case "response":
           this.pendingRelayPrompts.delete(envelope.fromPlayer);
+          this.eventBus.emit("server:state_update", {
+            from_player: msg.from_player,
+            state: envelope,
+          });
+          return;
+        case "directive":
+          // Does not answer the pending prompt — that stays pending.
           this.eventBus.emit("server:state_update", {
             from_player: msg.from_player,
             state: envelope,
