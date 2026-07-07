@@ -52,6 +52,8 @@ interface ServerState {
   rooms: RoomInfo[];
   currentRoom: RoomInfo | null;
   roomPassword: string | null;
+  /** This app spawned the embedded Forge engine node for the current room. */
+  hostingForgeRoom: boolean;
   players: PlayerInfo[];
 
   gameStarted: boolean;
@@ -126,6 +128,7 @@ export const useServerStore = create<ServerState>()(
       rooms: [],
       currentRoom: null,
       roomPassword: null,
+      hostingForgeRoom: false,
       players: [],
       gameStarted: false,
       playerOrder: [],
@@ -221,6 +224,7 @@ export const useServerStore = create<ServerState>()(
           password,
         });
         if (roomId) {
+          if (engine === "Forge") set({ hostingForgeRoom: true });
           await get().joinRoom(roomId, password);
         }
       },
@@ -278,6 +282,7 @@ export const useServerStore = create<ServerState>()(
         set({
           currentRoom: null,
           roomPassword: null,
+          hostingForgeRoom: false,
           gameStarted: false,
           playerOrder: [],
           playerDecks: [],
