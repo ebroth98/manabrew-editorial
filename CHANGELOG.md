@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.2](https://github.com/witchesofthehill/manabrew/compare/v1.4.1...v1.4.2) (2026-07-09)
+
+### Fixes
+
+* **ci:** unbreak mobile publish jobs (cardset archive + gradle wrapper) ([#431](https://github.com/witchesofthehill/manabrew/issues/431)) ([3491c3a](https://github.com/witchesofthehill/manabrew/commit/3491c3a8b032756b61ce6d482264fa2721ed86c3))
+
 ## [1.4.1](https://github.com/witchesofthehill/manabrew/compare/v1.4.0...v1.4.1) (2026-07-09)
 
 ## [1.4.0](https://github.com/witchesofthehill/manabrew/compare/v1.3.3...v1.4.0) (2026-07-09)
