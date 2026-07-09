@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.5.0](https://github.com/witchesofthehill/manabrew/compare/v1.4.4...v1.5.0) (2026-07-09)
+
+### Features
+
+* **protocol:** filter lobby rooms by protocol version ([#382](https://github.com/witchesofthehill/manabrew/issues/382)) ([64bcaf6](https://github.com/witchesofthehill/manabrew/commit/64bcaf64b289c0b348dfda08b0cddc47ab6971ce))
+
 ## [1.4.4](https://github.com/witchesofthehill/manabrew/compare/v1.4.3...v1.4.4) (2026-07-09)
 
 ### Fixes
