@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.2](https://github.com/witchesofthehill/manabrew/compare/v1.3.1...v1.3.2) (2026-07-09)
+
+### Fixes
+
+* reloading on a bot room will work ([#427](https://github.com/witchesofthehill/manabrew/issues/427)) ([3a22e15](https://github.com/witchesofthehill/manabrew/commit/3a22e15a16907679d152d849073356ea943fe08a))
+
 ## [1.3.1](https://github.com/witchesofthehill/manabrew/compare/v1.3.0...v1.3.1) (2026-07-07)
 
 ### Fixes
