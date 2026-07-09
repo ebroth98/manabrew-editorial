@@ -3722,7 +3722,7 @@ dependencies = [
 
 [[package]]
 name = "manabrew"
-version = "1.4.3"
+version = "1.4.4"
 dependencies = [
  "forge-carddb",
  "forge-cardset-archive",
@@ -4801,7 +4801,7 @@ dependencies = [
 
 [[package]]
 name = "parity"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "axum",
  "chrono",
@@ -4828,7 +4828,7 @@ dependencies = [
 
 [[package]]
 name = "parity-debugger"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "eframe",
  "egui",
@@ -6207,7 +6207,7 @@ dependencies = [
 
 [[package]]
 name = "self-hosted-node"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "forge-carddb",
  "forge-foundation",

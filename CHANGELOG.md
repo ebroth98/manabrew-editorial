@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.4](https://github.com/witchesofthehill/manabrew/compare/v1.4.3...v1.4.4) (2026-07-09)
+
+### Fixes
+
+* **carddb:** point cardset rebuild hints at the real archive builder ([#435](https://github.com/witchesofthehill/manabrew/issues/435)) ([610019f](https://github.com/witchesofthehill/manabrew/commit/610019f4652206f8afacea9c5100e560f517b7f0))
+
 ## [1.4.3](https://github.com/witchesofthehill/manabrew/compare/v1.4.2...v1.4.3) (2026-07-09)
 
 ## [1.4.2](https://github.com/witchesofthehill/manabrew/compare/v1.4.1...v1.4.2) (2026-07-09)
