@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.5.3](https://github.com/witchesofthehill/manabrew/compare/v1.5.2...v1.5.3) (2026-07-12)
+
+### Fixes
+
+* **ui:** silly mistake on reload ([#444](https://github.com/witchesofthehill/manabrew/issues/444)) ([7d83a19](https://github.com/witchesofthehill/manabrew/commit/7d83a19e4570076c0f4229b782d13bcd5cb2227b))
+
 ## [1.5.2](https://github.com/witchesofthehill/manabrew/compare/v1.5.1...v1.5.2) (2026-07-12)
 
 ### Fixes
