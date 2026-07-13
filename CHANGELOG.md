@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.7.0](https://github.com/witchesofthehill/manabrew/compare/v1.6.0...v1.7.0) (2026-07-13)
+
+### Features
+
+* **hub:** deck hub backend + top-decks stats api ([#421](https://github.com/witchesofthehill/manabrew/issues/421)) ([81b6776](https://github.com/witchesofthehill/manabrew/commit/81b6776a4ffd13cb94a8694e6d16014c513e8bef))
+
 ## [1.6.0](https://github.com/witchesofthehill/manabrew/compare/v1.5.3...v1.6.0) (2026-07-13)
 
 ### Features
