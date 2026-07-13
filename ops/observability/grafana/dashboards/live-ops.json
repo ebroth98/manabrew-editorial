@@ -1,10 +1,7 @@
 {
   "uid": "manabrew-live-ops",
   "title": "Manabrew \u2014 Live Ops",
-  "tags": [
-    "manabrew",
-    "ops"
-  ],
+  "tags": ["manabrew", "ops"],
   "schemaVersion": 39,
   "editable": true,
   "timezone": "utc",
