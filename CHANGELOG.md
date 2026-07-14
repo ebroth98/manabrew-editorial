@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.9.1](https://github.com/witchesofthehill/manabrew/compare/v1.9.0...v1.9.1) (2026-07-14)
+
+### Fixes
+
+* **web:** restore hosted-ai + scryfall symbols in the generic ghcr image ([#455](https://github.com/witchesofthehill/manabrew/issues/455)) ([837892c](https://github.com/witchesofthehill/manabrew/commit/837892cff8a2bd5dd2044d651b8a7ddfc667c47b))
+
 ## [1.9.0](https://github.com/witchesofthehill/manabrew/compare/v1.8.1...v1.9.0) (2026-07-14)
 
 ### Features
