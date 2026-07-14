@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.9.0](https://github.com/witchesofthehill/manabrew/compare/v1.8.1...v1.9.0) (2026-07-14)
+
+### Features
+
+* **ironsmith:** gate as experimental opt-in + clean up unsupported-deck flow ([#451](https://github.com/witchesofthehill/manabrew/issues/451)) ([13cc3fd](https://github.com/witchesofthehill/manabrew/commit/13cc3fd8630ee1612f32ba2776f71eb39e82e8bb))
+
 ## [1.8.1](https://github.com/witchesofthehill/manabrew/compare/v1.8.0...v1.8.1) (2026-07-14)
 
 ### Fixes
