@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.8.1](https://github.com/witchesofthehill/manabrew/compare/v1.8.0...v1.8.1) (2026-07-14)
+
+### Fixes
+
+* **ui:** hit custom mb cache to avoid cdn corruption on scryfall side ([#452](https://github.com/witchesofthehill/manabrew/issues/452)) ([17d3644](https://github.com/witchesofthehill/manabrew/commit/17d36448913bf165f3a7f3179d5399727884066f))
+
 ## [1.8.0](https://github.com/witchesofthehill/manabrew/compare/v1.7.0...v1.8.0) (2026-07-14)
 
 ### Features
