@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.9.2](https://github.com/witchesofthehill/manabrew/compare/v1.9.1...v1.9.2) (2026-07-15)
+
+### Fixes
+
+* **web:** serve scryfall card images through a same-origin proxy ([#456](https://github.com/witchesofthehill/manabrew/issues/456)) ([497bb6a](https://github.com/witchesofthehill/manabrew/commit/497bb6a3f07d4cdba84a45425502ba00731fa799))
+
 ## [1.9.1](https://github.com/witchesofthehill/manabrew/compare/v1.9.0...v1.9.1) (2026-07-14)
 
 ### Fixes
