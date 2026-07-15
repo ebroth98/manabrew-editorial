@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.9.4](https://github.com/witchesofthehill/manabrew/compare/v1.9.3...v1.9.4) (2026-07-15)
+
+### Fixes
+
+* **web:** 2-row fill actually renders 2 rows; damp hand growth to half rate ([#458](https://github.com/witchesofthehill/manabrew/issues/458)) ([71c1e9b](https://github.com/witchesofthehill/manabrew/commit/71c1e9bdc8cedd97d30e00d7623a25d695da7cdb))
+
 ## [1.9.3](https://github.com/witchesofthehill/manabrew/compare/v1.9.2...v1.9.3) (2026-07-15)
 
 ### Fixes
