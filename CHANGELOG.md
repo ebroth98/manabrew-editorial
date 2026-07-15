@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.9.3](https://github.com/witchesofthehill/manabrew/compare/v1.9.2...v1.9.3) (2026-07-15)
+
+### Fixes
+
+* **web:** viewport + slider-scaled hand fan, honest 75-150% size range ([#457](https://github.com/witchesofthehill/manabrew/issues/457)) ([b0701ee](https://github.com/witchesofthehill/manabrew/commit/b0701ee858e2c00a8dd64c1f1dd9691eee9ebe02))
+
 ## [1.9.2](https://github.com/witchesofthehill/manabrew/compare/v1.9.1...v1.9.2) (2026-07-15)
 
 ### Fixes
